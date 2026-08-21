@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "270552038209",
+    "project_id": "domex-edu",
+    "storage_bucket": "domex-edu.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:270552038209:android:d9937cf8f6e2f039abbfc0",
+        "android_client_info": {
+          "package_name": "com.example.domex_edu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoKrm9famRnFaAV5dSPFCdNN-CgwGCcgg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
