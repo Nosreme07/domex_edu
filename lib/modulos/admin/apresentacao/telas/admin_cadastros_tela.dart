@@ -8,6 +8,7 @@ import 'package:printing/printing.dart';
 
 import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
+import '../estado/turma_provider.dart';
 
 class AdminCadastrosTela extends ConsumerStatefulWidget {
   const AdminCadastrosTela({super.key});
@@ -563,9 +564,9 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
               SizedBox(width: 250, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar nome ou matrícula...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
               const SizedBox(width: 16),
               ElevatedButton.icon(
-                onPressed: () => context.push('/admin/cadastros/professor/novo'), 
+                onPressed: () => context.push('/admin/cadastros/aluno/novo'), 
                 icon: const Icon(Icons.person_add_alt_1_rounded), 
-                label: const Text('Novo Professor')
+                label: const Text('Nova Matrícula')
               )
             ],
           ),
@@ -892,7 +893,131 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> {
   }
 }
 
-class _GestaoTurmasAba extends ConsumerStatefulWidget { const _GestaoTurmasAba(); @override ConsumerState<_GestaoTurmasAba> createState() => _GestaoTurmasAbaState(); }
-class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> { @override Widget build(BuildContext context) { return const Center(child: Text('Turmas')); } }
+// ============================================================================
+// 3. COMPONENTE DA ABA DE TURMAS
+// ============================================================================
+class _GestaoTurmasAba extends ConsumerStatefulWidget {
+  const _GestaoTurmasAba();
+  @override
+  ConsumerState<_GestaoTurmasAba> createState() => _GestaoTurmasAbaState();
+}
+
+class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> {
+  String _termoBusca = '';
+
+  void _confirmarExclusao(BuildContext context, Map<String, dynamic> turma) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Turma', style: TextStyle(color: Colors.red))]),
+        content: Text('Deseja realmente apagar a turma ${turma['nome']}?\n\nAtenção: Isso não apagará os alunos vinculados, mas eles ficarão sem turma.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              try {
+                await ref.read(turmaServiceProvider).excluirTurma(turma['id']);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turma excluída com sucesso!'), backgroundColor: Colors.green));
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('Sim, Excluir', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final estadoTurmas = ref.watch(turmasStreamProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Turmas Cadastradas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              SizedBox(width: 250, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar turma...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
+              const SizedBox(width: 16),
+              ElevatedButton.icon(
+                onPressed: () => context.push('/admin/cadastros/turma/novo'), 
+                icon: const Icon(Icons.meeting_room_rounded), 
+                label: const Text('Nova Turma')
+              )
+            ],
+          ),
+          const SizedBox(height: 24),
+          
+          Expanded(
+            child: estadoTurmas.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (erro, stack) => Center(child: Text('Erro ao carregar turmas: $erro')),
+              data: (turmas) {
+                final filtradas = turmas.where((t) => t['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
+                
+                if (filtradas.isEmpty) return const Center(child: Text('Nenhuma turma cadastrada no sistema.'));
+
+                return ListView.separated(
+                  itemCount: filtradas.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final turma = filtradas[index];
+                    
+                    // Lógica de cores atualizada para o status "FORMADA" e "EM FORMAÇÃO"
+                    final statusTurma = turma['status'] ?? 'FORMADA';
+                    final emFormacao = statusTurma == 'EM FORMAÇÃO';
+                    final arquivada = statusTurma == 'Inativa'; // Caso de legado ou arquivamento
+
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: arquivada ? Colors.red.shade200 : Colors.grey.shade300)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: arquivada ? Colors.red.shade50 : Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                              child: Icon(Icons.meeting_room_rounded, color: arquivada ? Colors.red : Colors.blue),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${turma['nome']} (${turma['anoLetivo']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('Sala: ${turma['sala'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))])),
+                            Expanded(flex: 2, child: Row(children: [Icon(Icons.wb_sunny_outlined, size: 16, color: Colors.grey.shade600), const SizedBox(width: 4), Text(turma['turno'] ?? '', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold))])),
+                            
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+                              decoration: BoxDecoration(color: emFormacao ? Colors.orange.shade50 : (arquivada ? Colors.red.shade50 : Colors.green.shade50), borderRadius: BorderRadius.circular(16)), 
+                              child: Text(statusTurma, style: TextStyle(color: emFormacao ? Colors.orange.shade700 : (arquivada ? Colors.red.shade700 : Colors.green.shade700), fontWeight: FontWeight.bold, fontSize: 12))
+                            ),
+                            
+                            const SizedBox(width: 24),
+                            Row(
+                              children: [
+                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar', onPressed: () => context.push('/admin/cadastros/turma/novo', extra: turma)),
+                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, turma)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _VisualizacaoTabela extends StatelessWidget { final String titulo; final List<String> colunas; final List dadosSimulados; const _VisualizacaoTabela({required this.titulo, required this.colunas, required this.dadosSimulados}); @override Widget build(BuildContext context) { return const Center(child: Text('Usuários')); } }

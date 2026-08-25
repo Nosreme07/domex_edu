@@ -251,12 +251,18 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
     }
   }
 
-  Future<void> _recortarEEnquadrar(String path) async {
+Future<void> _recortarEEnquadrar(String path) async {
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: path,
-      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), // Mantém a trava perfeita do 3x4
       uiSettings: [
-        AndroidUiSettings(toolbarTitle: 'Enquadrar Foto 4x4', toolbarColor: Theme.of(context).primaryColor, toolbarWidgetColor: Colors.white, initAspectRatio: CropAspectRatioPreset.square, lockAspectRatio: true),
+        AndroidUiSettings(
+          toolbarTitle: 'Enquadrar Foto 3x4', 
+          toolbarColor: Theme.of(context).primaryColor, 
+          toolbarWidgetColor: Colors.white, 
+          initAspectRatio: CropAspectRatioPreset.original, // <-- CORRIGIDO AQUI
+          lockAspectRatio: true
+        ),
         WebUiSettings(context: context),
       ],
     );
@@ -275,8 +281,9 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               child: _fotoSelecionada != null 
-                  ? (kIsWeb ? Image.network(_fotoSelecionada!.path, fit: BoxFit.cover, width: 400, height: 400) : Image.file(File(_fotoSelecionada!.path), fit: BoxFit.cover, width: 400, height: 400))
-                  : Image.network(_fotoUrlExistente!, fit: BoxFit.cover, width: 400, height: 400),
+                  // 3X4 AQUI NO PREVIEW (300X400)
+                  ? (kIsWeb ? Image.network(_fotoSelecionada!.path, fit: BoxFit.cover, width: 300, height: 400) : Image.file(File(_fotoSelecionada!.path), fit: BoxFit.cover, width: 300, height: 400))
+                  : Image.network(_fotoUrlExistente!, fit: BoxFit.cover, width: 300, height: 400),
             ),
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 24),
@@ -317,7 +324,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
         matriculaParaSalvar = '$anoAtual${(maiorSequencial + 1).toString().padLeft(4, '0')}'; 
       }
 
-showDialog(
+      showDialog(
         context: context,
         barrierDismissible: false,
         builder: (context) {
@@ -330,8 +337,8 @@ showDialog(
               ],
             ),
             content: SizedBox(
-              width: 600, // Aumentei um pouco a largura para caber tudo bem visível
-              height: 500, // Altura maior para a rolagem
+              width: 600, 
+              height: 500, 
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,7 +423,6 @@ showDialog(
               ),
             ),
             actions: [
-// V MANTENHA OS SEUS BOTÕES ORIGINAIS A PARTIR DAQUI V
               TextButton(onPressed: () => Navigator.pop(context), child: const Text('Voltar e Editar', style: TextStyle(color: Colors.grey))),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
@@ -564,10 +570,10 @@ showDialog(
                                 onTap: (_fotoSelecionada == null && _fotoUrlExistente == null) ? _escolherFoto : _abrirOpcoesFoto,
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
-                                  width: 140, height: 140,
+                                  width: 120, height: 160, // 3X4 AQUI NO CONTAINER
                                   decoration: BoxDecoration(color: Colors.grey.shade100, border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(12)),
                                   child: (_fotoSelecionada == null && _fotoUrlExistente == null)
-                                      ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, color: Colors.grey.shade400, size: 40), const SizedBox(height: 8), const Text('Foto 4x4', style: TextStyle(color: Colors.grey, fontSize: 12))])
+                                      ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, color: Colors.grey.shade400, size: 40), const SizedBox(height: 8), const Text('Foto 3x4', style: TextStyle(color: Colors.grey, fontSize: 12))])
                                       : ClipRRect(borderRadius: BorderRadius.circular(12), child: _fotoSelecionada != null ? (kIsWeb ? Image.network(_fotoSelecionada!.path, fit: BoxFit.cover) : Image.file(File(_fotoSelecionada!.path), fit: BoxFit.cover)) : Image.network(_fotoUrlExistente!, fit: BoxFit.cover)),
                                 ),
                               ),

@@ -54,18 +54,25 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
   final _bairroCtrl = TextEditingController();
   final _cidadeCtrl = TextEditingController();
 
-  // Atuação Profissional
+  // Atuação Profissional e Disciplinas Dinâmicas
   bool _isAtivo = true;
-  final List<String> _disciplinasDisponiveis = [
-    'MATEMÁTICA', 'PORTUGUÊS', 'HISTÓRIA', 'GEOGRAFIA', 
-    'FÍSICA', 'QUÍMICA', 'BIOLOGIA', 'INGLÊS', 'ESPANHOL', 'MÚSICA', 'INFORMÁTICA', 'ENSINO RELIGIOSO',
-    'EDUCAÇÃO FÍSICA', 'ARTES', 'FILOSOFIA', 'SOCIOLOGIA'
-  ];
+  List<String> _disciplinasDisponiveis = [];
   final Set<String> _disciplinasSelecionadas = {};
+  
+  // Controlador para adicionar nova disciplina quando escolher "OUTROS"
+  final _outraDisciplinaCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    
+    // Lista inicial de disciplinas (Com a opção OUTROS no final)
+    _disciplinasDisponiveis = [
+      'MATEMÁTICA', 'PORTUGUÊS', 'HISTÓRIA', 'GEOGRAFIA', 
+      'FÍSICA', 'QUÍMICA', 'BIOLOGIA', 'INGLÊS', 'ESPANHOL', 'MÚSICA', 'INFORMÁTICA', 'ENSINO RELIGIOSO',
+      'EDUCAÇÃO FÍSICA', 'ARTES', 'FILOSOFIA', 'SOCIOLOGIA', 'OUTROS'
+    ];
+
     if (widget.professorParaEditar != null) {
       final prof = widget.professorParaEditar!;
       
@@ -85,9 +92,18 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
       
       _isAtivo = prof['status'] == 'Ativo';
       
+      // Carregando disciplinas salvas e incluindo as "customizadas" na lista se elas não existirem
       if (prof['disciplinas'] != null) {
         for (var d in prof['disciplinas']) {
-          _disciplinasSelecionadas.add(d.toString());
+          String disc = d.toString().toUpperCase();
+          if (disc != 'OUTROS') {
+            _disciplinasSelecionadas.add(disc);
+            // Se for uma disciplina que ele criou pelo "OUTROS", ela entra na lista de disponíveis
+            if (!_disciplinasDisponiveis.contains(disc)) {
+              // Insere antes do botão 'OUTROS'
+              _disciplinasDisponiveis.insert(_disciplinasDisponiveis.length - 1, disc);
+            }
+          }
         }
       }
     }
@@ -98,10 +114,32 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
     _nomeCtrl.dispose(); _dataNascimentoCtrl.dispose(); _cpfCtrl.dispose();
     _telefoneCtrl.dispose(); _emailCtrl.dispose();
     _ruaCtrl.dispose(); _numeroCtrl.dispose(); _bairroCtrl.dispose(); _cidadeCtrl.dispose();
+    _outraDisciplinaCtrl.dispose();
     super.dispose();
   }
 
-  // ================= METÓDOS DA FOTO (AGORA 3X4) =================
+  // ================= MÉTODOS DA DISCIPLINA CUSTOMIZADA =================
+  void _adicionarDisciplinaCustomizada() {
+    final nova = _outraDisciplinaCtrl.text.trim().toUpperCase();
+    if (nova.isNotEmpty && !_disciplinasDisponiveis.contains(nova)) {
+      setState(() {
+        // Insere a nova matéria antes do botão "OUTROS"
+        _disciplinasDisponiveis.insert(_disciplinasDisponiveis.length - 1, nova);
+        // Já marca como selecionada
+        _disciplinasSelecionadas.add(nova);
+        // Limpa o campo para a próxima
+        _outraDisciplinaCtrl.clear();
+      });
+    } else if (nova.isNotEmpty && _disciplinasDisponiveis.contains(nova)) {
+      // Se ele digitou uma que já existe, só marca ela e limpa o campo
+      setState(() {
+        _disciplinasSelecionadas.add(nova);
+        _outraDisciplinaCtrl.clear();
+      });
+    }
+  }
+
+  // ================= METÓDOS DA FOTO (3X4) =================
   Future<void> _escolherFoto() async {
     try {
       final XFile? imagem = await _picker.pickImage(source: ImageSource.gallery);
@@ -112,17 +150,16 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
     }
   }
 
-  Future<void> _recortarEEnquadrar(String path) async {
+Future<void> _recortarEEnquadrar(String path) async {
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: path,
-      // AQUI MUDOU: Proporção 3 de largura por 4 de altura
-      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4),
+      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), // Mantém a trava perfeita do 3x4
       uiSettings: [
         AndroidUiSettings(
           toolbarTitle: 'Enquadrar Foto 3x4', 
           toolbarColor: Theme.of(context).primaryColor, 
           toolbarWidgetColor: Colors.white, 
-          initAspectRatio: CropAspectRatioPreset.ratio3x2, // AQUI MUDOU
+          initAspectRatio: CropAspectRatioPreset.original, // <-- CORRIGIDO AQUI
           lockAspectRatio: true
         ),
         WebUiSettings(context: context),
@@ -143,7 +180,6 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               child: _fotoSelecionada != null 
-                  // AQUI MUDOU: Tamanho 300x400 para manter a proporção 3x4 no visualizador
                   ? (kIsWeb ? Image.network(_fotoSelecionada!.path, fit: BoxFit.cover, width: 300, height: 400) : Image.file(File(_fotoSelecionada!.path), fit: BoxFit.cover, width: 300, height: 400))
                   : Image.network(_fotoUrlExistente!, fit: BoxFit.cover, width: 300, height: 400),
             ),
@@ -167,8 +203,12 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
 
   void _revisarESalvar() {
     if (_formKey.currentState!.validate()) {
-      if (_disciplinasSelecionadas.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione ao menos uma disciplina.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red));
+      
+      // Filtra as disciplinas para salvar, garantindo que a palavra "OUTROS" não vá pro banco de dados
+      final disciplinasParaSalvar = _disciplinasSelecionadas.where((d) => d != 'OUTROS').toList();
+
+      if (disciplinasParaSalvar.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione ou adicione ao menos uma disciplina.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red));
         return;
       }
 
@@ -178,10 +218,18 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
       if (isEdicao) {
         idParaSalvar = widget.professorParaEditar!['id'];
       } else {
-        // Simulação da Geração do ID
-        const int quantidadeAtualNoBanco = 2; 
-        final novoNumero = quantidadeAtualNoBanco + 1;
-        idParaSalvar = 'PROF-${novoNumero.toString().padLeft(2, '0')}'; 
+        // Geração Inteligente do ID verificando os professores que já estão no Firebase
+        final listaProfessores = ref.read(professoresStreamProvider).value ?? [];
+        int maiorSequencial = 0;
+        for (var prof in listaProfessores) {
+          final idProf = prof['id']?.toString() ?? '';
+          if (idProf.startsWith('PROF-')) {
+            final sequencialStr = idProf.substring(5); 
+            final sequencial = int.tryParse(sequencialStr) ?? 0;
+            if (sequencial > maiorSequencial) maiorSequencial = sequencial;
+          }
+        }
+        idParaSalvar = 'PROF-${(maiorSequencial + 1).toString().padLeft(2, '0')}'; 
       }
 
       showDialog(
@@ -223,7 +271,7 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                     const SizedBox(height: 8),
                     Wrap(
                       spacing: 8,
-                      children: _disciplinasSelecionadas.map((d) => Chip(label: Text(d, style: const TextStyle(fontSize: 12)), backgroundColor: Colors.grey.shade200, side: BorderSide.none)).toList(),
+                      children: disciplinasParaSalvar.map((d) => Chip(label: Text(d, style: const TextStyle(fontSize: 12)), backgroundColor: Colors.grey.shade200, side: BorderSide.none)).toList(),
                     )
                   ],
                 ),
@@ -265,7 +313,7 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                         'bairro': _bairroCtrl.text, 'cidade': _cidadeCtrl.text,
                       },
                       'status': _isAtivo ? 'Ativo' : 'Inativo',
-                      'disciplinas': _disciplinasSelecionadas.toList(),
+                      'disciplinas': disciplinasParaSalvar, // Salva sem a palavra "OUTROS"
                       'dataCadastro': isEdicao ? widget.professorParaEditar!['dataCadastro'] : DateTime.now().toIso8601String(),
                     };
 
@@ -332,7 +380,19 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [Icon(Icons.person, color: corPrimaria), const SizedBox(width: 8), const Text('Dados Pessoais e Contato', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))]),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(children: [Icon(Icons.person, color: corPrimaria), const SizedBox(width: 8), const Text('Dados Pessoais e Contato', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))]),
+                              
+                              // EXIBE O ID DO PROFESSOR NO TOPO DO CARD!
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200)),
+                                child: Text(isEdicao ? 'ID: ${widget.professorParaEditar!['id']}' : 'ID: Gerado ao Salvar', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue)),
+                              ),
+                            ]
+                          ),
                           const Divider(height: 32),
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,7 +402,7 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                                 onTap: (_fotoSelecionada == null && _fotoUrlExistente == null) ? _escolherFoto : _abrirOpcoesFoto,
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
-                                  width: 120, height: 160, // AQUI MUDOU PARA A PROPORÇÃO 3X4
+                                  width: 120, height: 160, 
                                   decoration: BoxDecoration(color: Colors.grey.shade100, border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(12)),
                                   child: (_fotoSelecionada == null && _fotoUrlExistente == null)
                                       ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, color: Colors.grey.shade400, size: 40), const SizedBox(height: 8), const Text('Foto 3x4', style: TextStyle(color: Colors.grey, fontSize: 12))])
@@ -403,6 +463,8 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                           const SizedBox(height: 24),
                           const Text('Disciplinas Habilitadas (Selecione uma ou mais)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           const SizedBox(height: 16),
+                          
+                          // LISTA DE DISCIPLINAS
                           Wrap(
                             spacing: 12,
                             runSpacing: 12,
@@ -411,9 +473,9 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                               return FilterChip(
                                 label: Text(disciplina),
                                 selected: isSelecionada,
-                                selectedColor: corPrimaria.withAlpha(51),
-                                checkmarkColor: corPrimaria,
-                                side: BorderSide(color: isSelecionada ? corPrimaria : Colors.grey.shade300),
+                                selectedColor: disciplina == 'OUTROS' ? Colors.orange.shade100 : corPrimaria.withAlpha(51),
+                                checkmarkColor: disciplina == 'OUTROS' ? Colors.orange : corPrimaria,
+                                side: BorderSide(color: isSelecionada ? (disciplina == 'OUTROS' ? Colors.orange : corPrimaria) : Colors.grey.shade300),
                                 onSelected: (bool selected) {
                                   setState(() {
                                     if (selected) {
@@ -426,6 +488,39 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                               );
                             }).toList(),
                           ),
+
+                          // SE SELECIONOU "OUTROS", ABRE O CAMPO DE TEXTO AQUI
+                          if (_disciplinasSelecionadas.contains('OUTROS')) ...[
+                            const SizedBox(height: 24),
+                            Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.shade200)),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextFormField(
+                                      controller: _outraDisciplinaCtrl,
+                                      inputFormatters: [_upperCase],
+                                      decoration: const InputDecoration(
+                                        labelText: 'Qual outra disciplina quer adicionar?',
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      onFieldSubmitted: (v) => _adicionarDisciplinaCustomizada(),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 24)),
+                                    onPressed: _adicionarDisciplinaCustomizada,
+                                    icon: const Icon(Icons.add, color: Colors.white),
+                                    label: const Text('ADICIONAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  )
+                                ],
+                              ),
+                            )
+                          ]
                         ],
                       ),
                     ),

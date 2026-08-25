@@ -19,6 +19,7 @@ import '../../modulos/admin/apresentacao/telas/admin_visao_geral_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_cadastros_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_aluno_form_tela.dart'; 
 import '../../modulos/admin/apresentacao/telas/admin_professor_form_tela.dart'; 
+import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
 
 // ============================================================================
 // IMPORTS DO PAINEL MASTER (SUPER ADMIN / DONO DO SAAS)
@@ -94,12 +95,21 @@ class AppRotas {
             },
           ),
           
-          // ▼ ROTA DO PROFESSOR (PREPARADA PARA EDIÇÃO) ▼
+          // ▼ ROTA DO PROFESSOR ▼
           GoRoute(
             path: '/admin/cadastros/professor/novo',
             builder: (context, state) {
               final professorParaEditar = state.extra as Map<String, dynamic>?;
               return AdminProfessorFormTela(professorParaEditar: professorParaEditar);
+            },
+          ),
+
+// ▼ ROTA DA TURMA ▼
+          GoRoute(
+            path: '/admin/cadastros/turma/novo',
+            builder: (context, state) {
+              final turmaParaEditar = state.extra as Map<String, dynamic>?;
+              return AdminTurmaFormTela(turmaParaEditar: turmaParaEditar);
             },
           ),
         ],
