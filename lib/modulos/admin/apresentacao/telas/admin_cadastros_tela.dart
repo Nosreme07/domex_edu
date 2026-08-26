@@ -11,7 +11,8 @@ import '../estado/professor_provider.dart';
 import '../estado/turma_provider.dart';
 
 class AdminCadastrosTela extends ConsumerStatefulWidget {
-  const AdminCadastrosTela({super.key});
+  final int abaInicial;
+  const AdminCadastrosTela({super.key, this.abaInicial = 0});
 
   @override
   ConsumerState<AdminCadastrosTela> createState() => _AdminCadastrosTelaState();
@@ -24,6 +25,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
 
     return DefaultTabController(
       length: 4, 
+      initialIndex: widget.abaInicial, // <--- ESTA É A LINHA MÁGICA QUE ABRE A ABA CERTA
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.white, foregroundColor: Colors.black87, elevation: 1,
@@ -904,6 +906,8 @@ class _GestaoTurmasAba extends ConsumerStatefulWidget {
 
 class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> {
   String _termoBusca = '';
+  // Começa filtrando automaticamente pelo ano atual
+  String _anoSelecionado = DateTime.now().year.toString(); 
 
   void _confirmarExclusao(BuildContext context, Map<String, dynamic> turma) {
     showDialog(
@@ -938,86 +942,180 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> {
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('Turmas Cadastradas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              SizedBox(width: 250, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar turma...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                onPressed: () => context.push('/admin/cadastros/turma/novo'), 
-                icon: const Icon(Icons.meeting_room_rounded), 
-                label: const Text('Nova Turma')
-              )
-            ],
-          ),
-          const SizedBox(height: 24),
+      child: estadoTurmas.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (erro, stack) => Center(child: Text('Erro ao carregar turmas: $erro')),
+        data: (turmas) {
           
-          Expanded(
-            child: estadoTurmas.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (erro, stack) => Center(child: Text('Erro ao carregar turmas: $erro')),
-              data: (turmas) {
-                final filtradas = turmas.where((t) => t['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
-                
-                if (filtradas.isEmpty) return const Center(child: Text('Nenhuma turma cadastrada no sistema.'));
+          // 1. Extrai os anos letivos de forma automática das turmas do banco
+          final Set<String> anosSet = {DateTime.now().year.toString()};
+          for (var t in turmas) {
+            if (t['anoLetivo'] != null && t['anoLetivo'].toString().isNotEmpty) {
+              anosSet.add(t['anoLetivo'].toString());
+            }
+          }
+          // Organiza a lista do maior para o menor (Ex: 2026, 2025, 2024...)
+          final listaAnos = anosSet.toList()..sort((a, b) => b.compareTo(a));
+          listaAnos.insert(0, 'TODOS'); // Adiciona a opção de ver tudo
 
-                return ListView.separated(
-                  itemCount: filtradas.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final turma = filtradas[index];
-                    
-                    // Lógica de cores atualizada para o status "FORMADA" e "EM FORMAÇÃO"
-                    final statusTurma = turma['status'] ?? 'FORMADA';
-                    final emFormacao = statusTurma == 'EM FORMAÇÃO';
-                    final arquivada = statusTurma == 'Inativa'; // Caso de legado ou arquivamento
+          // 2. Filtra a lista principal (Pela Busca de Texto + Filtro de Ano)
+          final filtradas = turmas.where((t) {
+            final matchBusca = t['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase());
+            final matchAno = _anoSelecionado == 'TODOS' || t['anoLetivo'] == _anoSelecionado;
+            return matchBusca && matchAno;
+          }).toList();
 
-                    return Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: arquivada ? Colors.red.shade200 : Colors.grey.shade300)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(color: arquivada ? Colors.red.shade50 : Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                              child: Icon(Icons.meeting_room_rounded, color: arquivada ? Colors.red : Colors.blue),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${turma['nome']} (${turma['anoLetivo']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('Sala: ${turma['sala'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))])),
-                            Expanded(flex: 2, child: Row(children: [Icon(Icons.wb_sunny_outlined, size: 16, color: Colors.grey.shade600), const SizedBox(width: 4), Text(turma['turno'] ?? '', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold))])),
-                            
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
-                              decoration: BoxDecoration(color: emFormacao ? Colors.orange.shade50 : (arquivada ? Colors.red.shade50 : Colors.green.shade50), borderRadius: BorderRadius.circular(16)), 
-                              child: Text(statusTurma, style: TextStyle(color: emFormacao ? Colors.orange.shade700 : (arquivada ? Colors.red.shade700 : Colors.green.shade700), fontWeight: FontWeight.bold, fontSize: 12))
-                            ),
-                            
-                            const SizedBox(width: 24),
-                            Row(
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ================= CABEÇALHO COM FILTROS =================
+              Row(
+                children: [
+                  const Text('Turmas Cadastradas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  
+                  // NOVO: DROPDOWN DE ANO LETIVO
+                  Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: Colors.blue.shade200),
+                      borderRadius: BorderRadius.circular(8)
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: listaAnos.contains(_anoSelecionado) ? _anoSelecionado : listaAnos.first,
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14),
+                        onChanged: (novoAno) {
+                          if (novoAno != null) setState(() => _anoSelecionado = novoAno);
+                        },
+                        items: listaAnos.map((ano) => DropdownMenuItem(
+                          value: ano, 
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Text(ano == 'TODOS' ? 'Todos os Anos' : 'Ano Letivo: $ano', style: const TextStyle(color: Colors.black87)),
+                          )
+                        )).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  
+                  // PESQUISA
+                  SizedBox(
+                    width: 250, 
+                    height: 40, 
+                    child: TextField(
+                      onChanged: (value) => setState(() => _termoBusca = value), 
+                      decoration: InputDecoration(
+                        hintText: 'Pesquisar turma...', 
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), 
+                        contentPadding: const EdgeInsets.symmetric(vertical: 0), 
+                        filled: true, 
+                        fillColor: Colors.grey.shade100, 
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)
+                      )
+                    )
+                  ),
+                  const SizedBox(width: 16),
+                  
+                  ElevatedButton.icon(
+                    onPressed: () => context.push('/admin/cadastros/turma/novo'), 
+                    icon: const Icon(Icons.meeting_room_rounded), 
+                    label: const Text('Nova Turma')
+                  )
+                ],
+              ),
+              const SizedBox(height: 24),
+              
+              // ================= LISTA DE TURMAS =================
+              Expanded(
+                child: filtradas.isEmpty 
+                  ? Center(child: Text('Nenhuma turma encontrada para o filtro selecionado.', style: TextStyle(color: Colors.grey.shade600)))
+                  : ListView.separated(
+                      itemCount: filtradas.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final turma = filtradas[index];
+                        
+                        final statusTurma = turma['status'] ?? 'FORMADA';
+                        final emFormacao = statusTurma == 'EM FORMAÇÃO';
+                        final arquivada = statusTurma == 'Inativa'; 
+
+                        return Card(
+                          elevation: 1,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: arquivada ? Colors.red.shade200 : Colors.grey.shade300)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+                            child: Row(
                               children: [
-                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar', onPressed: () => context.push('/admin/cadastros/turma/novo', extra: turma)),
-                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, turma)),
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(color: arquivada ? Colors.red.shade50 : Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                                  child: Icon(Icons.meeting_room_rounded, color: arquivada ? Colors.red : Colors.blue),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  flex: 3, 
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start, 
+                                    children: [
+                                      Text('${turma['nome']} (${turma['anoLetivo']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
+                                      const SizedBox(height: 4), 
+                                      Text('Sala: ${turma['sala'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))
+                                    ]
+                                  )
+                                ),
+                                Expanded(
+                                  flex: 2, 
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.wb_sunny_outlined, size: 16, color: Colors.grey.shade600), 
+                                      const SizedBox(width: 4), 
+                                      Text(turma['turno'] ?? '', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold))
+                                    ]
+                                  )
+                                ),
+                                
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+                                  decoration: BoxDecoration(color: emFormacao ? Colors.orange.shade50 : (arquivada ? Colors.red.shade50 : Colors.green.shade50), borderRadius: BorderRadius.circular(16)), 
+                                  child: Text(statusTurma, style: TextStyle(color: emFormacao ? Colors.orange.shade700 : (arquivada ? Colors.red.shade700 : Colors.green.shade700), fontWeight: FontWeight.bold, fontSize: 12))
+                                ),
+                                
+                                const SizedBox(width: 24),
+                                Row(
+                                  children: [
+                                    IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar', onPressed: () => context.push('/admin/cadastros/turma/novo', extra: turma)),
+                                    IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, turma)),
+                                  ],
+                                ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+                          ),
+                        );
+                      },
+                    )
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-class _VisualizacaoTabela extends StatelessWidget { final String titulo; final List<String> colunas; final List dadosSimulados; const _VisualizacaoTabela({required this.titulo, required this.colunas, required this.dadosSimulados}); @override Widget build(BuildContext context) { return const Center(child: Text('Usuários')); } }
+class _VisualizacaoTabela extends StatelessWidget { 
+  final String titulo; 
+  final List<String> colunas; 
+  final List dadosSimulados; 
+  
+  const _VisualizacaoTabela({required this.titulo, required this.colunas, required this.dadosSimulados}); 
+  
+  @override 
+  Widget build(BuildContext context) { 
+    return const Center(child: Text('Usuários')); 
+  } 
+}

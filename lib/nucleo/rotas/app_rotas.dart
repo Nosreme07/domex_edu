@@ -83,7 +83,13 @@ class AppRotas {
           ),
           GoRoute(
             path: '/admin/cadastros',
-            builder: (context, state) => const AdminCadastrosTela(),
+            builder: (context, state) {
+              // Lê o número da aba (se não tiver nada, abre no 0)
+              final aba = state.extra as int? ?? 0; 
+              
+              // O ValueKey força o Flutter a trocar a aba se a tela já estiver aberta
+              return AdminCadastrosTela(key: ValueKey(aba), abaInicial: aba);
+            },
           ),
           
           // ▼ ROTA DO ALUNO ▼
