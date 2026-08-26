@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // <-- NOVO IMPORT PARA O RESET DE SENHA
 import '../estado/auth_provider.dart';
 
 class LoginTela extends ConsumerStatefulWidget {
@@ -30,6 +31,113 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
             _senhaController.text,
           );
     }
+  }
+
+  // ==========================================================================
+  // LÓGICA DE RECUPERAÇÃO DE SENHA VIA E-MAIL
+  // ==========================================================================
+  void _abrirModalRecuperacaoSenha(Color corDominante) {
+    // Já preenche o modal com o e-mail que o usuário digitou na tela, se houver
+    final emailRecuperacaoController = TextEditingController(text: _emailController.text.trim());
+    final formKeyModal = GlobalKey<FormState>();
+    bool enviando = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(Icons.lock_reset, color: corDominante),
+                  const SizedBox(width: 8),
+                  const Text('Recuperar Senha', style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SizedBox(
+                width: 400,
+                child: Form(
+                  key: formKeyModal,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Digite o e-mail da sua conta. Enviaremos um link seguro para você redefinir sua senha.',
+                        style: TextStyle(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 24),
+                      TextFormField(
+                        controller: emailRecuperacaoController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: InputDecoration(
+                          labelText: 'E-mail cadastrado',
+                          prefixIcon: Icon(Icons.email_outlined, color: corDominante),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: corDominante, width: 2),
+                          ),
+                        ),
+                        validator: (v) => v!.isEmpty || !v.contains('@') ? 'Insira um e-mail válido' : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actionsPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              actions: [
+                TextButton(
+                  onPressed: enviando ? null : () => Navigator.pop(ctx),
+                  child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: corDominante,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  onPressed: enviando ? null : () async {
+                    if (formKeyModal.currentState!.validate()) {
+                      setStateModal(() => enviando = true);
+                      try {
+                        // Dispara a função nativa do Firebase Auth
+                        await FirebaseAuth.instance.sendPasswordResetEmail(email: emailRecuperacaoController.text.trim());
+                        
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx); // Fecha o modal
+                        
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('E-mail de recuperação enviado! Verifique sua caixa de entrada e spam.'), backgroundColor: Colors.green),
+                        );
+                      } catch (e) {
+                        setStateModal(() => enviando = false);
+                        
+                        // Isso vai imprimir o erro técnico exato na tela para nós!
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('ERRO TÉCNICO: $e'), 
+                              backgroundColor: Colors.red,
+                              duration: const Duration(seconds: 8), // Dura mais tempo para você ler
+                            )
+                          );
+                        }
+                      }
+                    }
+                  },
+                  child: enviando
+                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Text('Enviar Link'),
+                ),
+              ],
+            );
+          }
+        );
+      }
+    );
   }
 
   @override
@@ -141,9 +249,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Recuperação de senha em breve.')));
-                          },
+                          onPressed: () => _abrirModalRecuperacaoSenha(corDominante),
                           child: const Text('Esqueceu a senha?', style: TextStyle(color: corDominante)),
                         ),
                       ),

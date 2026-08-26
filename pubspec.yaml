@@ -29,6 +29,7 @@ dependencies:
   url_launcher: ^6.3.2
   pdf: ^3.13.0
   printing: ^5.15.0
+  firebase_auth: ^6.6.0
 
 dev_dependencies:
   flutter_test:

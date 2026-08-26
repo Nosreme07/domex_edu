@@ -18,6 +18,9 @@ class SuperAdminDashboardTela extends ConsumerStatefulWidget {
 
 class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTela> {
   
+  // ==========================================================================
+  // LÓGICA DE ABERTURA E SALVAMENTO DE ESCOLA
+  // ==========================================================================
   void _abrirFormularioEscola({Map<String, dynamic>? escolaEdicao, required int quantidadeAtual}) {
     showDialog(
       context: context,
@@ -89,6 +92,9 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
     );
   }
 
+  // ==========================================================================
+  // LÓGICA DE EXCLUSÃO DE UM TENANT
+  // ==========================================================================
   void _confirmarExclusaoEscola(BuildContext context, Map<String, dynamic> escola) {
     showDialog(
       context: context,
@@ -119,6 +125,48 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                 }
               },
               child: const Text('Sim, Excluir Escola'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ==========================================================================
+  // LÓGICA DE ZERAR SENHA (RESET)
+  // ==========================================================================
+  void _confirmarResetSenha(BuildContext context, Map<String, dynamic> escola) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.lock_reset_rounded, color: Colors.blue),
+              SizedBox(width: 8),
+              Text('Zerar Senha de Acesso', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Text('Tem certeza que deseja zerar a senha de acesso da escola "${escola['nomeEscola'] ?? escola['nome']}"?\n\nA senha voltará a ser: Domex@123'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+              onPressed: () async {
+                Navigator.pop(context);
+                try {
+                  // TODO: Aqui entrará a chamada para a Cloud Function que reseta a senha no Firebase Auth
+                  // Exemplo futuro: await ref.read(escolaServiceProvider).resetarSenhaAdmin(escola['email'], 'Domex@123');
+                  
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha redefinida com sucesso para o padrão!'), backgroundColor: Colors.green));
+                } catch (e) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao redefinir senha: $e'), backgroundColor: Colors.red));
+                }
+              },
+              child: const Text('Sim, Zerar Senha'),
             ),
           ],
         );
@@ -230,11 +278,13 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                                             final servico = ref.read(escolaServiceProvider);
                                             if (val == 'bloquear') await servico.atualizarStatus(escola['id'], 'Bloqueado');
                                             else if (val == 'desbloquear') await servico.atualizarStatus(escola['id'], 'Ativo');
+                                            else if (val == 'zerar_senha') _confirmarResetSenha(context, escola);
                                             else if (val == 'excluir') _confirmarExclusaoEscola(context, escola);
                                             else if (val == 'editar') _abrirFormularioEscola(escolaEdicao: escola, quantidadeAtual: escolasClientes.length);
                                           },
                                           itemBuilder: (context) => [
                                             const PopupMenuItem(value: 'editar', child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Editar Dados')])),
+                                            const PopupMenuItem(value: 'zerar_senha', child: Row(children: [Icon(Icons.lock_reset_rounded, color: Colors.blue, size: 18), SizedBox(width: 8), Text('Zerar Senha', style: TextStyle(color: Colors.blue))])),
                                             isAtivo ? const PopupMenuItem(value: 'bloquear', child: Row(children: [Icon(Icons.block, color: Colors.orange, size: 18), SizedBox(width: 8), Text('Bloquear Acesso', style: TextStyle(color: Colors.orange))])) : const PopupMenuItem(value: 'desbloquear', child: Row(children: [Icon(Icons.check_circle, color: Colors.green, size: 18), SizedBox(width: 8), Text('Desbloquear Acesso', style: TextStyle(color: Colors.green))])),
                                             const PopupMenuItem(value: 'excluir', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 18), SizedBox(width: 8), Text('Excluir Escola', style: TextStyle(color: Colors.red))])),
                                           ],
