@@ -22,6 +22,9 @@ import '../../modulos/admin/apresentacao/telas/admin_professor_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_configuracoes_tela.dart';
 
+// ---> NOVO IMPORT DA TELA DE PAINEL DA TURMA <---
+import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart'; 
+
 // ============================================================================
 // IMPORTS: PAINEL MASTER (SUPER ADMIN / DONO DO SAAS)
 // ============================================================================
@@ -105,7 +108,7 @@ class AppRotas {
           GoRoute(
             path: '/admin/cadastros',
             builder: (context, state) {
-              // Lê o parâmetro "extra" para saber qual aba abrir (0=Alunos, 1=Profs, 2=Turmas)
+              // Lê o parâmetro "extra" para saber qual aba abrir (0=Alunos, 1=Profs, 2=Turmas, 3=Usuários)
               final aba = state.extra as int? ?? 0; 
               // O ValueKey força a reconstrução do widget se a aba mudar
               return AdminCadastrosTela(key: ValueKey(aba), abaInicial: aba);
@@ -135,6 +138,16 @@ class AppRotas {
             builder: (context, state) {
               final turmaParaEditar = state.extra as Map<String, dynamic>?;
               return AdminTurmaFormTela(turmaParaEditar: turmaParaEditar);
+            },
+          ),
+
+          // ---> NOVA ROTA: PAINEL EXCLUSIVO DA TURMA <---
+          GoRoute(
+            path: '/admin/cadastros/turma/painel',
+            builder: (context, state) {
+              final turmaExtra = state.extra as Map<String, dynamic>?;
+              if (turmaExtra == null) return const Scaffold(body: Center(child: Text('Turma não encontrada.')));
+              return AdminTurmaPainelTela(turma: turmaExtra);
             },
           ),
         ],

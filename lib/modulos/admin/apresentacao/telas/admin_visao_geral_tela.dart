@@ -155,6 +155,7 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                               _BotaoAtalho(titulo: 'Nova Matrícula', icone: Icons.person_add_alt_1_rounded, cor: Colors.blue, onTap: () => context.push('/admin/cadastros/aluno/novo')),
                               _BotaoAtalho(titulo: 'Novo Professor', icone: Icons.person_add_alt_rounded, cor: Colors.green, onTap: () => context.push('/admin/cadastros/professor/novo')),
                               _BotaoAtalho(titulo: 'Nova Turma', icone: Icons.meeting_room_rounded, cor: Colors.orange, onTap: () => context.push('/admin/cadastros/turma/novo')),
+                              _BotaoAtalho(titulo: 'Novo Acesso', icone: Icons.manage_accounts_rounded, cor: Colors.deepPurple, onTap: () => context.go('/admin/cadastros', extra: 3)), // <-- NOVO BOTÃO AQUI!
                             ],
                           )
                         ],
