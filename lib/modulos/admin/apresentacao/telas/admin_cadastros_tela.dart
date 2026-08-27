@@ -10,6 +10,11 @@ import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
 import '../estado/turma_provider.dart';
 
+// ============================================================================
+// IMPORTAÇÃO DA NOVA TELA DE USUÁRIOS!
+// ============================================================================
+import 'admin_usuarios_form_tela.dart'; 
+
 class AdminCadastrosTela extends ConsumerStatefulWidget {
   final int abaInicial;
   const AdminCadastrosTela({super.key, this.abaInicial = 0});
@@ -25,7 +30,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
 
     return DefaultTabController(
       length: 4, 
-      initialIndex: widget.abaInicial, // <--- ESTA É A LINHA MÁGICA QUE ABRE A ABA CERTA
+      initialIndex: widget.abaInicial,
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.white, foregroundColor: Colors.black87, elevation: 1,
@@ -45,7 +50,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             _GestaoAlunosAba(),
             _GestaoProfessoresAba(),
             _GestaoTurmasAba(),
-            _VisualizacaoTabela(titulo: 'Usuários Administrativos', colunas: ['ID', 'Nome', 'E-mail', 'Nível de Acesso'], dadosSimulados: []),
+            AdminUsuariosFormTela(), // <--- A MÁGICA ACONTECE AQUI! Substituímos o texto pela tela de verdade.
           ],
         ),
       ),
@@ -1105,17 +1110,4 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> {
       ),
     );
   }
-}
-
-class _VisualizacaoTabela extends StatelessWidget { 
-  final String titulo; 
-  final List<String> colunas; 
-  final List dadosSimulados; 
-  
-  const _VisualizacaoTabela({required this.titulo, required this.colunas, required this.dadosSimulados}); 
-  
-  @override 
-  Widget build(BuildContext context) { 
-    return const Center(child: Text('Usuários')); 
-  } 
 }

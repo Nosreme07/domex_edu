@@ -1,10 +1,29 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import 'package:url_launcher/url_launcher.dart'; 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
+import '../estado/aluno_provider.dart';
+import '../estado/professor_provider.dart';
+
 // ============================================================================
-// PROVIDERS INTERNOS (GARANTE QUE NÃO FALTE NENHUMA IMPORTAÇÃO)
+// FORMATADOR PARA TUDO MAIÚSCULO
+// ============================================================================
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
+    );
+  }
+}
+
+// ============================================================================
+// PROVIDER INTERNO PARA GESTÃO DOS USUÁRIOS DE ACESSO
 // ============================================================================
 class _UsuarioEscolaService {
   final String escolaId;
@@ -16,6 +35,14 @@ class _UsuarioEscolaService {
     dadosUsuario['escolaId'] = escolaId;
     dadosUsuario['dataCriacao'] = FieldValue.serverTimestamp();
     await _db.doc(dadosUsuario['idLogin']).set(dadosUsuario, SetOptions(merge: true));
+  }
+
+  Future<void> atualizarStatus(String idLogin, String novoStatus) async {
+    await _db.doc(idLogin).update({'status': novoStatus});
+  }
+
+  Future<void> excluirUsuario(String idLogin) async {
+    await _db.doc(idLogin).delete();
   }
 }
 
@@ -32,9 +59,12 @@ final _usuariosEscolaStreamProvider = StreamProvider<List<Map<String, dynamic>>>
   return FirebaseFirestore.instance
       .collection('usuarios')
       .where('escolaId', isEqualTo: usuario.id)
-      .orderBy('nome')
       .snapshots()
-      .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+      .map((snapshot) {
+        final lista = snapshot.docs.map((doc) => doc.data()).toList();
+        lista.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
+        return lista;
+      });
 });
 
 // ============================================================================
@@ -49,13 +79,59 @@ class AdminUsuariosFormTela extends ConsumerStatefulWidget {
 
 class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
   
-  void _abrirFormularioUsuario({Map<String, dynamic>? usuarioEdicao}) {
+  String _termoBusca = ''; 
+  String _filtroPerfil = 'TODOS'; 
+
+  Widget _buildContatos(String? telefoneStr) {
+    final telefone = (telefoneStr ?? '').trim();
+    if (telefone.isEmpty) return const Text('-', style: TextStyle(color: Colors.black54));
+
+    final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(telefone, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+        if (numeroLimpo.length >= 10) ...[
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Abrir WhatsApp',
+            child: InkWell(
+              onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
+              child: Image.asset('assets/whatsapp.png', width: 16, height: 16),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Tooltip(
+            message: 'Ligar',
+            child: InkWell(
+              onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')),
+              child: const Icon(Icons.phone, color: Colors.blue, size: 16),
+            ),
+          ),
+        ]
+      ],
+    );
+  }
+
+  // Função auxiliar para exibir os nomes acentuados corretamente na interface
+  String _obterPerfilDisplay(String perfilRaw) {
+    final p = perfilRaw.toLowerCase();
+    if (p == 'responsavel' || p == 'responsável') return 'RESPONSÁVEL';
+    if (p == 'secretaria' || p == 'secretária') return 'SECRETÁRIA';
+    if (p == 'aluno') return 'ALUNO';
+    if (p == 'professor') return 'PROFESSOR';
+    return p.toUpperCase();
+  }
+
+  void _abrirFormularioUsuario({Map<String, dynamic>? usuarioEdicao, required List<Map<String, dynamic>> usuariosExistentes}) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return _FormularioUsuarioDialog(
           usuarioEdicao: usuarioEdicao,
+          usuariosExistentes: usuariosExistentes, 
           aoSalvar: (dados) async {
             final servico = ref.read(_usuarioEscolaServiceProvider);
             if (servico != null) {
@@ -63,7 +139,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
                 await servico.salvarUsuario(dados);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Usuário salvo com sucesso!'), backgroundColor: Colors.green),
+                    const SnackBar(content: Text('Usuário de acesso salvo com sucesso!'), backgroundColor: Colors.green),
                   );
                 }
               } catch (e) {
@@ -80,6 +156,142 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
     );
   }
 
+  void _visualizarUsuario(Map<String, dynamic> usuario) {
+    final corPrimaria = Theme.of(context).primaryColor;
+    final perfilVisual = _obterPerfilDisplay(usuario['perfil']?.toString() ?? '');
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        titlePadding: const EdgeInsets.all(0),
+        title: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(color: corPrimaria.withAlpha(13), borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
+          child: Row(
+            children: [
+              Icon(Icons.admin_panel_settings_rounded, size: 32, color: corPrimaria),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, 
+                  children: [
+                    Text(usuario['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)), 
+                    const SizedBox(height: 4), 
+                    Text('Acesso: $perfilVisual', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))
+                  ]
+                )
+              ),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))
+            ],
+          ),
+        ),
+        content: SizedBox(
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildLinhaExibicao('Matrícula / ID (Login):', Text(usuario['idLogin']?.toString() ?? '-')),
+              _buildLinhaExibicao('Telefone de Contato:', _buildContatos(usuario['telefone'])),
+              _buildLinhaExibicao('Status do Acesso:', Text(usuario['status'] ?? 'Ativo')),
+              const Divider(height: 32),
+              const Text('Vínculos (Alunos Dependentes):', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+              const SizedBox(height: 8),
+              if (usuario['alunosVinculados'] != null && (usuario['alunosVinculados'] as List).isNotEmpty)
+                ...(usuario['alunosVinculados'] as List).map((a) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4.0),
+                  child: Row(children: [const Icon(Icons.school, size: 16, color: Colors.grey), const SizedBox(width: 8), Text(a.toString())]),
+                ))
+              else
+                const Text('Nenhum vínculo cadastrado.', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+        actionsPadding: const EdgeInsets.all(24),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fechar Ficha'),
+          )
+        ],
+      )
+    );
+  }
+
+  Widget _buildLinhaExibicao(String label, Widget widgetValor) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(width: 8),
+          Expanded(child: widgetValor),
+        ],
+      ),
+    );
+  }
+
+  void _alternarStatus(Map<String, dynamic> usuario) {
+    final statusAtual = usuario['status'] ?? 'Ativo';
+    final novoStatus = statusAtual == 'Ativo' ? 'Bloqueado' : 'Ativo';
+    final verbo = novoStatus == 'Bloqueado' ? 'BLOQUEAR' : 'DESBLOQUEAR';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(children: [Icon(novoStatus == 'Bloqueado' ? Icons.lock : Icons.lock_open, color: novoStatus == 'Bloqueado' ? Colors.orange : Colors.green), const SizedBox(width: 8), Text('$verbo Acesso')]),
+        content: Text('Tem certeza que deseja $verbo o acesso de ${usuario['nome']}?\n\nEle ${novoStatus == 'Bloqueado' ? 'NÃO conseguirá' : 'conseguirá'} acessar o sistema.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: novoStatus == 'Bloqueado' ? Colors.orange : Colors.green, foregroundColor: Colors.white),
+            onPressed: () async {
+              try {
+                await ref.read(_usuarioEscolaServiceProvider)?.atualizarStatus(usuario['idLogin'], novoStatus);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Acesso $novoStatus com sucesso!'), backgroundColor: Colors.green));
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao atualizar: $e'), backgroundColor: Colors.red));
+              }
+            },
+            child: Text('Sim, $verbo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmarExclusao(Map<String, dynamic> usuario) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Usuário de Acesso', style: TextStyle(color: Colors.red))]),
+        content: Text('Tem certeza que deseja apagar o acesso de ${usuario['nome']} (ID: ${usuario['idLogin']})?\n\nIsso apagará apenas a credencial de login, os dados da pessoa na escola permanecem intactos.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              try {
+                await ref.read(_usuarioEscolaServiceProvider)?.excluirUsuario(usuario['idLogin']);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído.'), backgroundColor: Colors.green));
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('Sim, Excluir'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final estadoUsuarios = ref.watch(_usuariosEscolaStreamProvider);
@@ -91,25 +303,79 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Gestão de Usuários', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  Text('Gestão de Usuários e Acessos', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   SizedBox(height: 4),
-                  Text('Gerencie alunos, responsáveis, professores e secretárias.', style: TextStyle(color: Colors.grey)),
+                  Text('Vincule credenciais de login para alunos, responsáveis, professores e secretária.', style: TextStyle(color: Colors.grey)),
                 ],
               ),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: corPrimaria,
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              const Spacer(),
+              
+              // FILTRO DE PERFIL
+              Container(
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: Colors.blue.shade200),
+                  borderRadius: BorderRadius.circular(8)
                 ),
-                onPressed: () => _abrirFormularioUsuario(),
-                icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-                label: const Text('Novo Usuário', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              )
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _filtroPerfil,
+                    icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                    style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _filtroPerfil = v);
+                    },
+                    items: const [
+                      DropdownMenuItem(value: 'TODOS', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Todos os Perfis', style: TextStyle(color: Colors.black87)))),
+                      DropdownMenuItem(value: 'ALUNO', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Alunos', style: TextStyle(color: Colors.black87)))),
+                      DropdownMenuItem(value: 'RESPONSAVEL', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Responsáveis', style: TextStyle(color: Colors.black87)))),
+                      DropdownMenuItem(value: 'PROFESSOR', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Professores', style: TextStyle(color: Colors.black87)))),
+                      DropdownMenuItem(value: 'SECRETARIA', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Secretária', style: TextStyle(color: Colors.black87)))),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+
+              // BARRA DE PESQUISA
+              SizedBox(
+                width: 250, 
+                height: 40, 
+                child: TextField(
+                  onChanged: (value) => setState(() => _termoBusca = value), 
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [UpperCaseTextFormatter()],
+                  decoration: InputDecoration(
+                    hintText: 'Pesquisar usuário...', 
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), 
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0), 
+                    filled: true, 
+                    fillColor: Colors.grey.shade100, 
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)
+                  )
+                )
+              ),
+              const SizedBox(width: 16),
+
+              estadoUsuarios.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (lista) => ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: corPrimaria,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  ),
+                  onPressed: () => _abrirFormularioUsuario(usuariosExistentes: lista),
+                  icon: const Icon(Icons.person_add_rounded, color: Colors.white),
+                  label: const Text('Novo Acesso', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -126,42 +392,97 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
                 loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
                 error: (erro, stack) => Center(child: Text('Erro ao carregar usuários: $erro')),
                 data: (lista) {
-                  if (lista.isEmpty) {
+                  final filtrados = lista.where((u) {
+                    final busca = _termoBusca.toUpperCase();
+                    final nome = (u['nome'] ?? '').toString().toUpperCase();
+                    final id = (u['idLogin'] ?? '').toString().toUpperCase();
+                    final perfilBase = (u['perfil'] ?? '').toString().toUpperCase();
+                    
+                    final matchBusca = nome.contains(busca) || id.contains(busca);
+                    
+                    final perfilNormalizado = perfilBase.replaceAll('Á', 'A');
+                    final matchPerfil = _filtroPerfil == 'TODOS' || perfilNormalizado == _filtroPerfil;
+
+                    return matchBusca && matchPerfil;
+                  }).toList();
+
+                  if (filtrados.isEmpty) {
                     return const Center(
-                      child: Text('Nenhum usuário cadastrado nesta escola ainda.', style: TextStyle(color: Colors.grey)),
+                      child: Text('Nenhum usuário encontrado para os filtros selecionados.', style: TextStyle(color: Colors.grey)),
                     );
                   }
+
                   return SingleChildScrollView(
                     child: DataTable(
                       headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria),
                       columns: const [
                         DataColumn(label: Text('Matrícula / ID')),
-                        DataColumn(label: Text('Nome do Usuário')),
+                        DataColumn(label: Text('Nome')),
+                        DataColumn(label: Text('Contato')),
                         DataColumn(label: Text('Perfil')),
+                        DataColumn(label: Text('Vínculo / Alunos')),
+                        DataColumn(label: Text('Status')),
                         DataColumn(label: Text('Ações')),
                       ],
-                      rows: lista.map((user) {
+                      rows: filtrados.map((user) {
+                        final listaAlunos = user['alunosVinculados'] as List? ?? [];
+                        final vinculoTexto = listaAlunos.isNotEmpty ? listaAlunos.join(', ') : '-';
+                        final isBloqueado = user['status'] == 'Bloqueado';
+                        
+                        final perfilRaw = user['perfil']?.toString() ?? '';
+                        final perfilStr = _obterPerfilDisplay(perfilRaw); // Uso da regra visual com acentos
+
+                        // CORES DINÂMICAS PARA CADA PERFIL
+                        Color bgCorPerfil = Colors.grey.shade100;
+                        Color txtCorPerfil = Colors.grey.shade800;
+                        
+                        if (perfilStr == 'ALUNO') {
+                          bgCorPerfil = Colors.blue.shade50;
+                          txtCorPerfil = Colors.blue.shade700;
+                        } else if (perfilStr == 'RESPONSÁVEL') {
+                          bgCorPerfil = Colors.orange.shade50;
+                          txtCorPerfil = Colors.orange.shade800;
+                        } else if (perfilStr == 'PROFESSOR') {
+                          bgCorPerfil = Colors.deepPurple.shade50;
+                          txtCorPerfil = Colors.deepPurple.shade700;
+                        } else if (perfilStr == 'SECRETÁRIA') {
+                          bgCorPerfil = Colors.teal.shade50;
+                          txtCorPerfil = Colors.teal.shade700;
+                        }
+
                         return DataRow(
                           cells: [
                             DataCell(Text(user['idLogin'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold))),
                             DataCell(Text(user['nome'] ?? '')),
+                            DataCell(_buildContatos(user['telefone'])),
                             DataCell(
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100, 
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Text(
-                                  user['perfil']?.toString().toUpperCase() ?? '', 
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                                ),
+                                decoration: BoxDecoration(color: bgCorPerfil, borderRadius: BorderRadius.circular(12)),
+                                child: Text(perfilStr, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: txtCorPerfil)),
+                              )
+                            ),
+                            DataCell(Text(vinculoTexto, style: const TextStyle(fontSize: 13, color: Colors.black87))),
+                            DataCell(
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                decoration: BoxDecoration(color: isBloqueado ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+                                child: Text(isBloqueado ? 'Bloqueado' : 'Ativo', style: TextStyle(color: isBloqueado ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
                               )
                             ),
                             DataCell(
-                              IconButton(
-                                icon: const Icon(Icons.edit, color: Colors.grey),
-                                onPressed: () => _abrirFormularioUsuario(usuarioEdicao: user),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar', onPressed: () => _visualizarUsuario(user)),
+                                  IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => _abrirFormularioUsuario(usuarioEdicao: user, usuariosExistentes: lista)),
+                                  IconButton(
+                                    icon: Icon(isBloqueado ? Icons.lock_open_rounded : Icons.lock_outline_rounded, color: isBloqueado ? Colors.green : Colors.orange), 
+                                    tooltip: isBloqueado ? 'Desbloquear Acesso' : 'Bloquear Acesso', 
+                                    onPressed: () => _alternarStatus(user)
+                                  ),
+                                  IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(user)),
+                                ],
                               )
                             ),
                           ],
@@ -180,32 +501,50 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
 }
 
 // ============================================================================
-// MODAL DE CADASTRO / EDIÇÃO DE USUÁRIO
+// MODAL DINÂMICO DE CADASTRO COM BUSCA INTELIGENTE E AUTO-ID SECRETÁRIA
 // ============================================================================
-class _FormularioUsuarioDialog extends StatefulWidget {
+class _FormularioUsuarioDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? usuarioEdicao;
+  final List<Map<String, dynamic>> usuariosExistentes;
   final Function(Map<String, dynamic>) aoSalvar;
 
-  const _FormularioUsuarioDialog({this.usuarioEdicao, required this.aoSalvar});
+  const _FormularioUsuarioDialog({
+    this.usuarioEdicao, 
+    required this.usuariosExistentes, 
+    required this.aoSalvar
+  });
 
   @override
-  State<_FormularioUsuarioDialog> createState() => _FormularioUsuarioDialogState();
+  ConsumerState<_FormularioUsuarioDialog> createState() => _FormularioUsuarioDialogState();
 }
 
-class _FormularioUsuarioDialogState extends State<_FormularioUsuarioDialog> {
+class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nomeCtrl = TextEditingController();
   final _idLoginCtrl = TextEditingController();
+  final _telefoneCtrl = TextEditingController(); 
   
+  final _telMask = MaskTextInputFormatter(mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
+
   String _perfilSelecionado = 'aluno';
+  final List<Map<String, dynamic>> _alunosSelecionadosResponsavel = [];
 
   @override
   void initState() {
     super.initState();
     if (widget.usuarioEdicao != null) {
-      _nomeCtrl.text = widget.usuarioEdicao!['nome'] ?? '';
-      _idLoginCtrl.text = widget.usuarioEdicao!['idLogin'] ?? '';
-      _perfilSelecionado = widget.usuarioEdicao!['perfil'] ?? 'aluno';
+      final u = widget.usuarioEdicao!;
+      _nomeCtrl.text = u['nome'] ?? '';
+      _idLoginCtrl.text = u['idLogin'] ?? '';
+      _telefoneCtrl.text = u['telefone'] ?? '';
+      _perfilSelecionado = u['perfil'] ?? 'aluno';
+
+      if (_perfilSelecionado == 'responsavel' && u['alunosVinculadosRaw'] != null) {
+        final listaRaw = u['alunosVinculadosRaw'] as List;
+        for (var item in listaRaw) {
+          _alunosSelecionadosResponsavel.add(Map<String, dynamic>.from(item));
+        }
+      }
     }
   }
 
@@ -213,7 +552,44 @@ class _FormularioUsuarioDialogState extends State<_FormularioUsuarioDialog> {
   void dispose() {
     _nomeCtrl.dispose();
     _idLoginCtrl.dispose();
+    _telefoneCtrl.dispose();
     super.dispose();
+  }
+
+  void _gerarIdSecretaria() {
+    int maxId = 0;
+    for (var u in widget.usuariosExistentes) {
+      if (u['perfil'] == 'secretaria' && u['idLogin'].toString().startsWith('SEC-')) {
+        final numeroStr = u['idLogin'].toString().replaceFirst('SEC-', '');
+        final numero = int.tryParse(numeroStr);
+        if (numero != null && numero > maxId) {
+          maxId = numero;
+        }
+      }
+    }
+    final nextId = maxId + 1;
+    _idLoginCtrl.text = 'SEC-${nextId.toString().padLeft(3, '0')}';
+  }
+
+  void _confirmarZerarSenha() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [Icon(Icons.lock_reset, color: Colors.blue), SizedBox(width: 8), Text('Zerar Senha de Acesso')]),
+        content: Text('Tem certeza que deseja redefinir a senha de ${_nomeCtrl.text}?\n\nA senha voltará a ser o padrão da escola: Mudar@123'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+            onPressed: () {
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha redefinida para Mudar@123 com sucesso!'), backgroundColor: Colors.green));
+            },
+            child: const Text('Sim, Zerar Senha'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -221,83 +597,351 @@ class _FormularioUsuarioDialogState extends State<_FormularioUsuarioDialog> {
     final isEdicao = widget.usuarioEdicao != null;
     final corPrimaria = Theme.of(context).primaryColor;
 
+    final estadoAlunos = ref.watch(alunosStreamProvider);
+    final estadoProfessores = ref.watch(professoresStreamProvider);
+
     return AlertDialog(
       title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(isEdicao ? Icons.edit : Icons.person_add, color: corPrimaria),
-          const SizedBox(width: 8),
-          Text(isEdicao ? 'Editar Usuário' : 'Novo Usuário', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Row(
+            children: [
+              Icon(isEdicao ? Icons.edit : Icons.person_add, color: corPrimaria),
+              const SizedBox(width: 8),
+              Text(isEdicao ? 'Editar Acesso' : 'Novo Usuário de Acesso', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          if (isEdicao)
+            TextButton.icon(
+              icon: const Icon(Icons.lock_reset_rounded, color: Colors.blue),
+              label: const Text('Zerar Senha Padrão', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
+              onPressed: _confirmarZerarSenha,
+            )
         ],
       ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       content: SizedBox(
-        width: 500,
+        width: 600,
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _perfilSelecionado, // Corrigido o aviso do Flutter
-                decoration: const InputDecoration(labelText: 'Perfil de Acesso', border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: 'aluno', child: Text('Aluno')),
-                  DropdownMenuItem(value: 'responsavel', child: Text('Responsável')),
-                  DropdownMenuItem(value: 'professor', child: Text('Professor')),
-                  DropdownMenuItem(value: 'secretaria', child: Text('Secretária')),
-                ],
-                onChanged: (v) => setState(() => _perfilSelecionado = v!),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nomeCtrl,
-                decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder()),
-                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _idLoginCtrl,
-                enabled: !isEdicao, // Trava a edição do ID após criado
-                decoration: const InputDecoration(
-                  labelText: 'Matrícula / ID de Acesso', 
-                  border: OutlineInputBorder(),
-                  helperText: 'O usuário usará este código para fazer login.'
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // PERFIL DE ACESSO
+                DropdownButtonFormField<String>(
+                  initialValue: _perfilSelecionado,
+                  isExpanded: true, 
+                  decoration: const InputDecoration(labelText: 'Perfil de Acesso', border: OutlineInputBorder()),
+                  items: const [
+                    DropdownMenuItem(value: 'aluno', child: Text('ALUNO')),
+                    DropdownMenuItem(value: 'responsavel', child: Text('RESPONSÁVEL')),
+                    DropdownMenuItem(value: 'professor', child: Text('PROFESSOR')),
+                    DropdownMenuItem(value: 'secretaria', child: Text('SECRETÁRIA')),
+                  ],
+                  onChanged: isEdicao ? null : (v) {
+                    setState(() {
+                      _perfilSelecionado = v!;
+                      _alunosSelecionadosResponsavel.clear();
+                      _nomeCtrl.clear();
+                      _idLoginCtrl.clear();
+                      _telefoneCtrl.clear();
+                      
+                      if (_perfilSelecionado == 'secretaria') {
+                        _gerarIdSecretaria();
+                      }
+                    });
+                  },
                 ),
-                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
-              ),
-              if (!isEdicao) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.lock_outline, color: Colors.amber),
-                      SizedBox(width: 8),
-                      Expanded(child: Text('A senha padrão para novos usuários será: Mudar@123', style: TextStyle(color: Colors.orange))),
-                    ],
+                const SizedBox(height: 20),
+
+                // ============================================================
+                // CASO 1: SELECIONOU ALUNO
+                // ============================================================
+                if (!isEdicao && _perfilSelecionado == 'aluno') ...[
+                  const Text('Buscar no Cadastro da Escola:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  
+                  estadoAlunos.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (err, _) => Text('Erro: $err'),
+                    data: (listaAlunosRaw) {
+                      final listaAlunos = List<Map<String, dynamic>>.from(listaAlunosRaw);
+                      listaAlunos.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
+
+                      if (listaAlunos.isEmpty) return const Text('Nenhum aluno cadastrado.', style: TextStyle(color: Colors.red));
+                      
+                      return LayoutBuilder(
+                        builder: (context, constraints) {
+                          return DropdownMenu<String>(
+                            width: constraints.maxWidth,
+                            enableFilter: true,
+                            enableSearch: true,
+                            requestFocusOnTap: true,
+                            leadingIcon: const Icon(Icons.search),
+                            label: const Text('Pesquisar Aluno (Nome ou Matrícula)'),
+                            inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
+                            dropdownMenuEntries: listaAlunos.map((aluno) {
+                              return DropdownMenuEntry<String>(
+                                value: aluno['matricula'].toString(),
+                                label: '${aluno['nome']} (Matrícula: ${aluno['matricula']})'.toUpperCase(),
+                              );
+                            }).toList(),
+                            onSelected: (matriculaSelecionada) {
+                              if (matriculaSelecionada != null) {
+                                final aluno = listaAlunos.firstWhere((a) => a['matricula'].toString() == matriculaSelecionada);
+                                setState(() {
+                                  _nomeCtrl.text = (aluno['nome'] ?? '').toString().toUpperCase();
+                                  _idLoginCtrl.text = aluno['matricula']?.toString() ?? '';
+                                  _telefoneCtrl.text = aluno['telefone'] ?? '';
+                                });
+                              }
+                            },
+                          );
+                        }
+                      );
+                    },
                   ),
-                )
-              ]
-            ],
+                  const SizedBox(height: 20),
+                ],
+
+                // ============================================================
+                // CASO 2: SELECIONOU PROFESSOR
+                // ============================================================
+                if (!isEdicao && _perfilSelecionado == 'professor') ...[
+                  const Text('Buscar no Cadastro da Escola:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  
+                  estadoProfessores.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (err, _) => Text('Erro: $err'),
+                    data: (listaProfsRaw) {
+                      final listaProfs = List<Map<String, dynamic>>.from(listaProfsRaw);
+                      listaProfs.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
+
+                      if (listaProfs.isEmpty) return const Text('Nenhum professor cadastrado.', style: TextStyle(color: Colors.red));
+                      
+                      return LayoutBuilder(
+                        builder: (context, constraints) {
+                          return DropdownMenu<String>(
+                            width: constraints.maxWidth,
+                            enableFilter: true,
+                            enableSearch: true,
+                            requestFocusOnTap: true,
+                            leadingIcon: const Icon(Icons.search),
+                            label: const Text('Pesquisar Professor (Nome ou ID)'),
+                            inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
+                            dropdownMenuEntries: listaProfs.map((prof) {
+                              return DropdownMenuEntry<String>(
+                                value: prof['id'].toString(),
+                                label: '${prof['nome']} (ID: ${prof['id']})'.toUpperCase(),
+                              );
+                            }).toList(),
+                            onSelected: (idSelecionado) {
+                              if (idSelecionado != null) {
+                                final prof = listaProfs.firstWhere((p) => p['id'].toString() == idSelecionado);
+                                setState(() {
+                                  _nomeCtrl.text = (prof['nome'] ?? '').toString().toUpperCase();
+                                  _idLoginCtrl.text = prof['id']?.toString() ?? '';
+                                  _telefoneCtrl.text = prof['telefone'] ?? '';
+                                });
+                              }
+                            },
+                          );
+                        }
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                ],
+
+                // ============================================================
+                // CASO 3: SELECIONOU RESPONSÁVEL
+                // ============================================================
+                if (_perfilSelecionado == 'responsavel') ...[
+                  const Text('Vincular Aluno(s) / Dependentes ao Responsável:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  const SizedBox(height: 8),
+                  
+                  estadoAlunos.when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (err, _) => Text('Erro: $err'),
+                    data: (listaAlunosRaw) {
+                      final listaAlunos = List<Map<String, dynamic>>.from(listaAlunosRaw);
+                      listaAlunos.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
+
+                      if (listaAlunos.isEmpty) return const Text('Nenhum aluno cadastrado.', style: TextStyle(color: Colors.red));
+                      
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              return DropdownMenu<String>(
+                                width: constraints.maxWidth,
+                                enableFilter: true,
+                                enableSearch: true,
+                                requestFocusOnTap: true,
+                                leadingIcon: const Icon(Icons.person_add_alt_1),
+                                label: const Text('Pesquisar Aluno para Vincular'),
+                                inputDecorationTheme: const InputDecorationTheme(border: OutlineInputBorder()),
+                                dropdownMenuEntries: listaAlunos.map((aluno) {
+                                  final irmaoInfo = (aluno['temIrmao'] == true && aluno['irmaoSelecionado'] != null) ? ' [Irmão(ã): ${aluno['irmaoSelecionado']}]' : '';
+                                  return DropdownMenuEntry<String>(
+                                    value: aluno['matricula'].toString(),
+                                    label: '${aluno['nome']} (Matrícula: ${aluno['matricula']})$irmaoInfo'.toUpperCase(),
+                                  );
+                                }).toList(),
+                                onSelected: (matriculaSelecionada) {
+                                  if (matriculaSelecionada != null) {
+                                    final aluno = listaAlunos.firstWhere((a) => a['matricula'].toString() == matriculaSelecionada);
+                                    
+                                    if (!_alunosSelecionadosResponsavel.any((a) => a['matricula'] == aluno['matricula'])) {
+                                      setState(() {
+                                        _alunosSelecionadosResponsavel.add(aluno);
+                                        
+                                        if (!isEdicao && _idLoginCtrl.text.isEmpty) {
+                                          _idLoginCtrl.text = 'RESP-${aluno['matricula']}';
+                                        }
+
+                                        if (aluno['temIrmao'] == true && aluno['irmaoSelecionado'] != null) {
+                                          final strIrmao = aluno['irmaoSelecionado'].toString().trim().toUpperCase();
+                                          
+                                          final irmaosEncontrados = listaAlunos.where((a) {
+                                            if (a['matricula'] == aluno['matricula']) return false;
+                                            final nomeIrmaoLoop = (a['nome'] ?? '').toString().trim().toUpperCase();
+                                            return nomeIrmaoLoop == strIrmao || nomeIrmaoLoop.contains(strIrmao) || strIrmao.contains(nomeIrmaoLoop);
+                                          }).toList();
+
+                                          if (irmaosEncontrados.isNotEmpty) {
+                                            final irmaoOficial = irmaosEncontrados.first;
+                                            if (!_alunosSelecionadosResponsavel.any((a) => a['matricula'] == irmaoOficial['matricula'])) {
+                                              _alunosSelecionadosResponsavel.add(irmaoOficial);
+                                            }
+                                          }
+                                        }
+                                      });
+                                    }
+                                  }
+                                },
+                              );
+                            }
+                          ),
+                          const SizedBox(height: 12),
+                          if (_alunosSelecionadosResponsavel.isNotEmpty) ...[
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: _alunosSelecionadosResponsavel.map((aluno) {
+                                return Chip(
+                                  avatar: const Icon(Icons.school, size: 16),
+                                  label: Text('${aluno['nome']} (${aluno['matricula']})'.toUpperCase()),
+                                  onDeleted: () {
+                                    setState(() {
+                                      _alunosSelecionadosResponsavel.removeWhere((a) => a['matricula'] == aluno['matricula']);
+                                    });
+                                  },
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ],
+
+                // ============================================================
+                // CAMPOS DE TEXTO (MAIÚSCULO E MÁSCARA)
+                // ============================================================
+                TextFormField(
+                  controller: _nomeCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  inputFormatters: [UpperCaseTextFormatter()],
+                  decoration: const InputDecoration(labelText: 'Nome Completo', border: OutlineInputBorder()),
+                  validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+                ),
+                const SizedBox(height: 16),
+                
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _idLoginCtrl,
+                        enabled: !isEdicao, 
+                        textCapitalization: TextCapitalization.characters,
+                        inputFormatters: [UpperCaseTextFormatter()],
+                        decoration: const InputDecoration(
+                          labelText: 'Matrícula / ID de Acesso', 
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _telefoneCtrl,
+                        inputFormatters: [_telMask],
+                        decoration: const InputDecoration(
+                          labelText: 'Telefone / WhatsApp', 
+                          border: OutlineInputBorder(),
+                          hintText: '(00) 00000-0000'
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                if (!isEdicao) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.lock_outline, color: Colors.amber),
+                        SizedBox(width: 8),
+                        Expanded(child: Text('A senha padrão para novos acessos será: Mudar@123', style: TextStyle(color: Colors.orange, fontSize: 13))),
+                      ],
+                    ),
+                  )
+                ]
+              ],
+            ),
           ),
         ),
       ),
+      actionsPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
           onPressed: () {
             if (_formKey.currentState!.validate()) {
-              widget.aoSalvar({
+              final dadosSalvar = {
                 'nome': _nomeCtrl.text.trim(),
                 'idLogin': _idLoginCtrl.text.trim(),
-                'perfil': _perfilSelecionado,
-                'status': 'Ativo'
-              });
+                'telefone': _telefoneCtrl.text.trim(),
+                // Sempre salva sem acento no banco para simplificar as buscas
+                'perfil': _perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável' ? 'responsavel' 
+                          : _perfilSelecionado == 'secretaria' || _perfilSelecionado == 'secretária' ? 'secretaria' 
+                          : _perfilSelecionado,
+                'status': isEdicao ? widget.usuarioEdicao!['status'] : 'Ativo',
+                if (_perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável') ...{
+                  'alunosVinculados': _alunosSelecionadosResponsavel.map((a) => '${a['nome']} (${a['matricula']})'.toUpperCase()).toList(),
+                  'alunosVinculadosRaw': _alunosSelecionadosResponsavel.map((a) => {'nome': a['nome'], 'matricula': a['matricula']}).toList(),
+                }
+              };
+
+              widget.aoSalvar(dadosSalvar);
               Navigator.pop(context);
             }
           },
-          child: const Text('Salvar Usuário'),
+          child: const Text('Salvar Acesso'),
         ),
       ],
     );
