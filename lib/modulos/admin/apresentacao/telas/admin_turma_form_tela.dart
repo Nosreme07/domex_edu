@@ -6,7 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../estado/turma_provider.dart';
 import '../estado/professor_provider.dart';
 
-class UpperCaseTextFormatter extends TextInputFormatter {
+// CORREÇÃO: Colocamos o "_" para deixar a classe privada e o compilador não travar!
+class _UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
     return TextEditingValue(text: newValue.text.toUpperCase(), selection: newValue.selection);
@@ -23,7 +24,7 @@ class AdminTurmaFormTela extends ConsumerStatefulWidget {
 
 class _AdminTurmaFormTelaState extends ConsumerState<AdminTurmaFormTela> {
   final _formKey = GlobalKey<FormState>();
-  final _upperCase = UpperCaseTextFormatter();
+  final _upperCase = _UpperCaseTextFormatter();
 
   // Controladores
   final _nomeCustomizadoCtrl = TextEditingController();
@@ -153,16 +154,16 @@ class _AdminTurmaFormTelaState extends ConsumerState<AdminTurmaFormTela> {
     List<Map<String, dynamic>> professoresAtivos = [];
     Set<String> disciplinasDoSistema = {};
 
-    estadoProfessores.whenData((profs) {
-      professoresAtivos = profs.where((p) => p['status'] == 'Ativo').toList();
-      for (var p in professoresAtivos) {
-        if (p['disciplinas'] != null) {
-          for (var d in p['disciplinas']) {
-            disciplinasDoSistema.add(d.toString());
-          }
+    // CORREÇÃO: Evitar usar whenData no meio do Build para não bugar o estado da árvore
+    final profs = estadoProfessores.value ?? [];
+    professoresAtivos = profs.where((p) => p['status'] == 'Ativo').toList();
+    for (var p in professoresAtivos) {
+      if (p['disciplinas'] != null) {
+        for (var d in p['disciplinas']) {
+          disciplinasDoSistema.add(d.toString());
         }
       }
-    });
+    }
 
     final listaDisciplinas = disciplinasDoSistema.toList()..sort();
 

@@ -12,7 +12,7 @@ import '../estado/aluno_provider.dart';
 import '../estado/turma_provider.dart';
 
 // ==========================================================
-// MÁGICA 1: FORMATADOR PARA TUDO FICAR MAIÚSCULO
+// FORMATADOR PARA TUDO FICAR MAIÚSCULO
 // ==========================================================
 class UpperCaseTextFormatter extends TextInputFormatter {
   @override
@@ -24,7 +24,7 @@ class UpperCaseTextFormatter extends TextInputFormatter {
   }
 }
 
-// MÁGICA 4: CLASSE PARA GERENCIAR MÚLTIPLAS PESSOAS AUTORIZADAS
+// CLASSE PARA GERENCIAR MÚLTIPLAS PESSOAS AUTORIZADAS
 class PessoaAutorizada {
   final TextEditingController nomeCtrl;
   final TextEditingController telCtrl;
@@ -46,7 +46,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
   final _cpfMask = MaskTextInputFormatter(mask: '###.###.###-##', filter: {"#": RegExp(r'[0-9]')});
   final _telMask = MaskTextInputFormatter(mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
   final _dataMask = MaskTextInputFormatter(mask: '##/##/####', filter: {"#": RegExp(r'[0-9]')});
-  final _upperCase = UpperCaseTextFormatter(); // Instância do formatador maiúsculo
+  final _upperCase = UpperCaseTextFormatter();
 
   XFile? _fotoSelecionada;
   String? _fotoUrlExistente;
@@ -251,16 +251,16 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
     }
   }
 
-Future<void> _recortarEEnquadrar(String path) async {
+  Future<void> _recortarEEnquadrar(String path) async {
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: path,
-      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), // Mantém a trava perfeita do 3x4
+      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), 
       uiSettings: [
         AndroidUiSettings(
           toolbarTitle: 'Enquadrar Foto 3x4', 
           toolbarColor: Theme.of(context).primaryColor, 
           toolbarWidgetColor: Colors.white, 
-          initAspectRatio: CropAspectRatioPreset.original, // <-- CORRIGIDO AQUI
+          initAspectRatio: CropAspectRatioPreset.original, 
           lockAspectRatio: true
         ),
         WebUiSettings(context: context),
@@ -281,7 +281,6 @@ Future<void> _recortarEEnquadrar(String path) async {
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               child: _fotoSelecionada != null 
-                  // 3X4 AQUI NO PREVIEW (300X400)
                   ? (kIsWeb ? Image.network(_fotoSelecionada!.path, fit: BoxFit.cover, width: 300, height: 400) : Image.file(File(_fotoSelecionada!.path), fit: BoxFit.cover, width: 300, height: 400))
                   : Image.network(_fotoUrlExistente!, fit: BoxFit.cover, width: 300, height: 400),
             ),
@@ -440,6 +439,25 @@ Future<void> _recortarEEnquadrar(String path) async {
                       urlFinalFoto = null;
                     }
 
+                    // A MÁGICA ATUALIZADA: Agora busca comparando o Nome + Ano + Turno
+                    String turmaIdSalvar = '';
+                    
+                    // Preserva o ID existente caso seja uma edição e a turma não tenha sido alterada (evita perdas)
+                    if (isEdicao && widget.alunoParaEditar!['turmaId'] != null) {
+                      turmaIdSalvar = widget.alunoParaEditar!['turmaId'];
+                    }
+
+                    final listaTurmas = ref.read(turmasStreamProvider).value ?? [];
+                    for (var t in listaTurmas) {
+                      final turnoFormatado = t['turno'] ?? '';
+                      final nomeFormatado = '${t['nome']} (${t['anoLetivo']}) - $turnoFormatado'.toUpperCase();
+                      
+                      if (nomeFormatado == _turmaSelecionada?.toUpperCase()) {
+                        turmaIdSalvar = t['id']?.toString() ?? '';
+                        break;
+                      }
+                    }
+
                     // Prepara a lista de pessoas autorizadas
                     final autorizadosSalvar = _pessoasAutorizadas
                         .where((p) => p.nomeCtrl.text.trim().isNotEmpty)
@@ -459,6 +477,7 @@ Future<void> _recortarEEnquadrar(String path) async {
                       'sexo': _sexoSelecionado,
                       'dataNascimento': _dataNascimentoCtrl.text,
                       'turma': _turmaSelecionada,
+                      'turmaId': turmaIdSalvar, 
                       'temIrmao': _temIrmao,
                       'irmaoSelecionado': _irmaoSelecionado,
                       'fotoUrl': urlFinalFoto,
@@ -473,7 +492,7 @@ Future<void> _recortarEEnquadrar(String path) async {
                         if (_resp2NomeCtrl.text.isNotEmpty) {'nome': _resp2NomeCtrl.text, 'cpf': _resp2CpfCtrl.text, 'telefone': _resp2TelCtrl.text, 'email': _resp2EmailCtrl.text, 'principal': false}
                       ],
                       'autorizaSairSo': _autorizaSairSo,
-                      'pessoasAutorizadas': autorizadosSalvar, // SALVA A LISTA DINÂMICA
+                      'pessoasAutorizadas': autorizadosSalvar,
                       'fichaMedica': {
                         'tipoSanguineo': _tipoSanguineoSelecionado,
                         'temProblema': _temProbSaude, 'problema': _probSaudeCtrl.text,
@@ -528,9 +547,18 @@ Future<void> _recortarEEnquadrar(String path) async {
 
     final estadoTurmas = ref.watch(turmasStreamProvider);
     List<String> turmasDisponiveis = [];
-    estadoTurmas.whenData((turmas) { turmasDisponiveis = turmas.map((t) => '${t['nome']} - ${t['turno']}').toList(); });
+    
+    // A MÁGICA: Agora a lista do dropdown de turmas usa o formato NOME (ANO LETIVO) - TURNO
+    estadoTurmas.whenData((turmas) { 
+      turmasDisponiveis = turmas.map((t) {
+        final turno = t['turno'] ?? '';
+        return '${t['nome']} (${t['anoLetivo']}) - $turno'.toUpperCase();
+      }).toList(); 
+    });
+    
     turmasDisponiveis.add('FUTURA TURMA');
 
+    // Mantém a compatibilidade com turmas cadastradas em formatos antigos
     if (_turmaSelecionada != null && !turmasDisponiveis.contains(_turmaSelecionada)) {
       turmasDisponiveis.add(_turmaSelecionada!);
     }
@@ -570,7 +598,7 @@ Future<void> _recortarEEnquadrar(String path) async {
                                 onTap: (_fotoSelecionada == null && _fotoUrlExistente == null) ? _escolherFoto : _abrirOpcoesFoto,
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
-                                  width: 120, height: 160, // 3X4 AQUI NO CONTAINER
+                                  width: 120, height: 160, 
                                   decoration: BoxDecoration(color: Colors.grey.shade100, border: Border.all(color: Colors.grey.shade400), borderRadius: BorderRadius.circular(12)),
                                   child: (_fotoSelecionada == null && _fotoUrlExistente == null)
                                       ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo, color: Colors.grey.shade400, size: 40), const SizedBox(height: 8), const Text('Foto 3x4', style: TextStyle(color: Colors.grey, fontSize: 12))])
