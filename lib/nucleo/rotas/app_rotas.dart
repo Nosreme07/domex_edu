@@ -21,8 +21,6 @@ import '../../modulos/admin/apresentacao/telas/admin_aluno_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_professor_form_tela.dart'; 
 import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_configuracoes_tela.dart';
-
-// ---> NOVO IMPORT DA TELA DE PAINEL DA TURMA <---
 import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart'; 
 
 // ============================================================================
@@ -31,6 +29,12 @@ import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart';
 import '../layout/super_admin_layout.dart';
 import '../../modulos/super_admin/apresentacao/telas/super_admin_dashboard_tela.dart';
 import '../../modulos/super_admin/apresentacao/telas/super_admin_usuarios_tela.dart';
+
+// ============================================================================
+// IMPORTS: PAINEL DO PROFESSOR
+// ============================================================================
+import '../../modulos/professor/layout/professor_layout.dart';
+import '../../modulos/professor/apresentacao/telas/professor_dashboard_tela.dart';
 
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
@@ -141,7 +145,7 @@ class AppRotas {
             },
           ),
 
-          // ---> NOVA ROTA: PAINEL EXCLUSIVO DA TURMA <---
+          // ---> ROTA: PAINEL EXCLUSIVO DA TURMA <---
           GoRoute(
             path: '/admin/cadastros/turma/painel',
             builder: (context, state) {
@@ -170,6 +174,22 @@ class AppRotas {
             path: '/super-admin/usuarios',
             builder: (context, state) => const SuperAdminUsuariosTela(),
           ),
+        ],
+      ),
+
+      // ==========================================================
+      // GRUPO 4: ESTRUTURA DO PROFESSOR (Diário de Classe)
+      // ==========================================================
+      ShellRoute(
+        builder: (context, state, child) {
+          return ProfessorLayout(child: child);
+        },
+        routes: [
+          GoRoute(
+            path: '/professor',
+            builder: (context, state) => const ProfessorDashboardTela(),
+          ),
+          // Rotas futuras como /professor/turmas virão aqui
         ],
       ),
       

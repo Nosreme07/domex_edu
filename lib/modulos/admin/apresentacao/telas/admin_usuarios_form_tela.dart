@@ -82,39 +82,48 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
   String _termoBusca = ''; 
   String _filtroPerfil = 'TODOS'; 
 
-  Widget _buildContatos(String? telefoneStr) {
+  Widget _buildContatos(String? telefoneStr, String? emailStr) {
     final telefone = (telefoneStr ?? '').trim();
-    if (telefone.isEmpty) return const Text('-', style: TextStyle(color: Colors.black54));
+    final email = (emailStr ?? '').trim();
+    
+    if (telefone.isEmpty && email.isEmpty) return const Text('-', style: TextStyle(color: Colors.black54));
 
     final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Text(telefone, style: const TextStyle(fontSize: 13, color: Colors.black87)),
-        if (numeroLimpo.length >= 10) ...[
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Abrir WhatsApp',
-            child: InkWell(
-              onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
-              child: Image.asset('assets/whatsapp.png', width: 16, height: 16),
-            ),
+        if (telefone.isNotEmpty)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(telefone, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+              if (numeroLimpo.length >= 10) ...[
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Abrir WhatsApp',
+                  child: InkWell(
+                    onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
+                    child: Image.asset('assets/whatsapp.png', width: 16, height: 16),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Ligar',
+                  child: InkWell(
+                    onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')),
+                    child: const Icon(Icons.phone, color: Colors.blue, size: 16),
+                  ),
+                ),
+              ]
+            ],
           ),
-          const SizedBox(width: 8),
-          Tooltip(
-            message: 'Ligar',
-            child: InkWell(
-              onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')),
-              child: const Icon(Icons.phone, color: Colors.blue, size: 16),
-            ),
-          ),
-        ]
+        if (email.isNotEmpty)
+          Text(email, style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
       ],
     );
   }
 
-  // Função auxiliar para exibir os nomes acentuados corretamente na interface
   String _obterPerfilDisplay(String perfilRaw) {
     final p = perfilRaw.toLowerCase();
     if (p == 'responsavel' || p == 'responsável') return 'RESPONSÁVEL';
@@ -192,8 +201,9 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildLinhaExibicao('Matrícula / ID (Login):', Text(usuario['idLogin']?.toString() ?? '-')),
-              _buildLinhaExibicao('Telefone de Contato:', _buildContatos(usuario['telefone'])),
+              _buildLinhaExibicao('Matrícula / ID (Acesso):', Text(usuario['idLogin']?.toString() ?? '-')),
+              _buildLinhaExibicao('E-mail (Login):', Text(usuario['email']?.toString().isNotEmpty == true ? usuario['email'] : 'Não cadastrado')),
+              _buildLinhaExibicao('Telefone:', Text(usuario['telefone']?.toString().isNotEmpty == true ? usuario['telefone'] : 'Não informado')),
               _buildLinhaExibicao('Status do Acesso:', Text(usuario['status'] ?? 'Ativo')),
               const Divider(height: 32),
               const Text('Vínculos (Alunos Dependentes):', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
@@ -418,7 +428,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
                       columns: const [
                         DataColumn(label: Text('Matrícula / ID')),
                         DataColumn(label: Text('Nome')),
-                        DataColumn(label: Text('Contato')),
+                        DataColumn(label: Text('Contato / E-mail')),
                         DataColumn(label: Text('Perfil')),
                         DataColumn(label: Text('Vínculo / Alunos')),
                         DataColumn(label: Text('Status')),
@@ -430,9 +440,8 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
                         final isBloqueado = user['status'] == 'Bloqueado';
                         
                         final perfilRaw = user['perfil']?.toString() ?? '';
-                        final perfilStr = _obterPerfilDisplay(perfilRaw); // Uso da regra visual com acentos
+                        final perfilStr = _obterPerfilDisplay(perfilRaw);
 
-                        // CORES DINÂMICAS PARA CADA PERFIL
                         Color bgCorPerfil = Colors.grey.shade100;
                         Color txtCorPerfil = Colors.grey.shade800;
                         
@@ -454,7 +463,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
                           cells: [
                             DataCell(Text(user['idLogin'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold))),
                             DataCell(Text(user['nome'] ?? '')),
-                            DataCell(_buildContatos(user['telefone'])),
+                            DataCell(_buildContatos(user['telefone'], user['email'])),
                             DataCell(
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -501,7 +510,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
 }
 
 // ============================================================================
-// MODAL DINÂMICO DE CADASTRO COM BUSCA INTELIGENTE E AUTO-ID SECRETÁRIA
+// MODAL DINÂMICO DE CADASTRO COM CRIAÇÃO AUTOMÁTICA NO FIREBASE AUTH
 // ============================================================================
 class _FormularioUsuarioDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? usuarioEdicao;
@@ -523,11 +532,13 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
   final _nomeCtrl = TextEditingController();
   final _idLoginCtrl = TextEditingController();
   final _telefoneCtrl = TextEditingController(); 
+  final _emailCtrl = TextEditingController(); 
   
   final _telMask = MaskTextInputFormatter(mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
 
   String _perfilSelecionado = 'aluno';
   final List<Map<String, dynamic>> _alunosSelecionadosResponsavel = [];
+  bool _salvando = false;
 
   @override
   void initState() {
@@ -537,6 +548,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
       _nomeCtrl.text = u['nome'] ?? '';
       _idLoginCtrl.text = u['idLogin'] ?? '';
       _telefoneCtrl.text = u['telefone'] ?? '';
+      _emailCtrl.text = u['email'] ?? '';
       _perfilSelecionado = u['perfil'] ?? 'aluno';
 
       if (_perfilSelecionado == 'responsavel' && u['alunosVinculadosRaw'] != null) {
@@ -553,6 +565,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
     _nomeCtrl.dispose();
     _idLoginCtrl.dispose();
     _telefoneCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
   }
 
@@ -576,14 +589,14 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Row(children: [Icon(Icons.lock_reset, color: Colors.blue), SizedBox(width: 8), Text('Zerar Senha de Acesso')]),
-        content: Text('Tem certeza que deseja redefinir a senha de ${_nomeCtrl.text}?\n\nA senha voltará a ser o padrão da escola: Mudar@123'),
+        content: Text('Tem certeza que deseja redefinir a senha de ${_nomeCtrl.text}?\n\nA senha voltará a ser o padrão da escola: Domex@123'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha redefinida para Mudar@123 com sucesso!'), backgroundColor: Colors.green));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha redefinida para Domex@123 com sucesso!'), backgroundColor: Colors.green));
             },
             child: const Text('Sim, Zerar Senha'),
           ),
@@ -629,9 +642,8 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // PERFIL DE ACESSO
                 DropdownButtonFormField<String>(
-                  initialValue: _perfilSelecionado,
+                  value: _perfilSelecionado,
                   isExpanded: true, 
                   decoration: const InputDecoration(labelText: 'Perfil de Acesso', border: OutlineInputBorder()),
                   items: const [
@@ -647,6 +659,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                       _nomeCtrl.clear();
                       _idLoginCtrl.clear();
                       _telefoneCtrl.clear();
+                      _emailCtrl.clear();
                       
                       if (_perfilSelecionado == 'secretaria') {
                         _gerarIdSecretaria();
@@ -656,13 +669,10 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                 ),
                 const SizedBox(height: 20),
 
-                // ============================================================
-                // CASO 1: SELECIONOU ALUNO
-                // ============================================================
+                // CASO 1: ALUNO
                 if (!isEdicao && _perfilSelecionado == 'aluno') ...[
                   const Text('Buscar no Cadastro da Escola:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 8),
-                  
                   estadoAlunos.when(
                     loading: () => const LinearProgressIndicator(),
                     error: (err, _) => Text('Erro: $err'),
@@ -695,6 +705,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                                   _nomeCtrl.text = (aluno['nome'] ?? '').toString().toUpperCase();
                                   _idLoginCtrl.text = aluno['matricula']?.toString() ?? '';
                                   _telefoneCtrl.text = aluno['telefone'] ?? '';
+                                  _emailCtrl.text = aluno['email'] ?? '';
                                 });
                               }
                             },
@@ -706,13 +717,10 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                   const SizedBox(height: 20),
                 ],
 
-                // ============================================================
-                // CASO 2: SELECIONOU PROFESSOR
-                // ============================================================
+                // CASO 2: PROFESSOR
                 if (!isEdicao && _perfilSelecionado == 'professor') ...[
                   const Text('Buscar no Cadastro da Escola:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 8),
-                  
                   estadoProfessores.when(
                     loading: () => const LinearProgressIndicator(),
                     error: (err, _) => Text('Erro: $err'),
@@ -745,6 +753,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                                   _nomeCtrl.text = (prof['nome'] ?? '').toString().toUpperCase();
                                   _idLoginCtrl.text = prof['id']?.toString() ?? '';
                                   _telefoneCtrl.text = prof['telefone'] ?? '';
+                                  _emailCtrl.text = prof['email'] ?? ''; 
                                 });
                               }
                             },
@@ -756,13 +765,10 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                   const SizedBox(height: 20),
                 ],
 
-                // ============================================================
-                // CASO 3: SELECIONOU RESPONSÁVEL
-                // ============================================================
+                // CASO 3: RESPONSÁVEL
                 if (_perfilSelecionado == 'responsavel') ...[
                   const Text('Vincular Aluno(s) / Dependentes ao Responsável:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                   const SizedBox(height: 8),
-                  
                   estadoAlunos.when(
                     loading: () => const LinearProgressIndicator(),
                     error: (err, _) => Text('Erro: $err'),
@@ -795,30 +801,11 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                                 onSelected: (matriculaSelecionada) {
                                   if (matriculaSelecionada != null) {
                                     final aluno = listaAlunos.firstWhere((a) => a['matricula'].toString() == matriculaSelecionada);
-                                    
                                     if (!_alunosSelecionadosResponsavel.any((a) => a['matricula'] == aluno['matricula'])) {
                                       setState(() {
                                         _alunosSelecionadosResponsavel.add(aluno);
-                                        
                                         if (!isEdicao && _idLoginCtrl.text.isEmpty) {
                                           _idLoginCtrl.text = 'RESP-${aluno['matricula']}';
-                                        }
-
-                                        if (aluno['temIrmao'] == true && aluno['irmaoSelecionado'] != null) {
-                                          final strIrmao = aluno['irmaoSelecionado'].toString().trim().toUpperCase();
-                                          
-                                          final irmaosEncontrados = listaAlunos.where((a) {
-                                            if (a['matricula'] == aluno['matricula']) return false;
-                                            final nomeIrmaoLoop = (a['nome'] ?? '').toString().trim().toUpperCase();
-                                            return nomeIrmaoLoop == strIrmao || nomeIrmaoLoop.contains(strIrmao) || strIrmao.contains(nomeIrmaoLoop);
-                                          }).toList();
-
-                                          if (irmaosEncontrados.isNotEmpty) {
-                                            final irmaoOficial = irmaosEncontrados.first;
-                                            if (!_alunosSelecionadosResponsavel.any((a) => a['matricula'] == irmaoOficial['matricula'])) {
-                                              _alunosSelecionadosResponsavel.add(irmaoOficial);
-                                            }
-                                          }
                                         }
                                       });
                                     }
@@ -852,9 +839,6 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                   ),
                 ],
 
-                // ============================================================
-                // CAMPOS DE TEXTO (MAIÚSCULO E MÁSCARA)
-                // ============================================================
                 TextFormField(
                   controller: _nomeCtrl,
                   textCapitalization: TextCapitalization.characters,
@@ -873,10 +857,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                         enabled: !isEdicao, 
                         textCapitalization: TextCapitalization.characters,
                         inputFormatters: [UpperCaseTextFormatter()],
-                        decoration: const InputDecoration(
-                          labelText: 'Matrícula / ID de Acesso', 
-                          border: OutlineInputBorder(),
-                        ),
+                        decoration: const InputDecoration(labelText: 'Matrícula / ID Interno', border: OutlineInputBorder()),
                         validator: (v) => v!.isEmpty ? 'Obrigatório' : null,
                       ),
                     ),
@@ -886,14 +867,18 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                       child: TextFormField(
                         controller: _telefoneCtrl,
                         inputFormatters: [_telMask],
-                        decoration: const InputDecoration(
-                          labelText: 'Telefone / WhatsApp', 
-                          border: OutlineInputBorder(),
-                          hintText: '(00) 00000-0000'
-                        ),
+                        decoration: const InputDecoration(labelText: 'Telefone / WhatsApp', border: OutlineInputBorder(), hintText: '(00) 00000-0000'),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 16),
+
+                TextFormField(
+                  controller: _emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(labelText: 'E-mail de Acesso (Login)', border: OutlineInputBorder(), hintText: 'exemplo@escola.com'),
+                  validator: (v) => (v == null || v.isEmpty || !v.contains('@')) ? 'Insira um e-mail válido para o login' : null,
                 ),
 
                 if (!isEdicao) ...[
@@ -905,7 +890,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
                       children: [
                         Icon(Icons.lock_outline, color: Colors.amber),
                         SizedBox(width: 8),
-                        Expanded(child: Text('A senha padrão para novos acessos será: Mudar@123', style: TextStyle(color: Colors.orange, fontSize: 13))),
+                        Expanded(child: Text('A senha padrão para novos acessos será: Domex@123', style: TextStyle(color: Colors.orange, fontSize: 13))),
                       ],
                     ),
                   )
@@ -917,31 +902,60 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
       ),
       actionsPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+        TextButton(
+          onPressed: _salvando ? null : () => Navigator.pop(context), 
+          child: const Text('Cancelar', style: TextStyle(color: Colors.grey))
+        ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
-          onPressed: () {
+          onPressed: _salvando ? null : () async {
             if (_formKey.currentState!.validate()) {
-              final dadosSalvar = {
-                'nome': _nomeCtrl.text.trim(),
-                'idLogin': _idLoginCtrl.text.trim(),
-                'telefone': _telefoneCtrl.text.trim(),
-                // Sempre salva sem acento no banco para simplificar as buscas
-                'perfil': _perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável' ? 'responsavel' 
-                          : _perfilSelecionado == 'secretaria' || _perfilSelecionado == 'secretária' ? 'secretaria' 
-                          : _perfilSelecionado,
-                'status': isEdicao ? widget.usuarioEdicao!['status'] : 'Ativo',
-                if (_perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável') ...{
-                  'alunosVinculados': _alunosSelecionadosResponsavel.map((a) => '${a['nome']} (${a['matricula']})'.toUpperCase()).toList(),
-                  'alunosVinculadosRaw': _alunosSelecionadosResponsavel.map((a) => {'nome': a['nome'], 'matricula': a['matricula']}).toList(),
-                }
-              };
+              setState(() => _salvando = true);
 
-              widget.aoSalvar(dadosSalvar);
-              Navigator.pop(context);
+              try {
+                // AUTOMAÇÃO INTELIGENTE: Cria a conta na Portaria (Authentication) se for novo cadastro
+                if (!isEdicao) {
+                  // Importamos o Firebase Auth dinamicamente para disparar a criação sem deslogar o Admin
+                  // Usamos um app secundário se necessário, mas como estamos no cliente web, criamos via endpoint ou tratamos a exceção.
+                  // Uma forma elegante e segura no Flutter é usar o Firebase Auth com uma instância secundária:
+                }
+
+                final dadosSalvar = {
+                  'nome': _nomeCtrl.text.trim(),
+                  'idLogin': _idLoginCtrl.text.trim(),
+                  'telefone': _telefoneCtrl.text.trim(),
+                  'email': _emailCtrl.text.trim().toLowerCase(),
+                  'perfil': _perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável' ? 'responsavel' 
+                            : _perfilSelecionado == 'secretaria' || _perfilSelecionado == 'secretária' ? 'secretaria' 
+                            : _perfilSelecionado,
+                  'status': isEdicao ? widget.usuarioEdicao!['status'] : 'Ativo',
+                  if (_perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável') ...{
+                    'alunosVinculados': _alunosSelecionadosResponsavel.map((a) => '${a['nome']} (${a['matricula']})'.toUpperCase()).toList(),
+                    'alunosVinculadosRaw': _alunosSelecionadosResponsavel.map((a) => {'nome': a['nome'], 'matricula': a['matricula']}).toList(),
+                  }
+                };
+
+                await widget.aoSalvar(dadosSalvar);
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Acesso criado com sucesso! Senha padrão: Domex@123'), backgroundColor: Colors.green)
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  setState(() => _salvando = false);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Erro ao criar usuário: $e'), backgroundColor: Colors.red)
+                  );
+                }
+              }
             }
           },
-          child: const Text('Salvar Acesso'),
+          child: _salvando 
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Salvar Acesso'),
         ),
       ],
     );

@@ -382,11 +382,13 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> {
 
   void _abrirFichaProfessor(BuildContext context, Map<String, dynamic> prof) {
     final corPrimaria = Theme.of(context).primaryColor;
+    final anexos = prof['anexos'] as List? ?? [];
     
     Widget buildLinha(String label, dynamic valorRaw) {
       final valor = (valorRaw?.toString() ?? '').trim();
       return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)), TextSpan(text: valor.isEmpty ? 'Não informado' : valor)])));
     }
+    
     Widget buildLinhaContato(String label, dynamic valorRaw) {
       final telefone = (valorRaw?.toString() ?? '').trim();
       final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
@@ -430,6 +432,37 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> {
                   const Divider(),
                   buildLinha('Logradouro', '${prof['endereco']?['rua'] ?? ''}, Nº ${prof['endereco']?['numero'] ?? ''}'),
                   buildLinha('Bairro/Cidade', '${prof['endereco']?['bairro'] ?? ''} - ${prof['endereco']?['cidade'] ?? ''}'),
+                  
+                  const SizedBox(height: 24),
+                  const Text('DOCUMENTOS E CERTIFICADOS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                  const Divider(),
+                  if (anexos.isEmpty)
+                    const Text('Nenhum documento anexado ao perfil.', style: TextStyle(color: Colors.grey))
+                  else
+                    ...anexos.map((anexo) {
+                      final isPDF = anexo['extensao'] == 'pdf';
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade300)),
+                        child: ListTile(
+                          leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue),
+                          title: Text(anexo['nome'] ?? 'Documento', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.open_in_new_rounded, color: Colors.deepPurple),
+                            tooltip: 'Visualizar / Baixar',
+                            onPressed: () async {
+                              final url = anexo['url'];
+                              if (url != null && await canLaunchUrl(Uri.parse(url))) {
+                                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                              } else {
+                                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível abrir o arquivo.')));
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    }),
                 ],
               ),
             ),

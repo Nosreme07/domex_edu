@@ -8,9 +8,11 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 import '../estado/professor_provider.dart';
 
-// Formatador para forçar Maiúsculas
 class UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
@@ -31,42 +33,36 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
   final _formKey = GlobalKey<FormState>();
   final _upperCase = UpperCaseTextFormatter(); 
 
-  // Máscaras
   final _cpfMask = MaskTextInputFormatter(mask: '###.###.###-##', filter: {"#": RegExp(r'[0-9]')});
   final _telMask = MaskTextInputFormatter(mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
   final _dataMask = MaskTextInputFormatter(mask: '##/##/####', filter: {"#": RegExp(r'[0-9]')});
 
-  // FOTO
   XFile? _fotoSelecionada;
   String? _fotoUrlExistente;
   final ImagePicker _picker = ImagePicker();
 
-  // Controladores: Dados Pessoais
   final _nomeCtrl = TextEditingController();
   final _dataNascimentoCtrl = TextEditingController();
   final _cpfCtrl = TextEditingController();
   final _telefoneCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
 
-  // Controladores: Endereço
   final _ruaCtrl = TextEditingController();
   final _numeroCtrl = TextEditingController();
   final _bairroCtrl = TextEditingController();
   final _cidadeCtrl = TextEditingController();
 
-  // Atuação Profissional e Disciplinas Dinâmicas
   bool _isAtivo = true;
   List<String> _disciplinasDisponiveis = [];
   final Set<String> _disciplinasSelecionadas = {};
-  
-  // Controlador para adicionar nova disciplina quando escolher "OUTROS"
   final _outraDisciplinaCtrl = TextEditingController();
+
+  List<Map<String, dynamic>> _anexos = [];
 
   @override
   void initState() {
     super.initState();
     
-    // Lista inicial de disciplinas (Com a opção OUTROS no final)
     _disciplinasDisponiveis = [
       'MATEMÁTICA', 'PORTUGUÊS', 'HISTÓRIA', 'GEOGRAFIA', 
       'FÍSICA', 'QUÍMICA', 'BIOLOGIA', 'INGLÊS', 'ESPANHOL', 'MÚSICA', 'INFORMÁTICA', 'ENSINO RELIGIOSO',
@@ -92,19 +88,20 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
       
       _isAtivo = prof['status'] == 'Ativo';
       
-      // Carregando disciplinas salvas e incluindo as "customizadas" na lista se elas não existirem
       if (prof['disciplinas'] != null) {
         for (var d in prof['disciplinas']) {
           String disc = d.toString().toUpperCase();
           if (disc != 'OUTROS') {
             _disciplinasSelecionadas.add(disc);
-            // Se for uma disciplina que ele criou pelo "OUTROS", ela entra na lista de disponíveis
             if (!_disciplinasDisponiveis.contains(disc)) {
-              // Insere antes do botão 'OUTROS'
               _disciplinasDisponiveis.insert(_disciplinasDisponiveis.length - 1, disc);
             }
           }
         }
+      }
+
+      if (prof['anexos'] != null) {
+        _anexos = List<Map<String, dynamic>>.from(prof['anexos']);
       }
     }
   }
@@ -118,20 +115,15 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
     super.dispose();
   }
 
-  // ================= MÉTODOS DA DISCIPLINA CUSTOMIZADA =================
   void _adicionarDisciplinaCustomizada() {
     final nova = _outraDisciplinaCtrl.text.trim().toUpperCase();
     if (nova.isNotEmpty && !_disciplinasDisponiveis.contains(nova)) {
       setState(() {
-        // Insere a nova matéria antes do botão "OUTROS"
         _disciplinasDisponiveis.insert(_disciplinasDisponiveis.length - 1, nova);
-        // Já marca como selecionada
         _disciplinasSelecionadas.add(nova);
-        // Limpa o campo para a próxima
         _outraDisciplinaCtrl.clear();
       });
     } else if (nova.isNotEmpty && _disciplinasDisponiveis.contains(nova)) {
-      // Se ele digitou uma que já existe, só marca ela e limpa o campo
       setState(() {
         _disciplinasSelecionadas.add(nova);
         _outraDisciplinaCtrl.clear();
@@ -139,33 +131,40 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
     }
   }
 
-  // ================= METÓDOS DA FOTO (3X4) =================
   Future<void> _escolherFoto() async {
     try {
       final XFile? imagem = await _picker.pickImage(source: ImageSource.gallery);
-      if (imagem != null) await _recortarEEnquadrar(imagem.path);
+      if (imagem != null) {
+        await _recortarEEnquadrar(imagem.path);
+      }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro ao acessar a galeria.')));
     }
   }
 
-Future<void> _recortarEEnquadrar(String path) async {
+  Future<void> _recortarEEnquadrar(String path) async {
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: path,
-      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), // Mantém a trava perfeita do 3x4
+      aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), 
       uiSettings: [
         AndroidUiSettings(
           toolbarTitle: 'Enquadrar Foto 3x4', 
           toolbarColor: Theme.of(context).primaryColor, 
           toolbarWidgetColor: Colors.white, 
-          initAspectRatio: CropAspectRatioPreset.original, // <-- CORRIGIDO AQUI
+          initAspectRatio: CropAspectRatioPreset.original,
           lockAspectRatio: true
         ),
         WebUiSettings(context: context),
       ],
     );
-    if (croppedFile != null && mounted) setState(() => _fotoSelecionada = XFile(croppedFile.path));
+    if (croppedFile != null && mounted) {
+      setState(() {
+        _fotoSelecionada = XFile(croppedFile.path);
+      });
+    }
   }
 
   void _abrirOpcoesFoto() {
@@ -199,12 +198,56 @@ Future<void> _recortarEEnquadrar(String path) async {
       ),
     );
   }
-  // ===================================================
+
+  Future<void> _escolherAnexos() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+        withData: true, 
+      );
+
+      if (result != null) {
+        setState(() {
+          for (var file in result.files) {
+            _anexos.add({
+              'idLocal': DateTime.now().microsecondsSinceEpoch.toString(), 
+              'nome': file.name,
+              'bytes': file.bytes, 
+              'extensao': file.extension?.toLowerCase() ?? 'pdf',
+              'url': null, 
+            });
+          }
+        });
+      }
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao selecionar arquivos: $e')));
+    }
+  }
+
+  void _removerAnexo(int index) {
+    setState(() {
+      _anexos.removeAt(index);
+    });
+  }
+
+  Future<void> _abrirAnexoUrl(String url) async {
+    if (await canLaunchUrl(Uri.parse(url))) {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível abrir o arquivo.')));
+      }
+    }
+  }
 
   void _revisarESalvar() {
     if (_formKey.currentState!.validate()) {
       
-      // Filtra as disciplinas para salvar, garantindo que a palavra "OUTROS" não vá pro banco de dados
       final disciplinasParaSalvar = _disciplinasSelecionadas.where((d) => d != 'OUTROS').toList();
 
       if (disciplinasParaSalvar.isEmpty) {
@@ -218,7 +261,6 @@ Future<void> _recortarEEnquadrar(String path) async {
       if (isEdicao) {
         idParaSalvar = widget.professorParaEditar!['id'];
       } else {
-        // Geração Inteligente do ID verificando os professores que já estão no Firebase
         final listaProfessores = ref.read(professoresStreamProvider).value ?? [];
         int maiorSequencial = 0;
         for (var prof in listaProfessores) {
@@ -226,7 +268,9 @@ Future<void> _recortarEEnquadrar(String path) async {
           if (idProf.startsWith('PROF-')) {
             final sequencialStr = idProf.substring(5); 
             final sequencial = int.tryParse(sequencialStr) ?? 0;
-            if (sequencial > maiorSequencial) maiorSequencial = sequencial;
+            if (sequencial > maiorSequencial) {
+              maiorSequencial = sequencial;
+            }
           }
         }
         idParaSalvar = 'PROF-${(maiorSequencial + 1).toString().padLeft(2, '0')}'; 
@@ -266,6 +310,7 @@ Future<void> _recortarEEnquadrar(String path) async {
                     _resumoLinha('Nome', _nomeCtrl.text),
                     _resumoLinha('CPF', _cpfCtrl.text),
                     _resumoLinha('Status', _isAtivo ? 'Ativo (Disponível para aulas)' : 'Inativo'),
+                    _resumoLinha('Anexos', '${_anexos.length} documento(s)'),
                     const Divider(),
                     const Text('Disciplinas Habilitadas:', style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
@@ -293,11 +338,32 @@ Future<void> _recortarEEnquadrar(String path) async {
                     if (_fotoSelecionada != null) {
                       final bytesFoto = await _fotoSelecionada!.readAsBytes();
                       String extensao = _fotoSelecionada!.name.split('.').last.toLowerCase();
-                      if (extensao != 'png' && extensao != 'jpg' && extensao != 'jpeg') extensao = 'png';
-                      
+                      if (extensao != 'png' && extensao != 'jpg' && extensao != 'jpeg') {
+                        extensao = 'png';
+                      }
                       urlFinalFoto = await ref.read(professorServiceProvider).fazerUploadFoto(idParaSalvar, bytesFoto, extensao);
                     } else if (_fotoUrlExistente == null) {
                       urlFinalFoto = null;
+                    }
+
+                    List<Map<String, dynamic>> anexosParaSalvar = [];
+                    for (var anexo in _anexos) {
+                      if (anexo['url'] == null && anexo['bytes'] != null) {
+                        String nomeUnico = '${idParaSalvar}_anexo_${DateTime.now().millisecondsSinceEpoch}';
+                        String? urlDownload = await ref.read(professorServiceProvider).fazerUploadFoto(nomeUnico, anexo['bytes'], anexo['extensao']);
+                        
+                        anexosParaSalvar.add({
+                          'nome': anexo['nome'],
+                          'url': urlDownload,
+                          'extensao': anexo['extensao'],
+                        });
+                      } else {
+                        anexosParaSalvar.add({
+                          'nome': anexo['nome'],
+                          'url': anexo['url'],
+                          'extensao': anexo['extensao'],
+                        });
+                      }
                     }
 
                     final dadosProfessor = {
@@ -308,17 +374,20 @@ Future<void> _recortarEEnquadrar(String path) async {
                       'telefone': _telefoneCtrl.text,
                       'email': _emailCtrl.text,
                       'fotoUrl': urlFinalFoto,
+                      'anexos': anexosParaSalvar, 
                       'endereco': {
                         'rua': _ruaCtrl.text, 'numero': _numeroCtrl.text,
                         'bairro': _bairroCtrl.text, 'cidade': _cidadeCtrl.text,
                       },
                       'status': _isAtivo ? 'Ativo' : 'Inativo',
-                      'disciplinas': disciplinasParaSalvar, // Salva sem a palavra "OUTROS"
+                      'disciplinas': disciplinasParaSalvar,
                       'dataCadastro': isEdicao ? widget.professorParaEditar!['dataCadastro'] : DateTime.now().toIso8601String(),
                     };
 
                     await ref.read(professorServiceProvider).salvarProfessor(dadosProfessor);
-                    if (!context.mounted) return;
+                    if (!context.mounted) {
+                      return;
+                    }
                     Navigator.of(context, rootNavigator: true).pop(); 
                     Navigator.pop(context); 
                     context.pop(); 
@@ -372,7 +441,6 @@ Future<void> _recortarEEnquadrar(String path) async {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ================= CARD 1: DADOS PESSOAIS E CONTATO =================
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
@@ -384,8 +452,6 @@ Future<void> _recortarEEnquadrar(String path) async {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Row(children: [Icon(Icons.person, color: corPrimaria), const SizedBox(width: 8), const Text('Dados Pessoais e Contato', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))]),
-                              
-                              // EXIBE O ID DO PROFESSOR NO TOPO DO CARD!
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200)),
@@ -397,7 +463,6 @@ Future<void> _recortarEEnquadrar(String path) async {
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // CAIXA DA FOTO 3X4
                               InkWell(
                                 onTap: (_fotoSelecionada == null && _fotoUrlExistente == null) ? _escolherFoto : _abrirOpcoesFoto,
                                 borderRadius: BorderRadius.circular(12),
@@ -410,8 +475,6 @@ Future<void> _recortarEEnquadrar(String path) async {
                                 ),
                               ),
                               const SizedBox(width: 24),
-                              
-                              // CAMPOS DE TEXTO
                               Expanded(
                                 child: Column(
                                   children: [
@@ -443,7 +506,6 @@ Future<void> _recortarEEnquadrar(String path) async {
                   ),
                   const SizedBox(height: 24),
 
-                  // ================= CARD 2: ATUAÇÃO PROFISSIONAL =================
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
@@ -464,7 +526,6 @@ Future<void> _recortarEEnquadrar(String path) async {
                           const Text('Disciplinas Habilitadas (Selecione uma ou mais)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           const SizedBox(height: 16),
                           
-                          // LISTA DE DISCIPLINAS
                           Wrap(
                             spacing: 12,
                             runSpacing: 12,
@@ -489,7 +550,6 @@ Future<void> _recortarEEnquadrar(String path) async {
                             }).toList(),
                           ),
 
-                          // SE SELECIONOU "OUTROS", ABRE O CAMPO DE TEXTO AQUI
                           if (_disciplinasSelecionadas.contains('OUTROS')) ...[
                             const SizedBox(height: 24),
                             Container(
@@ -501,12 +561,7 @@ Future<void> _recortarEEnquadrar(String path) async {
                                     child: TextFormField(
                                       controller: _outraDisciplinaCtrl,
                                       inputFormatters: [_upperCase],
-                                      decoration: const InputDecoration(
-                                        labelText: 'Qual outra disciplina quer adicionar?',
-                                        filled: true,
-                                        fillColor: Colors.white,
-                                        border: OutlineInputBorder(),
-                                      ),
+                                      decoration: const InputDecoration(labelText: 'Qual outra disciplina quer adicionar?', filled: true, fillColor: Colors.white, border: OutlineInputBorder()),
                                       onFieldSubmitted: (v) => _adicionarDisciplinaCustomizada(),
                                     ),
                                   ),
@@ -527,7 +582,83 @@ Future<void> _recortarEEnquadrar(String path) async {
                   ),
                   const SizedBox(height: 24),
 
-                  // ================= CARD 3: ENDEREÇO =================
+                  Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Row(children: [Icon(Icons.folder_shared_rounded, color: Colors.deepPurple), SizedBox(width: 8), Text('Documentos e Certificados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.deepPurple))]),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
+                                onPressed: _escolherAnexos,
+                                icon: const Icon(Icons.upload_file_rounded),
+                                label: const Text('Adicionar Arquivo'),
+                              )
+                            ],
+                          ),
+                          const Divider(height: 32),
+                          if (_anexos.isEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(32),
+                              decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid)),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.cloud_upload_outlined, size: 48, color: Colors.grey.shade400),
+                                  const SizedBox(height: 16),
+                                  Text('Nenhum documento anexado.', style: TextStyle(color: Colors.grey.shade600)),
+                                  const Text('Clique no botão acima para enviar PDFs, fotos ou certificados.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                ],
+                              ),
+                            )
+                          else
+                            ListView.separated(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _anexos.length,
+                              separatorBuilder: (ctx, index) => const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final anexo = _anexos[index];
+                                final isPDF = anexo['extensao'] == 'pdf';
+                                final isSalvo = anexo['url'] != null;
+
+                                return Container(
+                                  decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                                  child: ListTile(
+                                    leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue, size: 32),
+                                    title: Text(anexo['nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    subtitle: Text(isSalvo ? 'Salvo nas nuvens' : 'Pronto para enviar (Aguardando Salvar Cadastro)', style: TextStyle(color: isSalvo ? Colors.green : Colors.orange, fontSize: 12)),
+                                    trailing: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (isSalvo)
+                                          IconButton(
+                                            icon: const Icon(Icons.download_rounded, color: Colors.blue),
+                                            tooltip: 'Baixar / Visualizar Arquivo',
+                                            onPressed: () => _abrirAnexoUrl(anexo['url']),
+                                          ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+                                          tooltip: 'Remover Anexo',
+                                          onPressed: () => _removerAnexo(index),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
