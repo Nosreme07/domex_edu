@@ -111,6 +111,56 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
     showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16), child: Stack(alignment: Alignment.center, children: [InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))), Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx)))])));
   }
 
+  // === NOVA FUNÇÃO PARA EXIBIR OS ANEXOS ===
+  void _mostrarAnexosDialog(BuildContext context, List anexos) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.folder_shared_rounded, color: Colors.deepPurple),
+              SizedBox(width: 8),
+              Text('Documentos Anexados', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+            ],
+          ),
+          content: SizedBox(
+            width: 450,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: anexos.length,
+              separatorBuilder: (_, __) => const Divider(),
+              itemBuilder: (context, index) {
+                final anexo = anexos[index];
+                final isPDF = anexo['extensao'] == 'pdf';
+                return ListTile(
+                  leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue, size: 32),
+                  title: Text(anexo['nome'] ?? 'Documento', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.open_in_new_rounded, color: Colors.blue),
+                    tooltip: 'Visualizar / Baixar',
+                    onPressed: () async {
+                      final url = anexo['url'];
+                      if (url != null && await canLaunchUrl(Uri.parse(url))) {
+                        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                      } else {
+                        if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Arquivo ainda não sincronizado ou inválido.')));
+                      }
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar', style: TextStyle(color: Colors.grey))),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _gerarEImprimirPdf(Map<String, dynamic> aluno) async {
     final doc = pw.Document();
     pw.ImageProvider? fotoAluno;
@@ -161,7 +211,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pdfBloco('DADOS PESSOAIS E ACADÊMICOS', pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Container(width: 80, height: 100, decoration: pw.BoxDecoration(color: PdfColors.grey200, border: pw.Border.all(color: PdfColors.grey400)), child: fotoAluno != null ? pw.Image(fotoAluno, fit: pw.BoxFit.cover) : pw.Center(child: pw.Text('Sem Foto', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)))), pw.SizedBox(width: 12), pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pdfLinha('Nome', aluno['nome']), pw.Row(children: [ pw.Expanded(child: pdfLinha('Matrícula', aluno['matricula'])), pw.Expanded(child: pdfLinha('R.A.', aluno['ra'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Nascimento', aluno['dataNascimento'])), pw.Expanded(child: pdfLinha('Sexo', aluno['sexo'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Celular', aluno['telefone'])), pw.Expanded(child: pdfLinha('CPF', aluno['cpf'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('RG', rgFormatado)), pw.Expanded(child: pdfLinha('Naturalidade', natFormatada)) ]), pw.SizedBox(height: 4), pw.Divider(thickness: 0.5, color: PdfColors.grey300), pw.SizedBox(height: 4), pw.Row(children: [ pw.Expanded(child: pdfLinha('Turma', aluno['turma'])), pw.Expanded(child: pdfLinha('Irmão na Escola', aluno['temIrmao'] == true ? 'SIM - ${aluno['irmaoSelecionado']}' : 'NÃO')) ])]))])),
+                        pdfBloco('DADOS PESSOAIS E ACADÊMICOS', pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Container(width: 80, height: 100, decoration: pw.BoxDecoration(color: PdfColors.grey200, border: pw.Border.all(color: PdfColors.grey400)), child: fotoAluno != null ? pw.Image(fotoAluno, fit: pw.BoxFit.cover) : pw.Center(child: pw.Text('Sem Foto', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)))), pw.SizedBox(width: 12), pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pdfLinha('Nome', aluno['nome']), pw.Row(children: [ pw.Expanded(child: pdfLinha('Matrícula', aluno['matricula'])), pw.Expanded(child: pdfLinha('R.A.', aluno['ra'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Nascimento', aluno['dataNascimento'])), pw.Expanded(child: pdfLinha('Sexo', aluno['sexo'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Celular', aluno['telefone'])), pw.Expanded(child: pdfLinha('CPF', aluno['cpf'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('RG', rgFormatado)), pw.Expanded(child: pdfLinha('Naturalidade', natFormatada)) ]), pw.SizedBox(height: 4), pw.Divider(thickness: 0.5, color: PdfColors.grey300), pw.SizedBox(height: 4), pw.Row(children: [ pw.Expanded(child: pdfLinha('Turma', aluno['turma'])), pw.Expanded(child: pdfLinha('Irmão na Escola', aluno['temIrmao'] == true ? 'SIM - ${aluno['irmaoSelecionado'] ?? 'Ver Ficha'}' : 'NÃO')) ])]))])),
                         pdfBloco('ENDEREÇO', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Row(children: [ pw.Expanded(flex: 3, child: pdfLinha('Logradouro', endLogradouro)), pw.Expanded(flex: 2, child: pdfLinha('Bairro', end['bairro'])) ]), pw.Row(children: [ pw.Expanded(flex: 3, child: pdfLinha('Cidade/UF', endCidade)), pw.Expanded(flex: 2, child: pdfLinha('Referência', end['referencia'])) ])])),
                         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Expanded(child: pdfBloco('RESPONSÁVEIS', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [if (responsaveis.isNotEmpty) ...responsaveis.map((r) => pw.Padding(padding: const pw.EdgeInsets.only(bottom: 6), child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pdfLinha('Nome', r['nome']), pw.Row(children: [ pw.Expanded(child: pdfLinha('CPF', r['cpf'])), pw.Expanded(child: pdfLinha('Tel', r['telefone'])) ])]))), pdfLinha('Autoriza sair sozinho', aluno['autorizaSairSo'] == true ? 'SIM' : 'NÃO')]))), pw.SizedBox(width: 12), pw.Expanded(child: pdfBloco('AUTORIZADOS A BUSCAR', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [if (autorizados.isNotEmpty) ...autorizados.map((p) => pdfLinha('Nome', '${p['nome']} (Tel: ${p['telefone']})')) else pdfLinha('Autorizados', 'Nenhum cadastrado')])))]),
                         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Expanded(child: pdfBloco('INFORMAÇÕES MÉDICAS', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Row(children: [ pw.Expanded(child: pdfLinha('Sangue', med['tipoSanguineo'])), pw.Expanded(child: pdfLinha('Problema', med['temProblema'] == true ? med['problema'] : 'NÃO')) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Remédio', med['tomaRemedio'] == true ? med['remedio'] : 'NÃO')), pw.Expanded(child: pdfLinha('Alergia', med['temAlergia'] == true ? med['alergia'] : 'NÃO')) ]), pdfLinha('Observações', med['observacoes'])]))), pw.SizedBox(width: 12), pw.Expanded(child: pdfBloco('CONTATOS DE EMERGÊNCIA', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [if (emergencia.isNotEmpty) ...emergencia.map((e) => pdfLinha('Nome', '${e['nome']} (Tel: ${e['telefone']})')) else pdfLinha('Contatos', 'Nenhum cadastrado')])))]),
@@ -182,6 +232,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
   Widget _buildSecao(IconData icone, String titulo, Color cor) {
     return Padding(padding: const EdgeInsets.only(bottom: 12.0), child: Row(children: [Icon(icone, size: 20, color: cor), const SizedBox(width: 8), Text(titulo, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: cor))]));
   }
+  
   Widget _buildLinha(String label, dynamic valorRaw) {
     final valor = (valorRaw?.toString() ?? '').trim();
     return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)), TextSpan(text: valor.isEmpty ? 'Não informado' : valor)])));
@@ -210,6 +261,10 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
 
   void _abrirFichaAluno(BuildContext context, Map<String, dynamic> aluno) {
     final corPrimaria = Theme.of(context).primaryColor;
+    
+    // Captura a lista de anexos
+    final anexos = aluno['anexos'] as List? ?? [];
+
     showDialog(
       context: context,
       builder: (context) {
@@ -224,6 +279,24 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
                 InkWell(onTap: aluno['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, aluno['fotoUrl']) : null, child: CircleAvatar(radius: 32, backgroundColor: Colors.white, backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null, child: aluno['fotoUrl'] == null ? Icon(Icons.person, size: 32, color: corPrimaria) : null)),
                 const SizedBox(width: 16),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(aluno['nome'] ?? 'Aluno', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)), const SizedBox(height: 4), Text('Matrícula: ${aluno['matricula']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14))])),
+                
+                // === BOTÃO DOS ARQUIVOS ANEXADOS ===
+                if (anexos.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 12.0),
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple.shade50,
+                        foregroundColor: Colors.deepPurple,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      ),
+                      icon: const Icon(Icons.folder_open_rounded, size: 20),
+                      label: Text('${anexos.length} Anexos', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () => _mostrarAnexosDialog(context, anexos),
+                    ),
+                  ),
+
                 IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))
               ],
             ),
@@ -240,7 +313,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildSecao(Icons.person_rounded, 'Dados Pessoais', corPrimaria), _buildLinha('R.A.', aluno['ra']), _buildLinha('Nascimento', aluno['dataNascimento']), _buildLinha('Sexo', aluno['sexo']), _buildLinhaTelefone('Celular', aluno['telefone']), _buildLinha('CPF', aluno['cpf']), _buildLinha('RG', '${aluno['rg'] ?? ''} ${aluno['orgaoExpedidor'] != null && aluno['orgaoExpedidor'].toString().isNotEmpty ? '(${aluno['orgaoExpedidor']})' : ''}'), _buildLinha('Naturalidade', '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}')])),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildSecao(Icons.school_rounded, 'Acadêmico', corPrimaria), _buildLinha('Turma', aluno['turma']), _buildLinha('Status', aluno['status']), _buildLinha('Irmão(ã)', aluno['temIrmao'] == true ? 'SIM - ${aluno['irmaoSelecionado']}' : 'NÃO')])),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildSecao(Icons.school_rounded, 'Acadêmico', corPrimaria), _buildLinha('Turma', aluno['turma']), _buildLinha('Status', aluno['status']), _buildLinha('Irmão(ã)', aluno['temIrmao'] == true ? 'SIM (${(aluno['irmaosVinculados'] as List? ?? []).length})' : 'NÃO')])),
                       ],
                     ),
                     const Divider(height: 32),
