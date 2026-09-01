@@ -1,3 +1,5 @@
+import 'package:domex_edu/modulos/admin/apresentacao/estado/responsavel_provider.dart';
+import 'package:domex_edu/modulos/admin/apresentacao/estado/secretaria_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,17 +29,24 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
     final corPrimaria = Theme.of(context).primaryColor;
 
     return DefaultTabController(
-      length: 4, 
+      length: 6, // <-- Alterado para 6 abas
       initialIndex: widget.abaInicial,
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.white, foregroundColor: Colors.black87, elevation: 1,
           title: const Text('Central de Cadastros', style: TextStyle(fontWeight: FontWeight.bold)),
           bottom: TabBar(
-            labelColor: corPrimaria, unselectedLabelColor: Colors.grey, indicatorColor: corPrimaria, indicatorWeight: 3,
+            labelColor: corPrimaria, 
+            unselectedLabelColor: Colors.grey, 
+            indicatorColor: corPrimaria, 
+            indicatorWeight: 3,
+            isScrollable: true, // Adicionado para telas menores não espremerem os textos
+            tabAlignment: TabAlignment.start,
             tabs: const [
               Tab(icon: Icon(Icons.school_rounded), text: 'Alunos'),
+              Tab(icon: Icon(Icons.family_restroom_rounded), text: 'Responsáveis'), // NOVA ABA
               Tab(icon: Icon(Icons.assignment_ind_rounded), text: 'Professores'),
+              Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretária'), // NOVA ABA
               Tab(icon: Icon(Icons.meeting_room_rounded), text: 'Turmas'),
               Tab(icon: Icon(Icons.admin_panel_settings_rounded), text: 'Usuários'),
             ],
@@ -46,7 +55,9 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
         body: const TabBarView(
           children: [
             _GestaoAlunosAba(),
+            _GestaoResponsaveisAba(), // NOVO COMPONENTE
             _GestaoProfessoresAba(),
+            _GestaoSecretariaAba(), // NOVO COMPONENTE
             _GestaoTurmasAba(),
             AdminUsuariosFormTela(),
           ],
@@ -684,7 +695,6 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> {
                                 const SizedBox(width: 24),
                                 Row(
                                   children: [
-                                    // AQUI ESTÁ O BOTÃO ATUALIZADO PARA ABRIR O NOVO PAINEL DA TURMA
                                     IconButton(
                                       icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), 
                                       tooltip: 'Painel da Turma', 
@@ -704,6 +714,528 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 4. COMPONENTE DA ABA DE RESPONSÁVEIS
+// ============================================================================
+class _GestaoResponsaveisAba extends ConsumerStatefulWidget {
+  const _GestaoResponsaveisAba();
+  @override
+  ConsumerState<_GestaoResponsaveisAba> createState() => _GestaoResponsaveisAbaState();
+}
+
+class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> {
+  String _termoBusca = '';
+  bool _sincronizando = false;
+
+  void _confirmarExclusao(BuildContext context, Map<String, dynamic> resp) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Responsável', style: TextStyle(color: Colors.red))]),
+          content: Text('Deseja excluir o registro de ${resp['nome']}?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () async {
+                try {
+                  await ref.read(responsavelServiceProvider).excluirResponsavel(resp['id']);
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registro excluído.'), backgroundColor: Colors.green));
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                }
+              },
+              child: const Text('Excluir', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _mostrarFotoAmpliada(BuildContext context, String url) {
+    showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16), child: Stack(alignment: Alignment.center, children: [InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))), Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx)))])));
+  }
+
+  void _abrirFichaResponsavel(BuildContext context, Map<String, dynamic> resp) {
+    final corPrimaria = Theme.of(context).primaryColor;
+    final alunosVinculados = resp['alunosVinculados'] as List? ?? [];
+    
+    Widget buildLinha(String label, dynamic valorRaw) {
+      final valor = (valorRaw?.toString() ?? '').trim();
+      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)), TextSpan(text: valor.isEmpty ? 'Não informado' : valor)])));
+    }
+    
+    Widget buildLinhaContato(String label, dynamic valorRaw) {
+      final telefone = (valorRaw?.toString() ?? '').trim();
+      final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
+      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)), Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)), if (numeroLimpo.length >= 10) ...[const SizedBox(width: 8), Tooltip(message: 'Abrir WhatsApp', child: InkWell(onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')), child: Image.asset('assets/whatsapp.png', width: 18, height: 18))), const SizedBox(width: 12), Tooltip(message: 'Ligar', child: InkWell(onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')), child: const Icon(Icons.phone, color: Colors.blue, size: 18)))]]));
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.all(0),
+          title: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: corPrimaria.withAlpha(13), borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
+            child: Row(
+              children: [
+                InkWell(onTap: resp['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, resp['fotoUrl']) : null, borderRadius: BorderRadius.circular(32), child: CircleAvatar(radius: 32, backgroundColor: Colors.white, backgroundImage: resp['fotoUrl'] != null ? NetworkImage(resp['fotoUrl']) : null, child: resp['fotoUrl'] == null ? Icon(Icons.family_restroom, size: 32, color: corPrimaria) : null)),
+                const SizedBox(width: 16),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(resp['nome'] ?? 'Responsável', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)), const SizedBox(height: 4), Text('ID: ${resp['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14))])),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))
+              ],
+            ),
+          ),
+          content: SizedBox(
+            width: 700,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start, 
+                          children: [
+                            const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), 
+                            const Divider(), 
+                            buildLinha('CPF', resp['cpf']), 
+                            buildLinha('Nascimento', resp['dataNascimento']), 
+                            buildLinhaContato('Celular', resp['telefone']), 
+                            buildLinha('E-mail', resp['email'])
+                          ]
+                        )
+                      ),
+                      const SizedBox(width: 24),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start, 
+                          children: [
+                            const Text('VÍNCULO ACADÊMICO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), 
+                            const Divider(), 
+                            if (alunosVinculados.isEmpty) 
+                              const Text('Nenhum aluno vinculado', style: TextStyle(color: Colors.grey))
+                            else 
+                              ...alunosVinculados.map((a) => Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.school_rounded, size: 18, color: Colors.blue),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(a.toString(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                                  ],
+                                ),
+                              )),
+                            const SizedBox(height: 16),
+                            const Text('INFORMAÇÕES', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), 
+                            const Divider(), 
+                            buildLinha('Status', resp['status'])
+                          ]
+                        )
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                  const Divider(),
+                  buildLinha('Logradouro', '${resp['endereco']?['rua'] ?? ''}, Nº ${resp['endereco']?['numero'] ?? ''}'),
+                  buildLinha('Bairro/Cidade', '${resp['endereco']?['bairro'] ?? ''} - ${resp['endereco']?['cidade'] ?? ''}'),
+                ],
+              ),
+            ),
+          ),
+          actionsPadding: const EdgeInsets.all(24),
+          actions: [
+            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)), onPressed: () => Navigator.pop(context), child: const Text('Fechar Ficha'))
+          ],
+        );
+      },
+    );
+  }
+
+// === FUNÇÃO DE MIGRAÇÃO MÁGICA TURBINADA (Identifica irmãos) ===
+  Future<void> _importarResponsaveisDosAlunos() async {
+    setState(() => _sincronizando = true);
+    try {
+      final alunos = ref.read(alunosStreamProvider).value ?? [];
+      // Usamos List.from para poder modificar a lista local durante a varredura
+      final responsaveisExistentes = List<Map<String, dynamic>>.from(ref.read(responsavelStreamProvider).value ?? []);
+      final servico = ref.read(responsavelServiceProvider);
+
+      int importados = 0;
+      int atualizados = 0;
+
+      for (var aluno in alunos) {
+        final matriculaAluno = aluno['matricula']?.toString() ?? '';
+        final nomeAluno = aluno['nome']?.toString() ?? '';
+        
+        if (matriculaAluno.isEmpty) continue; 
+
+        final listaResponsaveisFicha = aluno['responsaveis'] as List? ?? [];
+        int indexParentesco = 1; 
+
+        for (var resp in listaResponsaveisFicha) {
+          final cpf = (resp['cpf'] ?? '').toString().trim();
+          final nome = (resp['nome'] ?? '').toString().trim().toUpperCase();
+
+          if (nome.isEmpty) continue; 
+
+          // Em vez de só perguntar se existe, procuramos QUAL é a posição dele na lista
+          int indexExistente = responsaveisExistentes.indexWhere((existente) {
+            final cpfExistente = (existente['cpf'] ?? '').toString().trim();
+            final nomeExistente = (existente['nome'] ?? '').toString().trim().toUpperCase();
+            
+            if (cpf.isNotEmpty && cpfExistente == cpf) return true;
+            if (nomeExistente == nome) return true;
+            return false;
+          });
+
+          final alunoVinculoStr = '${nomeAluno.toUpperCase()} ($matriculaAluno)';
+          final alunoVinculoRaw = {'nome': nomeAluno, 'matricula': matriculaAluno};
+
+          if (indexExistente == -1) {
+            // CENÁRIO 1: RESPONSÁVEL NÃO EXISTE (Cria um novo)
+            String newId = 'RESP-$matriculaAluno';
+            if (indexParentesco > 1) newId = 'RESP-$matriculaAluno-$indexParentesco';
+            
+            final novoResponsavel = {
+              'id': newId,
+              'nome': nome,
+              'cpf': cpf,
+              'telefone': resp['telefone'] ?? '',
+              'email': resp['email'] ?? '',
+              'status': 'Ativo', 
+              'dataCadastro': DateTime.now().toIso8601String(),
+              'alunosVinculados': [alunoVinculoStr],
+              'alunosVinculadosRaw': [alunoVinculoRaw],
+            };
+
+            await servico.salvarResponsavel(novoResponsavel);
+            responsaveisExistentes.add(novoResponsavel); 
+            importados++;
+          } else {
+            // CENÁRIO 2: RESPONSÁVEL JÁ EXISTE (Verifica se é irmão e adiciona)
+            var responsavelEncontrado = Map<String, dynamic>.from(responsaveisExistentes[indexExistente]);
+            
+            List<String> vinculosAtuais = List<String>.from(responsavelEncontrado['alunosVinculados'] ?? []);
+            List<dynamic> vinculosRawAtuais = List<dynamic>.from(responsavelEncontrado['alunosVinculadosRaw'] ?? []);
+
+            // Se o aluno atual ainda NÃO estiver na ficha desse pai/mãe, nós adicionamos!
+            if (!vinculosAtuais.contains(alunoVinculoStr)) {
+              vinculosAtuais.add(alunoVinculoStr);
+              vinculosRawAtuais.add(alunoVinculoRaw);
+
+              responsavelEncontrado['alunosVinculados'] = vinculosAtuais;
+              responsavelEncontrado['alunosVinculadosRaw'] = vinculosRawAtuais;
+
+              await servico.salvarResponsavel(responsavelEncontrado); // Atualiza no banco
+              responsaveisExistentes[indexExistente] = responsavelEncontrado; // Atualiza na lista local
+              atualizados++;
+            }
+          }
+          indexParentesco++;
+        }
+      }
+
+      if (mounted) {
+        if (importados > 0 || atualizados > 0) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$importados novos e $atualizados vínculos de irmãos atualizados!'), backgroundColor: Colors.green));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Todos os responsáveis já estavam 100% sincronizados!'), backgroundColor: Colors.blue));
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao importar: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _sincronizando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final estadoResponsaveis = ref.watch(responsavelStreamProvider);
+    final corPrimaria = Theme.of(context).primaryColor;
+
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Responsáveis Financeiros/Acadêmicos', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              SizedBox(width: 200, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
+              const SizedBox(width: 16),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade600, foregroundColor: Colors.white),
+                onPressed: _sincronizando ? null : _importarResponsaveisDosAlunos, 
+                icon: _sincronizando ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.sync_rounded), 
+                label: const Text('Puxar dos Alunos')
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/responsavel/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Adicionar Responsável'))
+            ],
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: estadoResponsaveis.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (erro, stack) => Center(child: Text('Erro: $erro')),
+              data: (lista) {
+                final filtrados = lista.where((p) => p['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
+                
+                if (filtrados.isEmpty) return const Center(child: Text('Nenhum responsável encontrado. Clique em "Puxar dos Alunos".'));
+
+                return ListView.separated(
+                  itemCount: filtrados.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final resp = filtrados[index];
+                    final inativo = resp['status'] != 'Ativo';
+                    
+                    // Lógica para puxar e formatar os alunos na visualização do Card
+                    final alunosVinculados = (resp['alunosVinculados'] as List? ?? []).join(' | ');
+
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+                        child: Row(
+                          children: [
+                            CircleAvatar(radius: 24, backgroundColor: Colors.grey.shade200, backgroundImage: resp['fotoUrl'] != null ? NetworkImage(resp['fotoUrl']) : null, child: resp['fotoUrl'] == null ? const Icon(Icons.family_restroom, color: Colors.grey) : null),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              flex: 3, 
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start, 
+                                children: [
+                                  Text(resp['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
+                                  const SizedBox(height: 4), 
+                                  Text('ID: ${resp['id']}  |  CPF: ${resp['cpf']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                  // NOVA LINHA MOSTRANDO OS ALUNOS NO CARD
+                                  if (alunosVinculados.isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Text('Alunos: $alunosVinculados', style: TextStyle(color: Colors.blue.shade700, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ]
+                                ]
+                              )
+                            ),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)), child: Text(resp['status'] ?? 'Ativo', style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12))),
+                            const SizedBox(width: 24),
+                            Row(
+                              children: [
+                                IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaResponsavel(context, resp)),
+                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => context.push('/admin/cadastros/responsavel/novo', extra: resp)),
+                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, resp)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 5. COMPONENTE DA ABA DE SECRETÁRIA
+// ============================================================================
+class _GestaoSecretariaAba extends ConsumerStatefulWidget {
+  const _GestaoSecretariaAba();
+  @override
+  ConsumerState<_GestaoSecretariaAba> createState() => _GestaoSecretariaAbaState();
+}
+
+class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> {
+  String _termoBusca = '';
+
+  void _confirmarExclusao(BuildContext context, Map<String, dynamic> membro) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Colaborador', style: TextStyle(color: Colors.red))]),
+          content: Text('Deseja excluir o registro de ${membro['nome']}?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () async {
+                try {
+                  await ref.read(secretariaServiceProvider).excluirSecretaria(membro['id']);
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registro excluído.'), backgroundColor: Colors.green));
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                }
+              },
+              child: const Text('Excluir', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // === INÍCIO DAS NOVAS FUNÇÕES PARA O OLHINHO ===
+  void _mostrarFotoAmpliada(BuildContext context, String url) {
+    showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16), child: Stack(alignment: Alignment.center, children: [InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))), Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx)))])));
+  }
+
+  void _abrirFichaSecretaria(BuildContext context, Map<String, dynamic> mem) {
+    final corPrimaria = Theme.of(context).primaryColor;
+    
+    Widget buildLinha(String label, dynamic valorRaw) {
+      final valor = (valorRaw?.toString() ?? '').trim();
+      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)), TextSpan(text: valor.isEmpty ? 'Não informado' : valor)])));
+    }
+    
+    Widget buildLinhaContato(String label, dynamic valorRaw) {
+      final telefone = (valorRaw?.toString() ?? '').trim();
+      final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
+      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)), Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)), if (numeroLimpo.length >= 10) ...[const SizedBox(width: 8), Tooltip(message: 'Abrir WhatsApp', child: InkWell(onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')), child: Image.asset('assets/whatsapp.png', width: 18, height: 18))), const SizedBox(width: 12), Tooltip(message: 'Ligar', child: InkWell(onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')), child: const Icon(Icons.phone, color: Colors.blue, size: 18)))]]));
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.all(0),
+          title: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: corPrimaria.withAlpha(13), borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
+            child: Row(
+              children: [
+                InkWell(onTap: mem['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, mem['fotoUrl']) : null, borderRadius: BorderRadius.circular(32), child: CircleAvatar(radius: 32, backgroundColor: Colors.white, backgroundImage: mem['fotoUrl'] != null ? NetworkImage(mem['fotoUrl']) : null, child: mem['fotoUrl'] == null ? Icon(Icons.support_agent_rounded, size: 32, color: corPrimaria) : null)),
+                const SizedBox(width: 16),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(mem['nome'] ?? 'Colaborador', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)), const SizedBox(height: 4), Text('ID: ${mem['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14))])),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))
+              ],
+            ),
+          ),
+          content: SizedBox(
+            width: 600,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('CPF', mem['cpf']), buildLinha('Nascimento', mem['dataNascimento']), buildLinhaContato('Celular', mem['telefone']), buildLinha('E-mail', mem['email'])])),
+                      const SizedBox(width: 24),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('ATUAÇÃO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('Status', mem['status']), const SizedBox(height: 4), buildLinha('Perfil', 'Secretaria Escolar')])),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                  const Divider(),
+                  buildLinha('Logradouro', '${mem['endereco']?['rua'] ?? ''}, Nº ${mem['endereco']?['numero'] ?? ''}'),
+                  buildLinha('Bairro/Cidade', '${mem['endereco']?['bairro'] ?? ''} - ${mem['endereco']?['cidade'] ?? ''}'),
+                ],
+              ),
+            ),
+          ),
+          actionsPadding: const EdgeInsets.all(24),
+          actions: [
+            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)), onPressed: () => Navigator.pop(context), child: const Text('Fechar Ficha'))
+          ],
+        );
+      },
+    );
+  }
+  // === FIM DAS NOVAS FUNÇÕES ===
+
+  @override
+  Widget build(BuildContext context) {
+    final estadoSecretaria = ref.watch(secretariaStreamProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Equipe da Secretaria', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              SizedBox(width: 250, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar colaborador...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
+              const SizedBox(width: 16),
+              ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/secretaria/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Adicionar Equipe'))
+            ],
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: estadoSecretaria.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (erro, stack) => Center(child: Text('Erro: $erro')),
+              data: (equipe) {
+                final filtrados = equipe.where((p) => p['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
+                
+                if (filtrados.isEmpty) return const Center(child: Text('Nenhum colaborador encontrado.'));
+
+                return ListView.separated(
+                  itemCount: filtrados.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final mem = filtrados[index];
+                    final inativo = mem['status'] != 'Ativo';
+
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                        child: Row(
+                          children: [
+                            CircleAvatar(radius: 24, backgroundColor: Colors.grey.shade200, backgroundImage: mem['fotoUrl'] != null ? NetworkImage(mem['fotoUrl']) : null, child: mem['fotoUrl'] == null ? const Icon(Icons.support_agent_rounded, color: Colors.grey) : null),
+                            const SizedBox(width: 16),
+                            Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(mem['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('ID: ${mem['id']}  |  Tel: ${mem['telefone']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)), child: Text(mem['status'] ?? 'Ativo', style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12))),
+                            const SizedBox(width: 24),
+                            Row(
+                              children: [
+                                // AQUI ESTÁ O OLHINHO!
+                                IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaSecretaria(context, mem)),
+                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => context.push('/admin/cadastros/secretaria/novo', extra: mem)),
+                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, mem)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

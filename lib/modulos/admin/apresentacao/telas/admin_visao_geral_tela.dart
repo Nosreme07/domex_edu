@@ -113,7 +113,7 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                     cor: Colors.green,
                     estado: estadoProfs,
                     calculo: (dados) => dados.where((p) => p['status'] == 'Ativo').length.toString(),
-                    onTap: () => context.go('/admin/cadastros', extra: 1),
+                    onTap: () => context.go('/admin/cadastros', extra: 2),
                   ),
                 ),
                 const SizedBox(width: 24),
@@ -125,7 +125,7 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                     estado: estadoTurmas,
                     // Filtra as turmas especificamente pelo ano selecionado no topo!
                     calculo: (dados) => dados.where((t) => t['anoLetivo'] == _anoSelecionado && t['status'] != 'Inativa').length.toString(),
-                    onTap: () => context.go('/admin/cadastros', extra: 2),
+                    onTap: () => context.go('/admin/cadastros', extra: 4),
                   ),
                 ),
               ],

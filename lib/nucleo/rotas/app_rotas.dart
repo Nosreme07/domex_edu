@@ -18,7 +18,9 @@ import '../layout/admin_layout.dart';
 import '../../modulos/admin/apresentacao/telas/admin_visao_geral_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_cadastros_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_aluno_form_tela.dart'; 
+import '../../modulos/admin/apresentacao/telas/admin_responsavel_form_tela.dart'; // <-- NOVO IMPORT DE RESPONSÁVEL
 import '../../modulos/admin/apresentacao/telas/admin_professor_form_tela.dart'; 
+import '../../modulos/admin/apresentacao/telas/admin_secretaria_form_tela.dart'; 
 import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_configuracoes_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart'; 
@@ -112,7 +114,7 @@ class AppRotas {
           GoRoute(
             path: '/admin/cadastros',
             builder: (context, state) {
-              // Lê o parâmetro "extra" para saber qual aba abrir (0=Alunos, 1=Profs, 2=Turmas, 3=Usuários)
+              // Lê o parâmetro "extra" para saber qual aba abrir
               final aba = state.extra as int? ?? 0; 
               // O ValueKey força a reconstrução do widget se a aba mudar
               return AdminCadastrosTela(key: ValueKey(aba), abaInicial: aba);
@@ -120,12 +122,20 @@ class AppRotas {
           ),
           
           // --- Formulários de Cadastro / Edição ---
-          // Recebem os dados via `state.extra` caso seja uma edição
           GoRoute(
             path: '/admin/cadastros/aluno/novo',
             builder: (context, state) {
               final alunoParaEditar = state.extra as Map<String, dynamic>?;
               return AdminAlunoFormTela(alunoParaEditar: alunoParaEditar);
+            },
+          ),
+
+          // ---> NOVA ROTA DO RESPONSÁVEL <---
+          GoRoute(
+            path: '/admin/cadastros/responsavel/novo',
+            builder: (context, state) {
+              final responsavelParaEditar = state.extra as Map<String, dynamic>?;
+              return AdminResponsavelFormTela(responsavelParaEditar: responsavelParaEditar);
             },
           ),
           
@@ -134,6 +144,14 @@ class AppRotas {
             builder: (context, state) {
               final professorParaEditar = state.extra as Map<String, dynamic>?;
               return AdminProfessorFormTela(professorParaEditar: professorParaEditar);
+            },
+          ),
+
+          GoRoute(
+            path: '/admin/cadastros/secretaria/novo',
+            builder: (context, state) {
+              final membroParaEditar = state.extra as Map<String, dynamic>?;
+              return AdminSecretariaFormTela(membroParaEditar: membroParaEditar);
             },
           ),
 

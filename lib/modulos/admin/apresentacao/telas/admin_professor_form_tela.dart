@@ -13,10 +13,20 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../estado/professor_provider.dart';
 
+// ============================================================================
+// FORMATADORES DE TEXTO (MAIÚSCULO E MINÚSCULO)
+// ============================================================================
 class UpperCaseTextFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
     return TextEditingValue(text: newValue.text.toUpperCase(), selection: newValue.selection);
+  }
+}
+
+class LowerCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return TextEditingValue(text: newValue.text.toLowerCase(), selection: newValue.selection);
   }
 }
 
@@ -31,7 +41,9 @@ class AdminProfessorFormTela extends ConsumerStatefulWidget {
 
 class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela> {
   final _formKey = GlobalKey<FormState>();
+  
   final _upperCase = UpperCaseTextFormatter(); 
+  final _lowerCase = LowerCaseTextFormatter(); // <-- Novo formatador instanciado aqui!
 
   final _cpfMask = MaskTextInputFormatter(mask: '###.###.###-##', filter: {"#": RegExp(r'[0-9]')});
   final _telMask = MaskTextInputFormatter(mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
@@ -492,7 +504,19 @@ class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela>
                                         const SizedBox(width: 16),
                                         Expanded(child: TextFormField(controller: _telefoneCtrl, textInputAction: TextInputAction.next, inputFormatters: [_telMask, _upperCase], decoration: const InputDecoration(labelText: 'Telefone/WhatsApp', hintText: '(xx) xxxxx-xxxx', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Obrigatório' : null)),
                                         const SizedBox(width: 16),
-                                        Expanded(flex: 2, child: TextFormField(controller: _emailCtrl, textInputAction: TextInputAction.next, inputFormatters: [_upperCase], decoration: const InputDecoration(labelText: 'E-mail Profissional', border: OutlineInputBorder()), validator: (v) => v!.isEmpty || !v.contains('@') ? 'E-mail inválido' : null)),
+                                        // ==========================================
+                                        // CAMPO DE E-MAIL USANDO O FORMATADOR MINÚSCULO
+                                        // ==========================================
+                                        Expanded(
+                                          flex: 2, 
+                                          child: TextFormField(
+                                            controller: _emailCtrl, 
+                                            textInputAction: TextInputAction.next, 
+                                            inputFormatters: [_lowerCase], // <-- Aqui está a trava visual minúscula!
+                                            decoration: const InputDecoration(labelText: 'E-mail Profissional', border: OutlineInputBorder()), 
+                                            validator: (v) => v!.isEmpty || !v.contains('@') ? 'E-mail inválido' : null
+                                          )
+                                        ),
                                       ],
                                     ),
                                   ],
