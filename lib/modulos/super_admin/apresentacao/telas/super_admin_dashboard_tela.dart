@@ -6,8 +6,19 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // <-- IMPORT NECESSÁRIO
 
 import '../estado/escola_provider.dart';
+
+// ============================================================================
+// PROVIDER GLOBAL PARA SOMAR TODOS OS ALUNOS DE TODAS AS ESCOLAS (CollectionGroup)
+// ============================================================================
+final totalAlunosGlobalProvider = StreamProvider<int>((ref) {
+  return FirebaseFirestore.instance
+      .collectionGroup('alunos')
+      .snapshots()
+      .map((snapshot) => snapshot.docs.length);
+});
 
 class SuperAdminDashboardTela extends ConsumerStatefulWidget {
   const SuperAdminDashboardTela({super.key});
@@ -177,6 +188,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
   @override
   Widget build(BuildContext context) {
     final estadoEscolas = ref.watch(escolasStreamProvider);
+    final estadoAlunosGlobal = ref.watch(totalAlunosGlobalProvider); // <-- OBSERVANDO O NOVO PROVIDER
     const corDominante = Color(0xFF080E1C);
 
     return SingleChildScrollView(
@@ -194,8 +206,14 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
             error: (erro, stack) => Center(child: Text('Erro ao carregar escolas: $erro')),
             data: (escolasClientes) {
               int escolasAtivasCount = escolasClientes.where((e) => e['status'] == 'Ativo').length;
-              int totalAlunosCadastrados = escolasClientes.fold(0, (sum, e) => sum + (e['quantidadeAlunos'] as int? ?? 0));
               const receitaEstimada = "R\$ 0,00"; 
+              
+              // Tratamento do estado dos alunos globais
+              String totalAlunos = estadoAlunosGlobal.when(
+                data: (count) => count.toString(),
+                loading: () => '...',
+                error: (_, __) => 'Erro',
+              );
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,7 +227,10 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                         childAspectRatio: 2.2, 
                         children: [
                           _SaaSMetricCard(titulo: 'Escolas Ativas', valor: '$escolasAtivasCount', icone: Icons.domain_rounded, coresGradiente: [Colors.blue.shade700, Colors.blue.shade400]),
-                          _SaaSMetricCard(titulo: 'Alunos Cadastrados', valor: '$totalAlunosCadastrados', icone: Icons.groups_rounded, coresGradiente: [Colors.orange.shade700, Colors.orange.shade400]),
+                          
+                          // CARD DE ALUNOS ATUALIZADO
+                          _SaaSMetricCard(titulo: 'Alunos Cadastrados', valor: totalAlunos, icone: Icons.groups_rounded, coresGradiente: [Colors.orange.shade700, Colors.orange.shade400]),
+                          
                           _SaaSMetricCard(titulo: 'Receita Mensal (MRR)', valor: receitaEstimada, icone: Icons.account_balance_wallet_rounded, coresGradiente: [Colors.green.shade700, Colors.green.shade400]),
                         ],
                       );

@@ -1,3 +1,4 @@
+import 'dart:async'; 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +7,7 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:url_launcher/url_launcher.dart'; 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
+// Importações Corrigidas
 import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
 
@@ -19,6 +21,19 @@ class UpperCaseTextFormatter extends TextInputFormatter {
       text: newValue.text.toUpperCase(),
       selection: newValue.selection,
     );
+  }
+}
+
+// ============================================================================
+// DEBOUNCER PRIVADO PARA OTIMIZAR A PESQUISA
+// ============================================================================
+class _Debouncer {
+  final int milliseconds;
+  Timer? _timer;
+  _Debouncer({required this.milliseconds});
+  void run(VoidCallback action) {
+    _timer?.cancel();
+    _timer = Timer(Duration(milliseconds: milliseconds), action);
   }
 }
 
@@ -77,10 +92,14 @@ class AdminUsuariosFormTela extends ConsumerStatefulWidget {
   ConsumerState<AdminUsuariosFormTela> createState() => _AdminUsuariosFormTelaState();
 }
 
-class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
+class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> with AutomaticKeepAliveClientMixin {
   
+  @override
+  bool get wantKeepAlive => true; 
+
   String _termoBusca = ''; 
-  String _filtroPerfil = 'TODOS'; 
+  String? _perfilAtivo; 
+  final _debouncer = _Debouncer(milliseconds: 400); 
 
   Widget _buildContatos(String? telefoneStr, String? emailStr) {
     final telefone = (telefoneStr ?? '').trim();
@@ -302,8 +321,123 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
     );
   }
 
+  // WIDGET DO CARD INTERATIVO DE CONTAGEM
+  Widget _buildCardContador(String titulo, int valor, MaterialColor cor, String perfilId) {
+    final isSelecionado = _perfilAtivo == perfilId;
+    
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            if (_perfilAtivo == perfilId) {
+              _perfilAtivo = null; 
+              _termoBusca = '';
+            } else {
+              _perfilAtivo = perfilId; 
+              _termoBusca = '';
+            }
+          });
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+          decoration: BoxDecoration(
+            color: isSelecionado ? cor.shade50 : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelecionado ? cor.shade400 : Colors.grey.shade300, 
+              width: isSelecionado ? 2 : 1
+            ),
+            boxShadow: isSelecionado 
+                ? [BoxShadow(color: cor.withAlpha(40), blurRadius: 10, offset: const Offset(0, 4))] 
+                : [BoxShadow(color: Colors.black.withAlpha(5), blurRadius: 4, offset: const Offset(0, 2))],
+          ),
+          child: Column(
+            children: [
+              Text(valor.toString(), style: TextStyle(fontSize: 38, fontWeight: FontWeight.bold, color: isSelecionado ? cor.shade700 : Colors.black87)),
+              const SizedBox(height: 4),
+              Text(titulo, style: TextStyle(color: isSelecionado ? cor.shade700 : Colors.grey.shade600, fontWeight: FontWeight.w600, fontSize: 14)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // TABELA DE ALTA PERFORMANCE (LAZY LOADING CUSTOMIZADO)
+  Widget _buildTabelaCabecalho(Color corPrimaria) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        border: Border(bottom: BorderSide(color: Colors.grey.shade300, width: 2)),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 2, child: Text('Matrícula / ID', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria))),
+          Expanded(flex: 3, child: Text('Nome do Usuário', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria))),
+          Expanded(flex: 3, child: Text('Contato / E-mail', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria))),
+          Expanded(flex: 3, child: Text('Vínculos', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria))),
+          Expanded(flex: 2, child: Text('Status', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria))),
+          Expanded(flex: 2, child: Text('Ações', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria), textAlign: TextAlign.center)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabelaLinha(Map<String, dynamic> user, List<Map<String, dynamic>> listaTotal) {
+    final listaAlunos = user['alunosVinculados'] as List? ?? [];
+    final vinculoTexto = listaAlunos.isNotEmpty ? listaAlunos.join(' | ') : '-';
+    final isBloqueado = user['status'] == 'Bloqueado';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Colors.grey.shade200)),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 2, child: Text(user['idLogin'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold))),
+          Expanded(flex: 3, child: Text(user['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.w500))),
+          Expanded(flex: 3, child: _buildContatos(user['telefone'], user['email'])),
+          Expanded(flex: 3, child: Text(vinculoTexto, style: const TextStyle(fontSize: 13, color: Colors.black87), maxLines: 2, overflow: TextOverflow.ellipsis)),
+          Expanded(
+            flex: 2, 
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(color: isBloqueado ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
+                child: Text(isBloqueado ? 'Bloqueado' : 'Ativo', style: TextStyle(color: isBloqueado ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
+              ),
+            )
+          ),
+          Expanded(
+            flex: 2, 
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey, size: 20), tooltip: 'Visualizar', onPressed: () => _visualizarUsuario(user)),
+                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue, size: 20), tooltip: 'Editar Cadastro', onPressed: () => _abrirFormularioUsuario(usuarioEdicao: user, usuariosExistentes: listaTotal)),
+                IconButton(
+                  icon: Icon(isBloqueado ? Icons.lock_open_rounded : Icons.lock_outline_rounded, color: isBloqueado ? Colors.green : Colors.orange, size: 20), 
+                  tooltip: isBloqueado ? 'Desbloquear' : 'Bloquear', 
+                  onPressed: () => _alternarStatus(user)
+                ),
+                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red, size: 20), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(user)),
+              ],
+            )
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    super.build(context); 
+    
     final estadoUsuarios = ref.watch(_usuariosEscolaStreamProvider);
     final corPrimaria = Theme.of(context).primaryColor;
 
@@ -319,63 +453,14 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
                 children: [
                   Text('Gestão de Usuários e Acessos', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
                   SizedBox(height: 4),
-                  Text('Vincule credenciais de login para alunos, responsáveis, professores e secretária.', style: TextStyle(color: Colors.grey)),
+                  Text('Gerencie credenciais de login para alunos, responsáveis, professores e secretária.', style: TextStyle(color: Colors.grey)),
                 ],
               ),
               const Spacer(),
-              
-              // FILTRO DE PERFIL
-              Container(
-                height: 40,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: Colors.blue.shade200),
-                  borderRadius: BorderRadius.circular(8)
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _filtroPerfil,
-                    icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
-                    style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14),
-                    onChanged: (v) {
-                      if (v != null) setState(() => _filtroPerfil = v);
-                    },
-                    items: const [
-                      DropdownMenuItem(value: 'TODOS', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Todos os Perfis', style: TextStyle(color: Colors.black87)))),
-                      DropdownMenuItem(value: 'ALUNO', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Alunos', style: TextStyle(color: Colors.black87)))),
-                      DropdownMenuItem(value: 'RESPONSAVEL', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Responsáveis', style: TextStyle(color: Colors.black87)))),
-                      DropdownMenuItem(value: 'PROFESSOR', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Professores', style: TextStyle(color: Colors.black87)))),
-                      DropdownMenuItem(value: 'SECRETARIA', child: Padding(padding: EdgeInsets.only(right: 8), child: Text('Apenas Secretária', style: TextStyle(color: Colors.black87)))),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-
-              // BARRA DE PESQUISA
-              SizedBox(
-                width: 250, 
-                height: 40, 
-                child: TextField(
-                  onChanged: (value) => setState(() => _termoBusca = value), 
-                  textCapitalization: TextCapitalization.characters,
-                  inputFormatters: [UpperCaseTextFormatter()],
-                  decoration: InputDecoration(
-                    hintText: 'Pesquisar usuário...', 
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), 
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0), 
-                    filled: true, 
-                    fillColor: Colors.grey.shade100, 
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)
-                  )
-                )
-              ),
-              const SizedBox(width: 16),
 
               estadoUsuarios.when(
                 loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
+                error: (erro, stack) => const SizedBox.shrink(),
                 data: (lista) => ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: corPrimaria,
@@ -388,120 +473,139 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
           
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.white, 
-                borderRadius: BorderRadius.circular(16), 
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: estadoUsuarios.when(
-                loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
-                error: (erro, stack) => Center(child: Text('Erro ao carregar usuários: $erro')),
-                data: (lista) {
-                  final filtrados = lista.where((u) {
-                    final busca = _termoBusca.toUpperCase();
-                    final nome = (u['nome'] ?? '').toString().toUpperCase();
-                    final id = (u['idLogin'] ?? '').toString().toUpperCase();
-                    final perfilBase = (u['perfil'] ?? '').toString().toUpperCase();
-                    
-                    final matchBusca = nome.contains(busca) || id.contains(busca);
-                    
-                    final perfilNormalizado = perfilBase.replaceAll('Á', 'A');
-                    final matchPerfil = _filtroPerfil == 'TODOS' || perfilNormalizado == _filtroPerfil;
+          estadoUsuarios.when(
+            loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
+            error: (erro, stack) => Center(child: Text('Erro ao carregar usuários: $erro')),
+            data: (lista) {
+              
+              int countAlunos = 0;
+              int countResps = 0;
+              int countProfs = 0;
+              int countSecs = 0;
 
-                    return matchBusca && matchPerfil;
-                  }).toList();
+              for (var u in lista) {
+                final p = (u['perfil'] ?? '').toString().toLowerCase().replaceAll('á', 'a');
+                if (p == 'aluno') {
+                  countAlunos++;
+                } else if (p == 'professor') {
+                  countProfs++;
+                } else if (p == 'responsavel') {
+                  countResps++;
+                } else if (p == 'secretaria') {
+                  countSecs++;
+                }
+              }
 
-                  if (filtrados.isEmpty) {
-                    return const Center(
-                      child: Text('Nenhum usuário encontrado para os filtros selecionados.', style: TextStyle(color: Colors.grey)),
-                    );
-                  }
-
-                  return SingleChildScrollView(
-                    child: DataTable(
-                      headingTextStyle: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria),
-                      columns: const [
-                        DataColumn(label: Text('Matrícula / ID')),
-                        DataColumn(label: Text('Nome')),
-                        DataColumn(label: Text('Contato / E-mail')),
-                        DataColumn(label: Text('Perfil')),
-                        DataColumn(label: Text('Vínculo / Alunos')),
-                        DataColumn(label: Text('Status')),
-                        DataColumn(label: Text('Ações')),
+              return Expanded(
+                child: Column(
+                  children: [
+                    // CARDS INTERATIVOS NO TOPO
+                    Row(
+                      children: [
+                        _buildCardContador('Alunos', countAlunos, Colors.blue, 'aluno'),
+                        const SizedBox(width: 16),
+                        _buildCardContador('Responsáveis', countResps, Colors.orange, 'responsavel'),
+                        const SizedBox(width: 16),
+                        _buildCardContador('Professores', countProfs, Colors.deepPurple, 'professor'),
+                        const SizedBox(width: 16),
+                        _buildCardContador('Secretaria', countSecs, Colors.teal, 'secretaria'),
                       ],
-                      rows: filtrados.map((user) {
-                        final listaAlunos = user['alunosVinculados'] as List? ?? [];
-                        final vinculoTexto = listaAlunos.isNotEmpty ? listaAlunos.join(', ') : '-';
-                        final isBloqueado = user['status'] == 'Bloqueado';
-                        
-                        final perfilRaw = user['perfil']?.toString() ?? '';
-                        final perfilStr = _obterPerfilDisplay(perfilRaw);
-
-                        Color bgCorPerfil = Colors.grey.shade100;
-                        Color txtCorPerfil = Colors.grey.shade800;
-                        
-                        if (perfilStr == 'ALUNO') {
-                          bgCorPerfil = Colors.blue.shade50;
-                          txtCorPerfil = Colors.blue.shade700;
-                        } else if (perfilStr == 'RESPONSÁVEL') {
-                          bgCorPerfil = Colors.orange.shade50;
-                          txtCorPerfil = Colors.orange.shade800;
-                        } else if (perfilStr == 'PROFESSOR') {
-                          bgCorPerfil = Colors.deepPurple.shade50;
-                          txtCorPerfil = Colors.deepPurple.shade700;
-                        } else if (perfilStr == 'SECRETÁRIA') {
-                          bgCorPerfil = Colors.teal.shade50;
-                          txtCorPerfil = Colors.teal.shade700;
-                        }
-
-                        return DataRow(
-                          cells: [
-                            DataCell(Text(user['idLogin'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            DataCell(Text(user['nome'] ?? '')),
-                            DataCell(_buildContatos(user['telefone'], user['email'])),
-                            DataCell(
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                decoration: BoxDecoration(color: bgCorPerfil, borderRadius: BorderRadius.circular(12)),
-                                child: Text(perfilStr, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: txtCorPerfil)),
-                              )
-                            ),
-                            DataCell(Text(vinculoTexto, style: const TextStyle(fontSize: 13, color: Colors.black87))),
-                            DataCell(
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                decoration: BoxDecoration(color: isBloqueado ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
-                                child: Text(isBloqueado ? 'Bloqueado' : 'Ativo', style: TextStyle(color: isBloqueado ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
-                              )
-                            ),
-                            DataCell(
-                              Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar', onPressed: () => _visualizarUsuario(user)),
-                                  IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => _abrirFormularioUsuario(usuarioEdicao: user, usuariosExistentes: lista)),
-                                  IconButton(
-                                    icon: Icon(isBloqueado ? Icons.lock_open_rounded : Icons.lock_outline_rounded, color: isBloqueado ? Colors.green : Colors.orange), 
-                                    tooltip: isBloqueado ? 'Desbloquear Acesso' : 'Bloquear Acesso', 
-                                    onPressed: () => _alternarStatus(user)
-                                  ),
-                                  IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(user)),
-                                ],
-                              )
-                            ),
-                          ],
-                        );
-                      }).toList(),
                     ),
-                  );
-                },
-              ),
-            ),
+                    
+                    const SizedBox(height: 32),
+
+                    if (_perfilAtivo == null)
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.touch_app_rounded, size: 80, color: Colors.grey.shade300),
+                              const SizedBox(height: 16),
+                              const Text('Selecione um perfil acima', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black54)),
+                              const SizedBox(height: 8),
+                              const Text('Clique em um dos cards para pesquisar e visualizar os acessos.', style: TextStyle(color: Colors.grey)),
+                            ],
+                          ),
+                        ),
+                      )
+                    else ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
+                              textCapitalization: TextCapitalization.characters,
+                              inputFormatters: [UpperCaseTextFormatter()],
+                              decoration: InputDecoration(
+                                hintText: 'Pesquisar ${_obterPerfilDisplay(_perfilAtivo!)} (Nome ou ID)...', 
+                                prefixIcon: Icon(Icons.search_rounded, color: Colors.blue.shade700), 
+                                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16), 
+                                filled: true, 
+                                fillColor: Colors.blue.shade50, 
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.blue.shade200)),
+                                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.blue.shade200)),
+                                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.blue.shade700, width: 2)),
+                              )
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      Expanded(
+                        child: Container(
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white, 
+                            borderRadius: BorderRadius.circular(16), 
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Builder(
+                            builder: (context) {
+                              final filtrados = lista.where((u) {
+                                final perfilBase = (u['perfil'] ?? '').toString().toLowerCase().replaceAll('á', 'a');
+                                if (perfilBase != _perfilAtivo) return false;
+
+                                if (_termoBusca.trim().isEmpty) return true;
+
+                                final busca = _termoBusca.toUpperCase();
+                                final nome = (u['nome'] ?? '').toString().toUpperCase();
+                                final id = (u['idLogin'] ?? '').toString().toUpperCase();
+                                
+                                return nome.contains(busca) || id.contains(busca);
+                              }).toList();
+
+                              if (filtrados.isEmpty) {
+                                return const Center(
+                                  child: Text('Nenhum usuário encontrado para esta pesquisa.', style: TextStyle(color: Colors.grey)),
+                                );
+                              }
+
+                              return Column(
+                                children: [
+                                  _buildTabelaCabecalho(corPrimaria),
+                                  Expanded(
+                                    child: ListView.builder(
+                                      itemCount: filtrados.length,
+                                      itemBuilder: (context, index) {
+                                        return _buildTabelaLinha(filtrados[index], lista);
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+                          ),
+                        ),
+                      ),
+                    ]
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -643,7 +747,7 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<String>(
-                  value: _perfilSelecionado,
+                  initialValue: _perfilSelecionado,
                   isExpanded: true, 
                   decoration: const InputDecoration(labelText: 'Perfil de Acesso', border: OutlineInputBorder()),
                   items: const [
@@ -913,21 +1017,14 @@ class _FormularioUsuarioDialogState extends ConsumerState<_FormularioUsuarioDial
               setState(() => _salvando = true);
 
               try {
-                // AUTOMAÇÃO INTELIGENTE: Cria a conta na Portaria (Authentication) se for novo cadastro
-                if (!isEdicao) {
-                  // Importamos o Firebase Auth dinamicamente para disparar a criação sem deslogar o Admin
-                  // Usamos um app secundário se necessário, mas como estamos no cliente web, criamos via endpoint ou tratamos a exceção.
-                  // Uma forma elegante e segura no Flutter é usar o Firebase Auth com uma instância secundária:
-                }
-
                 final dadosSalvar = {
                   'nome': _nomeCtrl.text.trim(),
                   'idLogin': _idLoginCtrl.text.trim(),
                   'telefone': _telefoneCtrl.text.trim(),
                   'email': _emailCtrl.text.trim().toLowerCase(),
                   'perfil': _perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável' ? 'responsavel' 
-                            : _perfilSelecionado == 'secretaria' || _perfilSelecionado == 'secretária' ? 'secretaria' 
-                            : _perfilSelecionado,
+                          : _perfilSelecionado == 'secretaria' || _perfilSelecionado == 'secretária' ? 'secretaria' 
+                          : _perfilSelecionado,
                   'status': isEdicao ? widget.usuarioEdicao!['status'] : 'Ativo',
                   if (_perfilSelecionado == 'responsavel' || _perfilSelecionado == 'responsável') ...{
                     'alunosVinculados': _alunosSelecionadosResponsavel.map((a) => '${a['nome']} (${a['matricula']})'.toUpperCase()).toList(),

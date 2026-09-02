@@ -1,5 +1,4 @@
-import 'package:domex_edu/modulos/admin/apresentacao/estado/responsavel_provider.dart';
-import 'package:domex_edu/modulos/admin/apresentacao/estado/secretaria_provider.dart';
+import 'dart:async'; // Necessário para o Timer do Debouncer
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -9,11 +8,26 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../estado/aluno_provider.dart';
+import '../estado/responsavel_provider.dart';
 import '../estado/professor_provider.dart';
+import '../estado/secretaria_provider.dart';
 import '../estado/turma_provider.dart';
 
 // IMPORTAÇÃO DA ABA DE USUÁRIOS
 import 'admin_usuarios_form_tela.dart'; 
+
+// ============================================================================
+// DEBOUNCER: Otimiza a pesquisa para não travar a tela a cada letra digitada
+// ============================================================================
+class Debouncer {
+  final int milliseconds;
+  Timer? _timer;
+  Debouncer({required this.milliseconds});
+  void run(VoidCallback action) {
+    _timer?.cancel();
+    _timer = Timer(Duration(milliseconds: milliseconds), action);
+  }
+}
 
 class AdminCadastrosTela extends ConsumerStatefulWidget {
   final int abaInicial;
@@ -29,7 +43,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
     final corPrimaria = Theme.of(context).primaryColor;
 
     return DefaultTabController(
-      length: 6, // <-- Alterado para 6 abas
+      length: 6,
       initialIndex: widget.abaInicial,
       child: Scaffold(
         appBar: AppBar(
@@ -40,13 +54,13 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             unselectedLabelColor: Colors.grey, 
             indicatorColor: corPrimaria, 
             indicatorWeight: 3,
-            isScrollable: true, // Adicionado para telas menores não espremerem os textos
+            isScrollable: true,
             tabAlignment: TabAlignment.start,
             tabs: const [
               Tab(icon: Icon(Icons.school_rounded), text: 'Alunos'),
-              Tab(icon: Icon(Icons.family_restroom_rounded), text: 'Responsáveis'), // NOVA ABA
+              Tab(icon: Icon(Icons.family_restroom_rounded), text: 'Responsáveis'),
               Tab(icon: Icon(Icons.assignment_ind_rounded), text: 'Professores'),
-              Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretária'), // NOVA ABA
+              Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretária'),
               Tab(icon: Icon(Icons.meeting_room_rounded), text: 'Turmas'),
               Tab(icon: Icon(Icons.admin_panel_settings_rounded), text: 'Usuários'),
             ],
@@ -55,9 +69,9 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
         body: const TabBarView(
           children: [
             _GestaoAlunosAba(),
-            _GestaoResponsaveisAba(), // NOVO COMPONENTE
+            _GestaoResponsaveisAba(),
             _GestaoProfessoresAba(),
-            _GestaoSecretariaAba(), // NOVO COMPONENTE
+            _GestaoSecretariaAba(),
             _GestaoTurmasAba(),
             AdminUsuariosFormTela(),
           ],
@@ -75,8 +89,15 @@ class _GestaoAlunosAba extends ConsumerStatefulWidget {
   @override
   ConsumerState<_GestaoAlunosAba> createState() => _GestaoAlunosAbaState();
 }
-class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
+
+// MISTURA O AutomaticKeepAliveClientMixin AQUI PARA MANTER A ABA VIVA
+class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with AutomaticKeepAliveClientMixin {
+  
+  @override
+  bool get wantKeepAlive => true; // Diz ao Flutter para salvar o estado da aba
+
   String _termoBusca = '';
+  final _debouncer = Debouncer(milliseconds: 400); // 400ms de atraso na digitação
 
   void _confirmarExclusao(BuildContext context, Map<String, dynamic> aluno) {
     showDialog(
@@ -111,7 +132,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
     showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16), child: Stack(alignment: Alignment.center, children: [InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))), Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx)))])));
   }
 
-  // === NOVA FUNÇÃO PARA EXIBIR OS ANEXOS ===
   void _mostrarAnexosDialog(BuildContext context, List anexos) {
     showDialog(
       context: context,
@@ -261,8 +281,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
 
   void _abrirFichaAluno(BuildContext context, Map<String, dynamic> aluno) {
     final corPrimaria = Theme.of(context).primaryColor;
-    
-    // Captura a lista de anexos
     final anexos = aluno['anexos'] as List? ?? [];
 
     showDialog(
@@ -280,7 +298,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
                 const SizedBox(width: 16),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(aluno['nome'] ?? 'Aluno', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)), const SizedBox(height: 4), Text('Matrícula: ${aluno['matricula']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14))])),
                 
-                // === BOTÃO DOS ARQUIVOS ANEXADOS ===
                 if (anexos.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(right: 12.0),
@@ -349,6 +366,8 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // OBRIGATÓRIO PARA O KEEPALIVE FUNCIONAR
+
     final estadoAlunos = ref.watch(alunosStreamProvider);
 
     return Padding(
@@ -360,7 +379,14 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
             children: [
               const Text('Alunos Matriculados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const Spacer(),
-              SizedBox(width: 250, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar nome ou matrícula...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
+              SizedBox(
+                width: 250, height: 40, 
+                child: TextField(
+                  // UTILIZANDO O DEBOUNCER AQUI!
+                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
+                  decoration: InputDecoration(hintText: 'Pesquisar nome ou matrícula...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
+                )
+              ),
               const SizedBox(width: 16),
               ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/aluno/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Nova Matrícula'))
             ],
@@ -421,379 +447,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> {
 }
 
 // ============================================================================
-// 2. COMPONENTE DA ABA DE PROFESSORES
-// ============================================================================
-class _GestaoProfessoresAba extends ConsumerStatefulWidget {
-  const _GestaoProfessoresAba();
-  @override
-  ConsumerState<_GestaoProfessoresAba> createState() => _GestaoProfessoresAbaState();
-}
-class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> {
-  String _termoBusca = '';
-
-  void _confirmarExclusao(BuildContext context, Map<String, dynamic> professor) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Professor', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]),
-          content: Text('Tem certeza que deseja apagar o registro de ${professor['nome']}?\n\nEsta ação não poderá ser desfeita.'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-              onPressed: () async {
-                try {
-                  await ref.read(professorServiceProvider).excluirProfessor(professor['id']);
-                  if (!context.mounted) return;
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Professor excluído.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red));
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
-                }
-              },
-              child: const Text('Sim, Excluir'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _mostrarFotoAmpliada(BuildContext context, String url) {
-    showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16), child: Stack(alignment: Alignment.center, children: [InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))), Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx)))])));
-  }
-
-  void _abrirFichaProfessor(BuildContext context, Map<String, dynamic> prof) {
-    final corPrimaria = Theme.of(context).primaryColor;
-    final anexos = prof['anexos'] as List? ?? [];
-    
-    Widget buildLinha(String label, dynamic valorRaw) {
-      final valor = (valorRaw?.toString() ?? '').trim();
-      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)), TextSpan(text: valor.isEmpty ? 'Não informado' : valor)])));
-    }
-    
-    Widget buildLinhaContato(String label, dynamic valorRaw) {
-      final telefone = (valorRaw?.toString() ?? '').trim();
-      final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
-      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)), Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)), if (numeroLimpo.length >= 10) ...[const SizedBox(width: 8), Tooltip(message: 'Abrir WhatsApp', child: InkWell(onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')), child: Image.asset('assets/whatsapp.png', width: 18, height: 18))), const SizedBox(width: 12), Tooltip(message: 'Ligar', child: InkWell(onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')), child: const Icon(Icons.phone, color: Colors.blue, size: 18)))]]));
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          titlePadding: const EdgeInsets.all(0),
-          title: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(color: corPrimaria.withAlpha(13), borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
-            child: Row(
-              children: [
-                InkWell(onTap: prof['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, prof['fotoUrl']) : null, borderRadius: BorderRadius.circular(32), child: CircleAvatar(radius: 32, backgroundColor: Colors.white, backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null, child: prof['fotoUrl'] == null ? Icon(Icons.assignment_ind_rounded, size: 32, color: corPrimaria) : null)),
-                const SizedBox(width: 16),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(prof['nome'] ?? 'Professor', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)), const SizedBox(height: 4), Text('ID: ${prof['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14))])),
-                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))
-              ],
-            ),
-          ),
-          content: SizedBox(
-            width: 700,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('CPF', prof['cpf']), buildLinha('Nascimento', prof['dataNascimento']), buildLinhaContato('Celular', prof['telefone']), buildLinha('E-mail', prof['email'])])),
-                      const SizedBox(width: 24),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('ATUAÇÃO PROFISSIONAL', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('Status', prof['status']), const SizedBox(height: 4), const Text('Disciplinas:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)), const SizedBox(height: 4), Wrap(spacing: 6, runSpacing: 6, children: (prof['disciplinas'] as List? ?? []).map((d) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade100)), child: Text(d.toString(), style: const TextStyle(fontSize: 11, color: Colors.blue)))).toList())])),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                  const Divider(),
-                  buildLinha('Logradouro', '${prof['endereco']?['rua'] ?? ''}, Nº ${prof['endereco']?['numero'] ?? ''}'),
-                  buildLinha('Bairro/Cidade', '${prof['endereco']?['bairro'] ?? ''} - ${prof['endereco']?['cidade'] ?? ''}'),
-                  
-                  const SizedBox(height: 24),
-                  const Text('DOCUMENTOS E CERTIFICADOS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                  const Divider(),
-                  if (anexos.isEmpty)
-                    const Text('Nenhum documento anexado ao perfil.', style: TextStyle(color: Colors.grey))
-                  else
-                    ...anexos.map((anexo) {
-                      final isPDF = anexo['extensao'] == 'pdf';
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade300)),
-                        child: ListTile(
-                          leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue),
-                          title: Text(anexo['nome'] ?? 'Documento', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.open_in_new_rounded, color: Colors.deepPurple),
-                            tooltip: 'Visualizar / Baixar',
-                            onPressed: () async {
-                              final url = anexo['url'];
-                              if (url != null && await canLaunchUrl(Uri.parse(url))) {
-                                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-                              } else {
-                                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível abrir o arquivo.')));
-                              }
-                            },
-                          ),
-                        ),
-                      );
-                    }),
-                ],
-              ),
-            ),
-          ),
-          actionsPadding: const EdgeInsets.all(24),
-          actions: [
-            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)), onPressed: () => Navigator.pop(context), child: const Text('Fechar Ficha'))
-          ],
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final estadoProfessores = ref.watch(professoresStreamProvider); 
-
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('Professores Cadastrados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              SizedBox(width: 250, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar professor...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/professor/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Novo Professor'))
-            ],
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: estadoProfessores.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (erro, stack) => Center(child: Text('Erro ao carregar: $erro')),
-              data: (professores) {
-                final filtrados = professores.where((p) => p['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
-                
-                if (filtrados.isEmpty) return const Center(child: Text('Nenhum professor encontrado.'));
-
-                return ListView.separated(
-                  itemCount: filtrados.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final prof = filtrados[index];
-                    final inativo = prof['status'] != 'Ativo';
-
-                    return Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                        child: Row(
-                          children: [
-                            InkWell(onTap: prof['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, prof['fotoUrl']) : null, borderRadius: BorderRadius.circular(24), child: CircleAvatar(radius: 24, backgroundColor: Colors.grey.shade200, backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null, child: prof['fotoUrl'] == null ? const Icon(Icons.assignment_ind_rounded, color: Colors.grey) : null)),
-                            const SizedBox(width: 16),
-                            Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(prof['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('ID: ${prof['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
-                            Expanded(flex: 2, child: Text((prof['disciplinas'] as List? ?? []).join(', '), style: TextStyle(color: Colors.grey.shade700, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)), child: Text(prof['status'] ?? 'Ativo', style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12))),
-                            const SizedBox(width: 24),
-                            Row(
-                              children: [
-                                IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaProfessor(context, prof)),
-                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Professor', onPressed: () => context.push('/admin/cadastros/professor/novo', extra: prof)),
-                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, prof)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// 3. COMPONENTE DA ABA DE TURMAS
-// ============================================================================
-class _GestaoTurmasAba extends ConsumerStatefulWidget {
-  const _GestaoTurmasAba();
-  @override
-  ConsumerState<_GestaoTurmasAba> createState() => _GestaoTurmasAbaState();
-}
-class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> {
-  String _termoBusca = '';
-  String _anoSelecionado = DateTime.now().year.toString(); 
-
-  void _confirmarExclusao(BuildContext context, Map<String, dynamic> turma) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Turma', style: TextStyle(color: Colors.red))]),
-        content: Text('Deseja realmente apagar a turma ${turma['nome']}?\n\nAtenção: Isso não apagará os alunos vinculados, mas eles ficarão sem turma.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              try {
-                await ref.read(turmaServiceProvider).excluirTurma(turma['id']);
-                if (!context.mounted) return;
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turma excluída com sucesso!'), backgroundColor: Colors.green));
-              } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
-              }
-            },
-            child: const Text('Sim, Excluir', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final estadoTurmas = ref.watch(turmasStreamProvider);
-
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: estadoTurmas.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (erro, stack) => Center(child: Text('Erro ao carregar turmas: $erro')),
-        data: (turmas) {
-          final Set<String> anosSet = {DateTime.now().year.toString()};
-          for (var t in turmas) {
-            if (t['anoLetivo'] != null && t['anoLetivo'].toString().isNotEmpty) {
-              anosSet.add(t['anoLetivo'].toString());
-            }
-          }
-          final listaAnos = anosSet.toList()..sort((a, b) => b.compareTo(a));
-          listaAnos.insert(0, 'TODOS');
-
-          final filtradas = turmas.where((t) {
-            final matchBusca = t['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase());
-            final matchAno = _anoSelecionado == 'TODOS' || t['anoLetivo'] == _anoSelecionado;
-            return matchBusca && matchAno;
-          }).toList();
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Text('Turmas Cadastradas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  Container(
-                    height: 40, padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: listaAnos.contains(_anoSelecionado) ? _anoSelecionado : listaAnos.first,
-                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
-                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14),
-                        onChanged: (novoAno) { if (novoAno != null) setState(() => _anoSelecionado = novoAno); },
-                        items: listaAnos.map((ano) => DropdownMenuItem(value: ano, child: Padding(padding: const EdgeInsets.only(right: 8.0), child: Text(ano == 'TODOS' ? 'Todos os Anos' : 'Ano Letivo: $ano', style: const TextStyle(color: Colors.black87))))).toList(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 250, height: 40, 
-                    child: TextField(
-                      onChanged: (value) => setState(() => _termoBusca = value), 
-                      decoration: InputDecoration(hintText: 'Pesquisar turma...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
-                    )
-                  ),
-                  const SizedBox(width: 16),
-                  ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/turma/novo'), icon: const Icon(Icons.meeting_room_rounded), label: const Text('Nova Turma'))
-                ],
-              ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: filtradas.isEmpty 
-                  ? Center(child: Text('Nenhuma turma encontrada para o filtro selecionado.', style: TextStyle(color: Colors.grey.shade600)))
-                  : ListView.separated(
-                      itemCount: filtradas.length,
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final turma = filtradas[index];
-                        final statusTurma = turma['status'] ?? 'FORMADA';
-                        final emFormacao = statusTurma == 'EM FORMAÇÃO';
-                        final arquivada = statusTurma == 'Inativa'; 
-
-                        return Card(
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: arquivada ? Colors.red.shade200 : Colors.grey.shade300)),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(color: arquivada ? Colors.red.shade50 : Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                                  child: Icon(Icons.meeting_room_rounded, color: arquivada ? Colors.red : Colors.blue),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  flex: 3, 
-                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${turma['nome']} (${turma['anoLetivo']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('Sala: ${turma['sala'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))])
-                                ),
-                                Expanded(
-                                  flex: 2, 
-                                  child: Row(children: [Icon(Icons.wb_sunny_outlined, size: 16, color: Colors.grey.shade600), const SizedBox(width: 4), Text(turma['turno'] ?? '', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold))])
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
-                                  decoration: BoxDecoration(color: emFormacao ? Colors.orange.shade50 : (arquivada ? Colors.red.shade50 : Colors.green.shade50), borderRadius: BorderRadius.circular(16)), 
-                                  child: Text(statusTurma, style: TextStyle(color: emFormacao ? Colors.orange.shade700 : (arquivada ? Colors.red.shade700 : Colors.green.shade700), fontWeight: FontWeight.bold, fontSize: 12))
-                                ),
-                                const SizedBox(width: 24),
-                                Row(
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), 
-                                      tooltip: 'Painel da Turma', 
-                                      onPressed: () => context.push('/admin/cadastros/turma/painel', extra: turma)
-                                    ),
-                                    IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar', onPressed: () => context.push('/admin/cadastros/turma/novo', extra: turma)),
-                                    IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, turma)),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    )
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// 4. COMPONENTE DA ABA DE RESPONSÁVEIS
+// 2. COMPONENTE DA ABA DE RESPONSÁVEIS
 // ============================================================================
 class _GestaoResponsaveisAba extends ConsumerStatefulWidget {
   const _GestaoResponsaveisAba();
@@ -801,8 +455,12 @@ class _GestaoResponsaveisAba extends ConsumerStatefulWidget {
   ConsumerState<_GestaoResponsaveisAba> createState() => _GestaoResponsaveisAbaState();
 }
 
-class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> {
+class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   String _termoBusca = '';
+  final _debouncer = Debouncer(milliseconds: 400);
   bool _sincronizando = false;
 
   void _confirmarExclusao(BuildContext context, Map<String, dynamic> resp) {
@@ -940,12 +598,10 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
     );
   }
 
-// === FUNÇÃO DE MIGRAÇÃO MÁGICA TURBINADA (Identifica irmãos) ===
   Future<void> _importarResponsaveisDosAlunos() async {
     setState(() => _sincronizando = true);
     try {
       final alunos = ref.read(alunosStreamProvider).value ?? [];
-      // Usamos List.from para poder modificar a lista local durante a varredura
       final responsaveisExistentes = List<Map<String, dynamic>>.from(ref.read(responsavelStreamProvider).value ?? []);
       final servico = ref.read(responsavelServiceProvider);
 
@@ -967,7 +623,6 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
 
           if (nome.isEmpty) continue; 
 
-          // Em vez de só perguntar se existe, procuramos QUAL é a posição dele na lista
           int indexExistente = responsaveisExistentes.indexWhere((existente) {
             final cpfExistente = (existente['cpf'] ?? '').toString().trim();
             final nomeExistente = (existente['nome'] ?? '').toString().trim().toUpperCase();
@@ -981,7 +636,6 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
           final alunoVinculoRaw = {'nome': nomeAluno, 'matricula': matriculaAluno};
 
           if (indexExistente == -1) {
-            // CENÁRIO 1: RESPONSÁVEL NÃO EXISTE (Cria um novo)
             String newId = 'RESP-$matriculaAluno';
             if (indexParentesco > 1) newId = 'RESP-$matriculaAluno-$indexParentesco';
             
@@ -1001,13 +655,10 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
             responsaveisExistentes.add(novoResponsavel); 
             importados++;
           } else {
-            // CENÁRIO 2: RESPONSÁVEL JÁ EXISTE (Verifica se é irmão e adiciona)
             var responsavelEncontrado = Map<String, dynamic>.from(responsaveisExistentes[indexExistente]);
-            
             List<String> vinculosAtuais = List<String>.from(responsavelEncontrado['alunosVinculados'] ?? []);
             List<dynamic> vinculosRawAtuais = List<dynamic>.from(responsavelEncontrado['alunosVinculadosRaw'] ?? []);
 
-            // Se o aluno atual ainda NÃO estiver na ficha desse pai/mãe, nós adicionamos!
             if (!vinculosAtuais.contains(alunoVinculoStr)) {
               vinculosAtuais.add(alunoVinculoStr);
               vinculosRawAtuais.add(alunoVinculoRaw);
@@ -1015,8 +666,8 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
               responsavelEncontrado['alunosVinculados'] = vinculosAtuais;
               responsavelEncontrado['alunosVinculadosRaw'] = vinculosRawAtuais;
 
-              await servico.salvarResponsavel(responsavelEncontrado); // Atualiza no banco
-              responsaveisExistentes[indexExistente] = responsavelEncontrado; // Atualiza na lista local
+              await servico.salvarResponsavel(responsavelEncontrado); 
+              responsaveisExistentes[indexExistente] = responsavelEncontrado; 
               atualizados++;
             }
           }
@@ -1040,8 +691,9 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     final estadoResponsaveis = ref.watch(responsavelStreamProvider);
-    final corPrimaria = Theme.of(context).primaryColor;
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
@@ -1050,9 +702,15 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
         children: [
           Row(
             children: [
-              const Text('Responsáveis Financeiros/Acadêmicos', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Text('Responsáveis Financeiros', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const Spacer(),
-              SizedBox(width: 200, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
+              SizedBox(
+                width: 200, height: 40, 
+                child: TextField(
+                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
+                  decoration: InputDecoration(hintText: 'Pesquisar...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
+                )
+              ),
               const SizedBox(width: 16),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade600, foregroundColor: Colors.white),
@@ -1080,8 +738,6 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
                   itemBuilder: (context, index) {
                     final resp = filtrados[index];
                     final inativo = resp['status'] != 'Ativo';
-                    
-                    // Lógica para puxar e formatar os alunos na visualização do Card
                     final alunosVinculados = (resp['alunosVinculados'] as List? ?? []).join(' | ');
 
                     return Card(
@@ -1101,7 +757,6 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
                                   Text(resp['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
                                   const SizedBox(height: 4), 
                                   Text('ID: ${resp['id']}  |  CPF: ${resp['cpf']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                  // NOVA LINHA MOSTRANDO OS ALUNOS NO CARD
                                   if (alunosVinculados.isNotEmpty) ...[
                                     const SizedBox(height: 4),
                                     Text('Alunos: $alunosVinculados', style: TextStyle(color: Colors.blue.shade700, fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -1134,7 +789,229 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> 
 }
 
 // ============================================================================
-// 5. COMPONENTE DA ABA DE SECRETÁRIA
+// 3. COMPONENTE DA ABA DE PROFESSORES
+// ============================================================================
+class _GestaoProfessoresAba extends ConsumerStatefulWidget {
+  const _GestaoProfessoresAba();
+  @override
+  ConsumerState<_GestaoProfessoresAba> createState() => _GestaoProfessoresAbaState();
+}
+
+class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  String _termoBusca = '';
+  final _debouncer = Debouncer(milliseconds: 400);
+
+  void _confirmarExclusao(BuildContext context, Map<String, dynamic> professor) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Professor', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))]),
+          content: Text('Tem certeza que deseja apagar o registro de ${professor['nome']}?\n\nEsta ação não poderá ser desfeita.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+              onPressed: () async {
+                try {
+                  await ref.read(professorServiceProvider).excluirProfessor(professor['id']);
+                  if (!context.mounted) return;
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Professor excluído.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red));
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+                }
+              },
+              child: const Text('Sim, Excluir'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _mostrarFotoAmpliada(BuildContext context, String url) {
+    showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16), child: Stack(alignment: Alignment.center, children: [InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))), Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx)))])));
+  }
+
+  void _abrirFichaProfessor(BuildContext context, Map<String, dynamic> prof) {
+    final corPrimaria = Theme.of(context).primaryColor;
+    final anexos = prof['anexos'] as List? ?? [];
+    
+    Widget buildLinha(String label, dynamic valorRaw) {
+      final valor = (valorRaw?.toString() ?? '').trim();
+      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)), TextSpan(text: valor.isEmpty ? 'Não informado' : valor)])));
+    }
+    
+    Widget buildLinhaContato(String label, dynamic valorRaw) {
+      final telefone = (valorRaw?.toString() ?? '').trim();
+      final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
+      return Padding(padding: const EdgeInsets.only(bottom: 6.0), child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)), Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)), if (numeroLimpo.length >= 10) ...[const SizedBox(width: 8), Tooltip(message: 'Abrir WhatsApp', child: InkWell(onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')), child: Image.asset('assets/whatsapp.png', width: 18, height: 18))), const SizedBox(width: 12), Tooltip(message: 'Ligar', child: InkWell(onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')), child: const Icon(Icons.phone, color: Colors.blue, size: 18)))]]));
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.all(0),
+          title: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(color: corPrimaria.withAlpha(13), borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
+            child: Row(
+              children: [
+                InkWell(onTap: prof['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, prof['fotoUrl']) : null, borderRadius: BorderRadius.circular(32), child: CircleAvatar(radius: 32, backgroundColor: Colors.white, backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null, child: prof['fotoUrl'] == null ? Icon(Icons.assignment_ind_rounded, size: 32, color: corPrimaria) : null)),
+                const SizedBox(width: 16),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(prof['nome'] ?? 'Professor', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)), const SizedBox(height: 4), Text('ID: ${prof['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14))])),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context))
+              ],
+            ),
+          ),
+          content: SizedBox(
+            width: 700,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('CPF', prof['cpf']), buildLinha('Nascimento', prof['dataNascimento']), buildLinhaContato('Celular', prof['telefone']), buildLinha('E-mail', prof['email'])])),
+                      const SizedBox(width: 24),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('ATUAÇÃO PROFISSIONAL', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('Status', prof['status']), const SizedBox(height: 4), const Text('Disciplinas:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)), const SizedBox(height: 4), Wrap(spacing: 6, runSpacing: 6, children: (prof['disciplinas'] as List? ?? []).map((d) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade100)), child: Text(d.toString(), style: const TextStyle(fontSize: 11, color: Colors.blue)))).toList())])),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                  const Divider(),
+                  buildLinha('Logradouro', '${prof['endereco']?['rua'] ?? ''}, Nº ${prof['endereco']?['numero'] ?? ''}'),
+                  buildLinha('Bairro/Cidade', '${prof['endereco']?['bairro'] ?? ''} - ${prof['endereco']?['cidade'] ?? ''}'),
+                  
+                  const SizedBox(height: 24),
+                  const Text('DOCUMENTOS E CERTIFICADOS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                  const Divider(),
+                  if (anexos.isEmpty)
+                    const Text('Nenhum documento anexado ao perfil.', style: TextStyle(color: Colors.grey))
+                  else
+                    ...anexos.map((anexo) {
+                      final isPDF = anexo['extensao'] == 'pdf';
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade300)),
+                        child: ListTile(
+                          leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue),
+                          title: Text(anexo['nome'] ?? 'Documento', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.open_in_new_rounded, color: Colors.deepPurple),
+                            tooltip: 'Visualizar / Baixar',
+                            onPressed: () async {
+                              final url = anexo['url'];
+                              if (url != null && await canLaunchUrl(Uri.parse(url))) {
+                                await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                              } else {
+                                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível abrir o arquivo.')));
+                              }
+                            },
+                          ),
+                        ),
+                      );
+                    }),
+                ],
+              ),
+            ),
+          ),
+          actionsPadding: const EdgeInsets.all(24),
+          actions: [
+            ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)), onPressed: () => Navigator.pop(context), child: const Text('Fechar Ficha'))
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final estadoProfessores = ref.watch(professoresStreamProvider); 
+
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Professores Cadastrados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              SizedBox(
+                width: 250, height: 40, 
+                child: TextField(
+                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
+                  decoration: InputDecoration(hintText: 'Pesquisar professor...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
+                )
+              ),
+              const SizedBox(width: 16),
+              ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/professor/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Novo Professor'))
+            ],
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: estadoProfessores.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (erro, stack) => Center(child: Text('Erro ao carregar: $erro')),
+              data: (professores) {
+                final filtrados = professores.where((p) => p['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
+                
+                if (filtrados.isEmpty) return const Center(child: Text('Nenhum professor encontrado.'));
+
+                return ListView.separated(
+                  itemCount: filtrados.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final prof = filtrados[index];
+                    final inativo = prof['status'] != 'Ativo';
+
+                    return Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                        child: Row(
+                          children: [
+                            InkWell(onTap: prof['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, prof['fotoUrl']) : null, borderRadius: BorderRadius.circular(24), child: CircleAvatar(radius: 24, backgroundColor: Colors.grey.shade200, backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null, child: prof['fotoUrl'] == null ? const Icon(Icons.assignment_ind_rounded, color: Colors.grey) : null)),
+                            const SizedBox(width: 16),
+                            Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(prof['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('ID: ${prof['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
+                            Expanded(flex: 2, child: Text((prof['disciplinas'] as List? ?? []).join(', '), style: TextStyle(color: Colors.grey.shade700, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)), child: Text(prof['status'] ?? 'Ativo', style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12))),
+                            const SizedBox(width: 24),
+                            Row(
+                              children: [
+                                IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaProfessor(context, prof)),
+                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Professor', onPressed: () => context.push('/admin/cadastros/professor/novo', extra: prof)),
+                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, prof)),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 4. COMPONENTE DA ABA DE SECRETÁRIA
 // ============================================================================
 class _GestaoSecretariaAba extends ConsumerStatefulWidget {
   const _GestaoSecretariaAba();
@@ -1142,8 +1019,12 @@ class _GestaoSecretariaAba extends ConsumerStatefulWidget {
   ConsumerState<_GestaoSecretariaAba> createState() => _GestaoSecretariaAbaState();
 }
 
-class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> {
+class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   String _termoBusca = '';
+  final _debouncer = Debouncer(milliseconds: 400);
 
   void _confirmarExclusao(BuildContext context, Map<String, dynamic> membro) {
     showDialog(
@@ -1174,7 +1055,6 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> {
     );
   }
 
-  // === INÍCIO DAS NOVAS FUNÇÕES PARA O OLHINHO ===
   void _mostrarFotoAmpliada(BuildContext context, String url) {
     showDialog(context: context, builder: (ctx) => Dialog(backgroundColor: Colors.transparent, insetPadding: const EdgeInsets.all(16), child: Stack(alignment: Alignment.center, children: [InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))), Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx)))])));
   }
@@ -1242,10 +1122,10 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> {
       },
     );
   }
-  // === FIM DAS NOVAS FUNÇÕES ===
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final estadoSecretaria = ref.watch(secretariaStreamProvider);
 
     return Padding(
@@ -1257,7 +1137,13 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> {
             children: [
               const Text('Equipe da Secretaria', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const Spacer(),
-              SizedBox(width: 250, height: 40, child: TextField(onChanged: (value) => setState(() => _termoBusca = value), decoration: InputDecoration(hintText: 'Pesquisar colaborador...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)))),
+              SizedBox(
+                width: 250, height: 40, 
+                child: TextField(
+                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
+                  decoration: InputDecoration(hintText: 'Pesquisar colaborador...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
+                )
+              ),
               const SizedBox(width: 16),
               ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/secretaria/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Adicionar Equipe'))
             ],
@@ -1293,7 +1179,6 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> {
                             const SizedBox(width: 24),
                             Row(
                               children: [
-                                // AQUI ESTÁ O OLHINHO!
                                 IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaSecretaria(context, mem)),
                                 IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => context.push('/admin/cadastros/secretaria/novo', extra: mem)),
                                 IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, mem)),
@@ -1309,6 +1194,174 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// 5. COMPONENTE DA ABA DE TURMAS
+// ============================================================================
+class _GestaoTurmasAba extends ConsumerStatefulWidget {
+  const _GestaoTurmasAba();
+  @override
+  ConsumerState<_GestaoTurmasAba> createState() => _GestaoTurmasAbaState();
+}
+
+class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  String _termoBusca = '';
+  final _debouncer = Debouncer(milliseconds: 400);
+  String _anoSelecionado = DateTime.now().year.toString(); 
+
+  void _confirmarExclusao(BuildContext context, Map<String, dynamic> turma) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 8), Text('Excluir Turma', style: TextStyle(color: Colors.red))]),
+        content: Text('Deseja realmente apagar a turma ${turma['nome']}?\n\nAtenção: Isso não apagará os alunos vinculados, mas eles ficarão sem turma.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              try {
+                await ref.read(turmaServiceProvider).excluirTurma(turma['id']);
+                if (!context.mounted) return;
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turma excluída com sucesso!'), backgroundColor: Colors.green));
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('Sim, Excluir', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final estadoTurmas = ref.watch(turmasStreamProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: estadoTurmas.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (erro, stack) => Center(child: Text('Erro ao carregar turmas: $erro')),
+        data: (turmas) {
+          final Set<String> anosSet = {DateTime.now().year.toString()};
+          for (var t in turmas) {
+            if (t['anoLetivo'] != null && t['anoLetivo'].toString().isNotEmpty) {
+              anosSet.add(t['anoLetivo'].toString());
+            }
+          }
+          final listaAnos = anosSet.toList()..sort((a, b) => b.compareTo(a));
+          listaAnos.insert(0, 'TODOS');
+
+          final filtradas = turmas.where((t) {
+            final matchBusca = t['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase());
+            final matchAno = _anoSelecionado == 'TODOS' || t['anoLetivo'] == _anoSelecionado;
+            return matchBusca && matchAno;
+          }).toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Text('Turmas Cadastradas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  Container(
+                    height: 40, padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: listaAnos.contains(_anoSelecionado) ? _anoSelecionado : listaAnos.first,
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14),
+                        onChanged: (novoAno) { if (novoAno != null) setState(() => _anoSelecionado = novoAno); },
+                        items: listaAnos.map((ano) => DropdownMenuItem(value: ano, child: Padding(padding: const EdgeInsets.only(right: 8.0), child: Text(ano == 'TODOS' ? 'Todos os Anos' : 'Ano Letivo: $ano', style: const TextStyle(color: Colors.black87))))).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  SizedBox(
+                    width: 250, height: 40, 
+                    child: TextField(
+                      onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
+                      decoration: InputDecoration(hintText: 'Pesquisar turma...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
+                    )
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/turma/novo'), icon: const Icon(Icons.meeting_room_rounded), label: const Text('Nova Turma'))
+                ],
+              ),
+              const SizedBox(height: 24),
+              Expanded(
+                child: filtradas.isEmpty 
+                  ? Center(child: Text('Nenhuma turma encontrada para o filtro selecionado.', style: TextStyle(color: Colors.grey.shade600)))
+                  : ListView.separated(
+                      itemCount: filtradas.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final turma = filtradas[index];
+                        final statusTurma = turma['status'] ?? 'FORMADA';
+                        final emFormacao = statusTurma == 'EM FORMAÇÃO';
+                        final arquivada = statusTurma == 'Inativa'; 
+
+                        return Card(
+                          elevation: 1,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: arquivada ? Colors.red.shade200 : Colors.grey.shade300)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(color: arquivada ? Colors.red.shade50 : Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                                  child: Icon(Icons.meeting_room_rounded, color: arquivada ? Colors.red : Colors.blue),
+                                ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  flex: 3, 
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${turma['nome']} (${turma['anoLetivo']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('Sala: ${turma['sala'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade700, fontSize: 13))])
+                                ),
+                                Expanded(
+                                  flex: 2, 
+                                  child: Row(children: [Icon(Icons.wb_sunny_outlined, size: 16, color: Colors.grey.shade600), const SizedBox(width: 4), Text(turma['turno'] ?? '', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold))])
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), 
+                                  decoration: BoxDecoration(color: emFormacao ? Colors.orange.shade50 : (arquivada ? Colors.red.shade50 : Colors.green.shade50), borderRadius: BorderRadius.circular(16)), 
+                                  child: Text(statusTurma, style: TextStyle(color: emFormacao ? Colors.orange.shade700 : (arquivada ? Colors.red.shade700 : Colors.green.shade700), fontWeight: FontWeight.bold, fontSize: 12))
+                                ),
+                                const SizedBox(width: 24),
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), 
+                                      tooltip: 'Painel da Turma', 
+                                      onPressed: () => context.push('/admin/cadastros/turma/painel', extra: turma)
+                                    ),
+                                    IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar', onPressed: () => context.push('/admin/cadastros/turma/novo', extra: turma)),
+                                    IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, turma)),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    )
+              ),
+            ],
+          );
+        },
       ),
     );
   }
