@@ -103,6 +103,12 @@ class _AdminTurmaFormTelaState extends ConsumerState<AdminTurmaFormTela> {
         return;
       }
 
+      // Validação de Vínculos Incompletos
+      if (_professoresVinculados.any((v) => v['disciplina'] == null || v['professorId'] == null)) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Existem vínculos de professores incompletos. Selecione a disciplina e o professor, ou exclua a linha vazia.'), backgroundColor: Colors.red));
+        return;
+      }
+
       showDialog(context: context, barrierDismissible: false, builder: (ctx) => const Center(child: CircularProgressIndicator(color: Colors.white)));
 
       try {
@@ -145,6 +151,136 @@ class _AdminTurmaFormTelaState extends ConsumerState<AdminTurmaFormTela> {
     }
   }
 
+  // ==========================================================
+  // COMPONENTES DE AUTOCOMPLETE (PESQUISA) PARA O CORPO DOCENTE
+  // ==========================================================
+  Widget _buildAutocompleteDisciplina(int index, List<String> listaDisciplinas) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Autocomplete<String>(
+          initialValue: TextEditingValue(text: _professoresVinculados[index]['disciplina'] ?? ''),
+          optionsBuilder: (TextEditingValue textoDigitado) {
+            if (textoDigitado.text.isEmpty) return listaDisciplinas;
+            return listaDisciplinas.where((d) => d.toUpperCase().contains(textoDigitado.text.toUpperCase()));
+          },
+          onSelected: (selecao) => setState(() => _professoresVinculados[index]['disciplina'] = selecao),
+          fieldViewBuilder: (ctx, ctrl, focus, onSub) {
+            return TextFormField(
+              controller: ctrl,
+              focusNode: focus,
+              textInputAction: TextInputAction.next,
+              inputFormatters: [_upperCase],
+              decoration: const InputDecoration(
+                labelText: 'Pesquisar Disciplina',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.search_rounded),
+              ),
+              onChanged: (v) => _professoresVinculados[index]['disciplina'] = v,
+              validator: (v) => (v == null || v.isEmpty) ? 'Obrigatório' : null,
+            );
+          },
+          optionsViewBuilder: (ctx, onSel, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  height: 200,
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: options.length,
+                    itemBuilder: (ctx, idx) {
+                      final opcao = options.elementAt(idx);
+                      return ListTile(title: Text(opcao), onTap: () => onSel(opcao));
+                    }
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }
+    );
+  }
+
+  Widget _buildAutocompleteProfessor(int index, List<Map<String, dynamic>> professoresAtivos) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final professorIdAtual = _professoresVinculados[index]['professorId'];
+        final professorAtual = professoresAtivos.firstWhere((p) => p['id'] == professorIdAtual, orElse: () => {});
+        final nomeInicial = professorAtual.isNotEmpty ? '${professorAtual['nome']} (ID: ${professorAtual['id']})' : '';
+
+        return Autocomplete<Map<String, dynamic>>(
+          initialValue: TextEditingValue(text: nomeInicial),
+          displayStringForOption: (prof) => '${prof['nome']} (ID: ${prof['id']})',
+          optionsBuilder: (TextEditingValue textoDigitado) {
+            if (textoDigitado.text.isEmpty) return professoresAtivos;
+            return professoresAtivos.where((p) => p['nome'].toString().toUpperCase().contains(textoDigitado.text.toUpperCase()) || p['id'].toString().contains(textoDigitado.text.toUpperCase()));
+          },
+          onSelected: (prof) {
+            setState(() {
+              _professoresVinculados[index]['professorId'] = prof['id'];
+              _professoresVinculados[index]['professorNome'] = prof['nome'];
+            });
+          },
+          fieldViewBuilder: (ctx, ctrl, focus, onSub) {
+            return TextFormField(
+              controller: ctrl,
+              focusNode: focus,
+              textInputAction: TextInputAction.next,
+              inputFormatters: [_upperCase],
+              decoration: const InputDecoration(
+                labelText: 'Pesquisar Professor(a)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.search_rounded),
+              ),
+              validator: (v) {
+                if (v == null || v.isEmpty) return 'Obrigatório';
+                if (_professoresVinculados[index]['professorId'] == null) return 'Selecione um professor da lista';
+                return null;
+              },
+            );
+          },
+          optionsViewBuilder: (ctx, onSel, options) {
+            return Align(
+              alignment: Alignment.topLeft,
+              child: Material(
+                elevation: 4,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  height: 250,
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    itemCount: options.length,
+                    itemBuilder: (ctx, idx) {
+                      final prof = options.elementAt(idx);
+                      final disciplinasDoProf = (prof['disciplinas'] as List? ?? []).join(', ');
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null,
+                          child: prof['fotoUrl'] == null ? const Icon(Icons.person, size: 20) : null,
+                        ),
+                        title: Text(prof['nome'] ?? ''),
+                        subtitle: Text('Leciona: $disciplinasDoProf', style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        onTap: () {
+                          onSel(prof);
+                          // Atualiza o texto do campo visualmente com o displayStringForOption
+                        },
+                      );
+                    }
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final corPrimaria = Theme.of(context).primaryColor;
@@ -154,9 +290,12 @@ class _AdminTurmaFormTelaState extends ConsumerState<AdminTurmaFormTela> {
     List<Map<String, dynamic>> professoresAtivos = [];
     Set<String> disciplinasDoSistema = {};
 
-    // CORREÇÃO: Evitar usar whenData no meio do Build para não bugar o estado da árvore
     final profs = estadoProfessores.value ?? [];
     professoresAtivos = profs.where((p) => p['status'] == 'Ativo').toList();
+    
+    // ORDENAÇÃO DE PROFESSORES DE A a Z
+    professoresAtivos.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
+
     for (var p in professoresAtivos) {
       if (p['disciplinas'] != null) {
         for (var d in p['disciplinas']) {
@@ -178,6 +317,9 @@ class _AdminTurmaFormTelaState extends ConsumerState<AdminTurmaFormTela> {
         });
       }
     }
+    
+    // Força uma nova ordenação caso professores inativos tenham sido adicionados acima
+    professoresAtivos.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
 
     return Scaffold(
       appBar: AppBar(title: Text(isEdicao ? 'Editar Turma' : 'Nova Turma'), backgroundColor: Colors.white, foregroundColor: Colors.black87, elevation: 1),
@@ -294,36 +436,22 @@ class _AdminTurmaFormTelaState extends ConsumerState<AdminTurmaFormTela> {
                               key: ValueKey(vinculo['_keyId']),
                               padding: const EdgeInsets.only(bottom: 16.0),
                               child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      decoration: const InputDecoration(labelText: 'Disciplina', border: OutlineInputBorder()),
-                                      initialValue: vinculo['disciplina'] as String?,
-                                      items: listaDisciplinas.map((d) => DropdownMenuItem<String>(value: d, child: Text(d))).toList(),
-                                      onChanged: (v) => setState(() => _professoresVinculados[index]['disciplina'] = v),
-                                      validator: (v) => v == null ? 'Obrigatório' : null,
-                                    ),
+                                    flex: 2,
+                                    child: _buildAutocompleteDisciplina(index, listaDisciplinas),
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
-                                    child: DropdownButtonFormField<String>(
-                                      decoration: const InputDecoration(labelText: 'Professor(a)', border: OutlineInputBorder()),
-                                      initialValue: vinculo['professorId'] as String?,
-                                      items: professoresAtivos.map((p) => DropdownMenuItem<String>(
-                                        value: p['id'].toString(),
-                                        child: Text('${p['nome']}', overflow: TextOverflow.ellipsis)
-                                      )).toList(),
-                                      onChanged: (v) {
-                                        setState(() {
-                                          _professoresVinculados[index]['professorId'] = v;
-                                          _professoresVinculados[index]['professorNome'] = professoresAtivos.firstWhere((p) => p['id'].toString() == v)['nome'];
-                                        });
-                                      },
-                                      validator: (v) => v == null ? 'Obrigatório' : null,
-                                    ),
+                                    flex: 3,
+                                    child: _buildAutocompleteProfessor(index, professoresAtivos),
                                   ),
                                   const SizedBox(width: 8),
-                                  IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => setState(() => _professoresVinculados.removeAt(index)))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4.0), // Alinha o ícone com o centro do campo
+                                    child: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => setState(() => _professoresVinculados.removeAt(index))),
+                                  )
                                 ],
                               ),
                             );

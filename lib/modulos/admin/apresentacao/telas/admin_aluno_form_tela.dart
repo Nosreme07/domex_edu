@@ -384,6 +384,16 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
         matriculaParaSalvar = '$anoAtual${(maiorSequencial + 1).toString().padLeft(4, '0')}'; 
       }
 
+      // TRATAMENTO DA EXIBIÇÃO DE IRMÃOS NA REVISÃO
+      String textoIrmaosRevisao = 'NÃO';
+      if (_temIrmao) {
+        if (_irmaosSelecionados.isNotEmpty) {
+          textoIrmaosRevisao = 'SIM: ${_irmaosSelecionados.map((i) => i['nome']).join(', ')}';
+        } else {
+          textoIrmaosRevisao = 'SIM (Mas não vinculou no sistema)';
+        }
+      }
+
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -432,7 +442,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     const Text('DADOS ACADÊMICOS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const Divider(),
                     _resumoLinha('Turma', _turmaSelecionada ?? 'NÃO INFORMADA'),
-                    _resumoLinha('Tem Irmão', _temIrmao ? 'SIM (${_irmaosSelecionados.length} selecionado(s))' : 'NÃO'),
+                    _resumoLinha('Irmão(s)', textoIrmaosRevisao), // AGORA EXIBE OS NOMES AQUI NA REVISÃO
 
                     const SizedBox(height: 16),
                     

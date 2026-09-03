@@ -6,12 +6,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // <-- IMPORT NECESSÁRIO
+import 'package:cloud_firestore/cloud_firestore.dart'; 
+import 'package:firebase_core/firebase_core.dart'; 
+import 'package:firebase_auth/firebase_auth.dart'; 
 
 import '../estado/escola_provider.dart';
 
 // ============================================================================
-// PROVIDER GLOBAL PARA SOMAR TODOS OS ALUNOS DE TODAS AS ESCOLAS (CollectionGroup)
+// PROVIDER GLOBAL PARA SOMAR TODOS OS ALUNOS DE TODAS AS ESCOLAS
 // ============================================================================
 final totalAlunosGlobalProvider = StreamProvider<int>((ref) {
   return FirebaseFirestore.instance
@@ -30,22 +32,110 @@ class SuperAdminDashboardTela extends ConsumerStatefulWidget {
 class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTela> {
   
   // ==========================================================================
-  // LÓGICA DE ABERTURA E SALVAMENTO DE ESCOLA
+  // LÓGICA DE ABERTURA E SALVAMENTO DE ESCOLA COM PROVISIONAMENTO BLINDADO
   // ==========================================================================
-  void _abrirFormularioEscola({Map<String, dynamic>? escolaEdicao, required int quantidadeAtual}) {
+  void _abrirFormularioEscola({Map<String, dynamic>? escolaEdicao, required int maiorIdAtual}) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) {
         return _FormularioEscolaDialog(
-          quantidadeAtual: quantidadeAtual,
+          maiorIdAtual: maiorIdAtual,
           escolaEdicao: escolaEdicao, 
           aoSalvar: (dadosEscola, senhaPadrao) async {
             final servico = ref.read(escolaServiceProvider);
+            
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+            );
+
             try {
+              // 1. Salva os dados básicos e faz o upload da logo
               await servico.salvarEscola(dadosEscola);
-              if (!context.mounted) return;
               
+              if (escolaEdicao == null) {
+                final emailDiretor = dadosEscola['email'];
+                final nomeDiretor = dadosEscola['responsavel'];
+                final idEscola = dadosEscola['id'];
+                final db = FirebaseFirestore.instance;
+
+                // =============================================================
+                // 2. CRIA TODAS AS PASTAS VISUAIS IMEDIATAMENTE (O Segredo!)
+                // =============================================================
+                WriteBatch batchPastas = db.batch();
+                final colecoesVisuais = ['alunos', 'professores', 'responsaveis', 'turmas', 'secretaria', 'usuarios'];
+                for (String col in colecoesVisuais) {
+                  DocumentReference setupRef = db.collection('tenants').doc(idEscola).collection(col).doc('_setup');
+                  batchPastas.set(setupRef, {
+                    'aviso': 'Inicialização gerada automaticamente pelo sistema Domex.',
+                    'dataCriacao': DateTime.now().toIso8601String(),
+                  });
+                }
+                await batchPastas.commit(); // Garante que as pastas apareçam no Console do Firebase
+
+                // =============================================================
+                // 3. CRIA O LOGIN DO DIRETOR (Com tratamento de erro de e-mail)
+                // =============================================================
+                String? uidDiretor;
+                try {
+                  FirebaseApp appSecundario = await Firebase.initializeApp(
+                    name: 'AppCriacaoTenant_${DateTime.now().millisecondsSinceEpoch}',
+                    options: Firebase.app().options,
+                  );
+                  
+                  UserCredential userCred = await FirebaseAuth.instanceFor(app: appSecundario)
+                      .createUserWithEmailAndPassword(email: emailDiretor, password: senhaPadrao);
+                  
+                  uidDiretor = userCred.user!.uid;
+                  await appSecundario.delete();
+
+                } on FirebaseAuthException catch (authError) {
+                  // Se o email já existir, joga o erro para a tela avisar o Super Admin
+                  if (authError.code == 'email-already-in-use') {
+                    throw 'O e-mail ($emailDiretor) já está em uso por outro usuário no sistema. Escolha um e-mail diferente para o diretor desta escola.';
+                  }
+                  throw 'Erro ao criar login: ${authError.message}';
+                }
+
+                // =============================================================
+                // 4. VINCULA AS PERMISSÕES (Se o login foi criado com sucesso)
+                // =============================================================
+                if (uidDiretor != null) {
+                  WriteBatch batchPermissoes = db.batch();
+
+                  // Permissão Global
+                  DocumentReference usuarioGlobalRef = db.collection('usuarios').doc(uidDiretor);
+                  batchPermissoes.set(usuarioGlobalRef, {
+                    'uid': uidDiretor, 'nome': nomeDiretor, 'email': emailDiretor,
+                    'role': 'ADMIN', 'tenantId': idEscola,
+                    'dataCadastro': DateTime.now().toIso8601String(),
+                  });
+
+                  // Permissão Local (Dentro da aba de usuários da escola)
+                  DocumentReference usuarioLocalRef = db.collection('tenants').doc(idEscola).collection('usuarios').doc(uidDiretor);
+                  batchPermissoes.set(usuarioLocalRef, {
+                    'id': uidDiretor, 'uid': uidDiretor, 'nome': nomeDiretor, 'email': emailDiretor,
+                    'role': 'ADMIN', 'perfil': 'DIRETOR(A)', 'status': 'Ativo',
+                    'dataCadastro': DateTime.now().toIso8601String(),
+                  });
+
+                  // Insere o Diretor na aba Secretária
+                  DocumentReference diretorNaSecretariaRef = db.collection('tenants').doc(idEscola).collection('secretaria').doc('SEC-01');
+                  batchPermissoes.set(diretorNaSecretariaRef, {
+                    'id': 'SEC-01', 'nome': nomeDiretor, 'email': emailDiretor,
+                    'funcao': 'DIRETOR(A)', 'status': 'Ativo',
+                    'dataCadastro': DateTime.now().toIso8601String(),
+                  });
+
+                  await batchPermissoes.commit();
+                }
+              }
+
+              if (!context.mounted) return;
+              Navigator.pop(context); // Fecha Modal de Carregamento
+
               if (escolaEdicao != null) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dados da escola atualizados com sucesso!'), backgroundColor: Colors.green));
               } else {
@@ -64,7 +154,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('O ambiente para ${dadosEscola['nomeEscola']} foi criado com sucesso no banco de dados.'),
+                        Text('O ambiente para ${dadosEscola['nomeEscola']} foi criado com sucesso e todas as pastas foram inicializadas no banco de dados.'),
                         const SizedBox(height: 16),
                         Container(
                           padding: const EdgeInsets.all(16),
@@ -95,7 +185,12 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                 );
               }
             } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao salvar no banco: $e'), backgroundColor: Colors.red));
+              if (context.mounted) Navigator.pop(context); // Fecha Carregamento
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(e.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 8),
+              ));
             }
           },
         );
@@ -103,9 +198,6 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
     );
   }
 
-  // ==========================================================================
-  // LÓGICA DE EXCLUSÃO DE UM TENANT
-  // ==========================================================================
   void _confirmarExclusaoEscola(BuildContext context, Map<String, dynamic> escola) {
     showDialog(
       context: context,
@@ -143,9 +235,6 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
     );
   }
 
-  // ==========================================================================
-  // LÓGICA DE ZERAR SENHA (RESET)
-  // ==========================================================================
   void _confirmarResetSenha(BuildContext context, Map<String, dynamic> escola) {
     showDialog(
       context: context,
@@ -169,9 +258,6 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
               onPressed: () async {
                 Navigator.pop(context);
                 try {
-                  // TODO: Aqui entrará a chamada para a Cloud Function que reseta a senha no Firebase Auth
-                  // Exemplo futuro: await ref.read(escolaServiceProvider).resetarSenhaAdmin(escola['email'], 'Domex@123');
-                  
                   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Senha redefinida com sucesso para o padrão!'), backgroundColor: Colors.green));
                 } catch (e) {
                   if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao redefinir senha: $e'), backgroundColor: Colors.red));
@@ -188,7 +274,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
   @override
   Widget build(BuildContext context) {
     final estadoEscolas = ref.watch(escolasStreamProvider);
-    final estadoAlunosGlobal = ref.watch(totalAlunosGlobalProvider); // <-- OBSERVANDO O NOVO PROVIDER
+    final estadoAlunosGlobal = ref.watch(totalAlunosGlobalProvider); 
     const corDominante = Color(0xFF080E1C);
 
     return SingleChildScrollView(
@@ -208,7 +294,13 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
               int escolasAtivasCount = escolasClientes.where((e) => e['status'] == 'Ativo').length;
               const receitaEstimada = "R\$ 0,00"; 
               
-              // Tratamento do estado dos alunos globais
+              int maiorIdEscola = 0;
+              for (var e in escolasClientes) {
+                final idStr = (e['id'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+                final int numId = int.tryParse(idStr) ?? 0;
+                if (numId > maiorIdEscola) maiorIdEscola = numId;
+              }
+              
               String totalAlunos = estadoAlunosGlobal.when(
                 data: (count) => count.toString(),
                 loading: () => '...',
@@ -227,10 +319,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                         childAspectRatio: 2.2, 
                         children: [
                           _SaaSMetricCard(titulo: 'Escolas Ativas', valor: '$escolasAtivasCount', icone: Icons.domain_rounded, coresGradiente: [Colors.blue.shade700, Colors.blue.shade400]),
-                          
-                          // CARD DE ALUNOS ATUALIZADO
                           _SaaSMetricCard(titulo: 'Alunos Cadastrados', valor: totalAlunos, icone: Icons.groups_rounded, coresGradiente: [Colors.orange.shade700, Colors.orange.shade400]),
-                          
                           _SaaSMetricCard(titulo: 'Receita Mensal (MRR)', valor: receitaEstimada, icone: Icons.account_balance_wallet_rounded, coresGradiente: [Colors.green.shade700, Colors.green.shade400]),
                         ],
                       );
@@ -245,7 +334,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                       const Text('Escolas Cadastradas (Tenants)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: corDominante, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16)),
-                        onPressed: () => _abrirFormularioEscola(quantidadeAtual: escolasClientes.length),
+                        onPressed: () => _abrirFormularioEscola(maiorIdAtual: maiorIdEscola),
                         icon: const Icon(Icons.add_rounded),
                         label: const Text('Provisionar Escola'),
                       )
@@ -301,7 +390,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                                             else if (val == 'desbloquear') await servico.atualizarStatus(escola['id'], 'Ativo');
                                             else if (val == 'zerar_senha') _confirmarResetSenha(context, escola);
                                             else if (val == 'excluir') _confirmarExclusaoEscola(context, escola);
-                                            else if (val == 'editar') _abrirFormularioEscola(escolaEdicao: escola, quantidadeAtual: escolasClientes.length);
+                                            else if (val == 'editar') _abrirFormularioEscola(escolaEdicao: escola, maiorIdAtual: maiorIdEscola);
                                           },
                                           itemBuilder: (context) => [
                                             const PopupMenuItem(value: 'editar', child: Row(children: [Icon(Icons.edit, size: 18), SizedBox(width: 8), Text('Editar Dados')])),
@@ -372,11 +461,11 @@ class _SaaSMetricCard extends StatelessWidget {
 // WIDGET DO FORMULÁRIO DE ESCOLA (PROVISIONAR E EDITAR)
 // ============================================================================
 class _FormularioEscolaDialog extends StatefulWidget {
-  final int quantidadeAtual;
+  final int maiorIdAtual;
   final Map<String, dynamic>? escolaEdicao; 
   final Function(Map<String, dynamic> dadosEscola, String senhaPadrao) aoSalvar;
 
-  const _FormularioEscolaDialog({required this.quantidadeAtual, this.escolaEdicao, required this.aoSalvar});
+  const _FormularioEscolaDialog({required this.maiorIdAtual, this.escolaEdicao, required this.aoSalvar});
 
   @override
   State<_FormularioEscolaDialog> createState() => _FormularioEscolaDialogState();
@@ -539,14 +628,14 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
     if (_formKey.currentState!.validate()) {
       final isEdicao = widget.escolaEdicao != null;
       
-      final novoNumero = widget.quantidadeAtual + 1;
+      final novoNumero = widget.maiorIdAtual + 1;
       final idGerado = isEdicao ? widget.escolaEdicao!['id'] : 'ESC-${novoNumero.toString().padLeft(4, '0')}';
       const senhaPadrao = 'Domex@123';
 
       final dadosEscola = {
         'id': idGerado,
         'nomeEscola': _nomeCtrl.text.trim(),
-        'subdominio': _subdominioCtrl.text.trim(),
+        'subdominio': _subdominioCtrl.text.trim().toLowerCase(),
         'cnpj': _cnpjCtrl.text.trim(),
         'slogan': _sloganCtrl.text.trim(),
         'responsavel': _responsavelCtrl.text.trim(),
@@ -560,7 +649,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
         'corPrimaria': '#${_corPrimariaSelecionada.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}', 
         'corSecundaria': '#${_corSecundariaSelecionada.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}', 
         'dataCriacao': isEdicao ? widget.escolaEdicao!['dataCriacao'] : DateTime.now().toIso8601String(), 
-        'quantidadeAlunos': isEdicao ? widget.escolaEdicao!['quantidadeAlunos'] : 0, 
+        'quantidadeAlunos': isEdicao ? widget.escolaEdicao!['quantidadeAlunos'] ?? 0 : 0, 
         'logoUrl': isEdicao ? (widget.escolaEdicao!['logoUrl'] ?? widget.escolaEdicao!['fotoUrl'] ?? widget.escolaEdicao!['logo']) : null,
         'endereco': {
           'rua': _ruaCtrl.text.trim(),
@@ -576,7 +665,6 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
       }
 
       widget.aoSalvar(dadosEscola, senhaPadrao);
-      Navigator.pop(context); 
     }
   }
 
@@ -696,7 +784,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(child: TextFormField(controller: _responsavelCtrl, decoration: const InputDecoration(labelText: 'Nome do Responsável', border: OutlineInputBorder()))),
+                    Expanded(child: TextFormField(controller: _responsavelCtrl, decoration: const InputDecoration(labelText: 'Nome do Diretor(a)', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Obrigatório' : null)),
                     const SizedBox(width: 16),
                     Expanded(child: TextFormField(controller: _emailCtrl, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'E-mail da Administração (Login)', border: OutlineInputBorder()), validator: (v) => v!.isEmpty || !v.contains('@') ? 'E-mail inválido' : null)),
                   ],
@@ -704,7 +792,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(flex: 3, child: TextFormField(controller: _subdominioCtrl, decoration: const InputDecoration(labelText: 'Subdomínio', hintText: 'colegiogenesis', border: OutlineInputBorder(), prefixText: 'https://', suffixText: '.domexedu.com.br'), validator: (v) => v!.isEmpty ? 'Obrigatório' : null)),
+                    Expanded(flex: 3, child: TextFormField(controller: _subdominioCtrl, decoration: const InputDecoration(labelText: 'Subdomínio', hintText: 'colegiogenesis', border: OutlineInputBorder(), prefixText: 'https://', suffixText: '.domexedu.com.br'), validator: (v) => v!.isEmpty || v.contains(' ') ? 'Sem espaços' : null)),
                     const SizedBox(width: 16),
                     Expanded(flex: 2, child: DropdownButtonFormField<String>(value: _planoSelecionado, decoration: const InputDecoration(labelText: 'Plano Assinado', border: OutlineInputBorder()), items: ['Básico', 'Pro', 'Premium'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(), onChanged: (v) => setState(() => _planoSelecionado = v!))),
                   ],

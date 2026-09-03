@@ -1,4 +1,4 @@
-import 'dart:async'; // Necessário para o Timer do Debouncer
+import 'dart:async'; 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -82,7 +82,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
 }
 
 // ============================================================================
-// 1. COMPONENTE DA ABA DE ALUNOS 
+// 1. COMPONENTE DA ABA DE ALUNOS (ATUALIZADA COM FILTRO DE STATUS E IRMÃOS)
 // ============================================================================
 class _GestaoAlunosAba extends ConsumerStatefulWidget {
   const _GestaoAlunosAba();
@@ -90,14 +90,15 @@ class _GestaoAlunosAba extends ConsumerStatefulWidget {
   ConsumerState<_GestaoAlunosAba> createState() => _GestaoAlunosAbaState();
 }
 
-// MISTURA O AutomaticKeepAliveClientMixin AQUI PARA MANTER A ABA VIVA
 class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with AutomaticKeepAliveClientMixin {
   
   @override
-  bool get wantKeepAlive => true; // Diz ao Flutter para salvar o estado da aba
+  bool get wantKeepAlive => true; 
 
   String _termoBusca = '';
-  final _debouncer = Debouncer(milliseconds: 400); // 400ms de atraso na digitação
+  String _filtroTurma = 'TODAS'; 
+  String _filtroStatus = 'TODOS'; // NOVO: Controle do Filtro de Status
+  final _debouncer = Debouncer(milliseconds: 400); 
 
   void _confirmarExclusao(BuildContext context, Map<String, dynamic> aluno) {
     showDialog(
@@ -214,6 +215,19 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
     final endLogradouro = '${end['rua'] ?? ''}, Nº ${end['numero'] ?? ''}'.trim();
     final endCidade = '${end['cidade'] ?? ''} - ${end['estado'] ?? ''}'.trim();
 
+    String textoIrmaosPdf = 'NÃO';
+    if (aluno['temIrmao'] == true) {
+      final listIrmaos = aluno['irmaosVinculados'] as List? ?? [];
+      final infoLegado = aluno['irmaoSelecionado']?.toString().trim() ?? '';
+      if (listIrmaos.isNotEmpty) {
+        textoIrmaosPdf = 'SIM - ${listIrmaos.join(', ')}';
+      } else if (infoLegado.isNotEmpty) {
+        textoIrmaosPdf = 'SIM - $infoLegado';
+      } else {
+        textoIrmaosPdf = 'SIM';
+      }
+    }
+
     doc.addPage(
       pw.Page(
         pageFormat: PdfPageFormat.a4, margin: const pw.EdgeInsets.all(30),
@@ -231,7 +245,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pdfBloco('DADOS PESSOAIS E ACADÊMICOS', pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Container(width: 80, height: 100, decoration: pw.BoxDecoration(color: PdfColors.grey200, border: pw.Border.all(color: PdfColors.grey400)), child: fotoAluno != null ? pw.Image(fotoAluno, fit: pw.BoxFit.cover) : pw.Center(child: pw.Text('Sem Foto', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)))), pw.SizedBox(width: 12), pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pdfLinha('Nome', aluno['nome']), pw.Row(children: [ pw.Expanded(child: pdfLinha('Matrícula', aluno['matricula'])), pw.Expanded(child: pdfLinha('R.A.', aluno['ra'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Nascimento', aluno['dataNascimento'])), pw.Expanded(child: pdfLinha('Sexo', aluno['sexo'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Celular', aluno['telefone'])), pw.Expanded(child: pdfLinha('CPF', aluno['cpf'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('RG', rgFormatado)), pw.Expanded(child: pdfLinha('Naturalidade', natFormatada)) ]), pw.SizedBox(height: 4), pw.Divider(thickness: 0.5, color: PdfColors.grey300), pw.SizedBox(height: 4), pw.Row(children: [ pw.Expanded(child: pdfLinha('Turma', aluno['turma'])), pw.Expanded(child: pdfLinha('Irmão na Escola', aluno['temIrmao'] == true ? 'SIM - ${aluno['irmaoSelecionado'] ?? 'Ver Ficha'}' : 'NÃO')) ])]))])),
+                        pdfBloco('DADOS PESSOAIS E ACADÊMICOS', pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Container(width: 80, height: 100, decoration: pw.BoxDecoration(color: PdfColors.grey200, border: pw.Border.all(color: PdfColors.grey400)), child: fotoAluno != null ? pw.Image(fotoAluno, fit: pw.BoxFit.cover) : pw.Center(child: pw.Text('Sem Foto', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)))), pw.SizedBox(width: 12), pw.Expanded(child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pdfLinha('Nome', aluno['nome']), pw.Row(children: [ pw.Expanded(child: pdfLinha('Matrícula', aluno['matricula'])), pw.Expanded(child: pdfLinha('R.A.', aluno['ra'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Nascimento', aluno['dataNascimento'])), pw.Expanded(child: pdfLinha('Sexo', aluno['sexo'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Celular', aluno['telefone'])), pw.Expanded(child: pdfLinha('CPF', aluno['cpf'])) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('RG', rgFormatado)), pw.Expanded(child: pdfLinha('Naturalidade', natFormatada)) ]), pw.SizedBox(height: 4), pw.Divider(thickness: 0.5, color: PdfColors.grey300), pw.SizedBox(height: 4), pw.Row(children: [ pw.Expanded(child: pdfLinha('Turma', aluno['turma'])), pw.Expanded(child: pdfLinha('Irmão(s) na Escola', textoIrmaosPdf)) ])]))])),
                         pdfBloco('ENDEREÇO', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Row(children: [ pw.Expanded(flex: 3, child: pdfLinha('Logradouro', endLogradouro)), pw.Expanded(flex: 2, child: pdfLinha('Bairro', end['bairro'])) ]), pw.Row(children: [ pw.Expanded(flex: 3, child: pdfLinha('Cidade/UF', endCidade)), pw.Expanded(flex: 2, child: pdfLinha('Referência', end['referencia'])) ])])),
                         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Expanded(child: pdfBloco('RESPONSÁVEIS', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [if (responsaveis.isNotEmpty) ...responsaveis.map((r) => pw.Padding(padding: const pw.EdgeInsets.only(bottom: 6), child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pdfLinha('Nome', r['nome']), pw.Row(children: [ pw.Expanded(child: pdfLinha('CPF', r['cpf'])), pw.Expanded(child: pdfLinha('Tel', r['telefone'])) ])]))), pdfLinha('Autoriza sair sozinho', aluno['autorizaSairSo'] == true ? 'SIM' : 'NÃO')]))), pw.SizedBox(width: 12), pw.Expanded(child: pdfBloco('AUTORIZADOS A BUSCAR', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [if (autorizados.isNotEmpty) ...autorizados.map((p) => pdfLinha('Nome', '${p['nome']} (Tel: ${p['telefone']})')) else pdfLinha('Autorizados', 'Nenhum cadastrado')])))]),
                         pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Expanded(child: pdfBloco('INFORMAÇÕES MÉDICAS', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [pw.Row(children: [ pw.Expanded(child: pdfLinha('Sangue', med['tipoSanguineo'])), pw.Expanded(child: pdfLinha('Problema', med['temProblema'] == true ? med['problema'] : 'NÃO')) ]), pw.Row(children: [ pw.Expanded(child: pdfLinha('Remédio', med['tomaRemedio'] == true ? med['remedio'] : 'NÃO')), pw.Expanded(child: pdfLinha('Alergia', med['temAlergia'] == true ? med['alergia'] : 'NÃO')) ]), pdfLinha('Observações', med['observacoes'])]))), pw.SizedBox(width: 12), pw.Expanded(child: pdfBloco('CONTATOS DE EMERGÊNCIA', pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [if (emergencia.isNotEmpty) ...emergencia.map((e) => pdfLinha('Nome', '${e['nome']} (Tel: ${e['telefone']})')) else pdfLinha('Contatos', 'Nenhum cadastrado')])))]),
@@ -283,6 +297,19 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
     final corPrimaria = Theme.of(context).primaryColor;
     final anexos = aluno['anexos'] as List? ?? [];
 
+    String textoIrmaosFicha = 'NÃO';
+    if (aluno['temIrmao'] == true) {
+      final list = aluno['irmaosVinculados'] as List? ?? [];
+      final infoLegado = aluno['irmaoSelecionado']?.toString().trim() ?? '';
+      if (list.isNotEmpty) {
+        textoIrmaosFicha = 'SIM: ${list.join(', ')}';
+      } else if (infoLegado.isNotEmpty) {
+        textoIrmaosFicha = 'SIM: $infoLegado';
+      } else {
+        textoIrmaosFicha = 'SIM';
+      }
+    }
+
     showDialog(
       context: context,
       builder: (context) {
@@ -330,7 +357,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildSecao(Icons.person_rounded, 'Dados Pessoais', corPrimaria), _buildLinha('R.A.', aluno['ra']), _buildLinha('Nascimento', aluno['dataNascimento']), _buildLinha('Sexo', aluno['sexo']), _buildLinhaTelefone('Celular', aluno['telefone']), _buildLinha('CPF', aluno['cpf']), _buildLinha('RG', '${aluno['rg'] ?? ''} ${aluno['orgaoExpedidor'] != null && aluno['orgaoExpedidor'].toString().isNotEmpty ? '(${aluno['orgaoExpedidor']})' : ''}'), _buildLinha('Naturalidade', '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}')])),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildSecao(Icons.school_rounded, 'Acadêmico', corPrimaria), _buildLinha('Turma', aluno['turma']), _buildLinha('Status', aluno['status']), _buildLinha('Irmão(ã)', aluno['temIrmao'] == true ? 'SIM (${(aluno['irmaosVinculados'] as List? ?? []).length})' : 'NÃO')])),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_buildSecao(Icons.school_rounded, 'Acadêmico', corPrimaria), _buildLinha('Turma', aluno['turma']), _buildLinha('Status', aluno['status']), _buildLinha('Irmão(s)', textoIrmaosFicha)])),
                       ],
                     ),
                     const Divider(height: 32),
@@ -366,7 +393,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // OBRIGATÓRIO PARA O KEEPALIVE FUNCIONAR
+    super.build(context);
 
     final estadoAlunos = ref.watch(alunosStreamProvider);
 
@@ -379,10 +406,68 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
             children: [
               const Text('Alunos Matriculados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const Spacer(),
+              
+              // === FILTRO DE TURMAS ===
+              estadoAlunos.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (alunos) {
+                  final turmasSet = {'TODAS'};
+                  for (var aluno in alunos) {
+                    final t = (aluno['turma'] ?? '').toString().toUpperCase().trim();
+                    if (t.isNotEmpty) turmasSet.add(t);
+                  }
+                  final listaTurmas = turmasSet.toList()..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
+                  if (!listaTurmas.contains(_filtroTurma)) _filtroTurma = 'TODAS';
+
+                  return Container(
+                    constraints: const BoxConstraints(maxWidth: 250),
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: _filtroTurma,
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
+                        onChanged: (v) { if (v != null) setState(() => _filtroTurma = v); },
+                        items: listaTurmas.map((t) => DropdownMenuItem(value: t, child: Text(t == 'TODAS' ? 'Todas as Turmas' : t, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)))).toList(),
+                      ),
+                    ),
+                  );
+                }
+              ),
+              const SizedBox(width: 16),
+
+              // === NOVO: FILTRO DE STATUS ===
+              Container(
+                constraints: const BoxConstraints(maxWidth: 200),
+                height: 40,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    isExpanded: true,
+                    value: _filtroStatus,
+                    icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                    style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
+                    onChanged: (v) { if (v != null) setState(() => _filtroStatus = v); },
+                    items: const [
+                      DropdownMenuItem(value: 'TODOS', child: Text('Todos os Status', overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'ATIVO', child: Text('Apenas Ativos', overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'INATIVO', child: Text('Apenas Inativos', overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'INADIMPLENTE', child: Text('Inadimplentes', overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'TRANSFERIDO', child: Text('Transferidos', overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.black87))),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+
               SizedBox(
                 width: 250, height: 40, 
                 child: TextField(
-                  // UTILIZANDO O DEBOUNCER AQUI!
                   onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
                   decoration: InputDecoration(hintText: 'Pesquisar nome ou matrícula...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
                 )
@@ -398,8 +483,21 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
               error: (erro, stack) => Center(child: Text('Erro ao carregar alunos: $erro')),
               data: (alunos) {
                 final alunosFiltrados = alunos.where((aluno) {
+                  // Filtro Texto
                   final busca = _termoBusca.toLowerCase();
-                  return aluno['nome'].toString().toLowerCase().contains(busca) || aluno['matricula'].toString().toLowerCase().contains(busca);
+                  final nome = aluno['nome'].toString().toLowerCase();
+                  final mat = aluno['matricula'].toString().toLowerCase();
+                  final matchBusca = nome.contains(busca) || mat.contains(busca);
+
+                  // Filtro Turma
+                  final t = (aluno['turma'] ?? '').toString().toUpperCase().trim();
+                  final matchTurma = _filtroTurma == 'TODAS' || t == _filtroTurma;
+
+                  // Filtro Status
+                  final status = (aluno['status'] ?? 'Ativo').toString().toUpperCase();
+                  final matchStatus = _filtroStatus == 'TODOS' || status == _filtroStatus;
+
+                  return matchBusca && matchTurma && matchStatus;
                 }).toList();
 
                 if (alunosFiltrados.isEmpty) return const Center(child: Text('Nenhum aluno encontrado.', style: TextStyle(color: Colors.grey)));
@@ -411,6 +509,22 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
                     final aluno = alunosFiltrados[index];
                     final isInadimplente = aluno['status'] == 'Inadimplente';
 
+                    // LÓGICA DE EXIBIÇÃO DE IRMÃOS NO CARD
+                    final temIrmao = aluno['temIrmao'] == true;
+                    final irmaoInfo = aluno['irmaoSelecionado']?.toString().trim() ?? '';
+                    final irmaosList = aluno['irmaosVinculados'] as List? ?? [];
+                    String textoIrmao = '';
+                    
+                    if (temIrmao) {
+                      if (irmaosList.isNotEmpty) {
+                        textoIrmao = 'Irmão(s): ${irmaosList.join(', ')}';
+                      } else if (irmaoInfo.isNotEmpty) {
+                        textoIrmao = 'Irmão(ã): $irmaoInfo';
+                      } else {
+                        textoIrmao = 'Possui irmão(ã) na escola';
+                      }
+                    }
+
                     return Card(
                       elevation: 1,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: isInadimplente ? Colors.red.shade200 : Colors.grey.shade300)),
@@ -420,7 +534,31 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
                           children: [
                             InkWell(onTap: aluno['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, aluno['fotoUrl']) : null, borderRadius: BorderRadius.circular(24), child: CircleAvatar(radius: 24, backgroundColor: Colors.grey.shade200, backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null, child: aluno['fotoUrl'] == null ? const Icon(Icons.person, color: Colors.grey) : null)),
                             const SizedBox(width: 16),
-                            Expanded(flex: 2, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(aluno['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('Matrícula: ${aluno['matricula']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
+                            Expanded(
+                              flex: 3, 
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start, 
+                                children: [
+                                  Text(aluno['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
+                                  const SizedBox(height: 4), 
+                                  Text('Matrícula: ${aluno['matricula']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                  
+                                  if (temIrmao) ...[
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Icon(Icons.family_restroom_rounded, size: 14, color: Colors.purple.shade400),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(textoIrmao, style: TextStyle(color: Colors.purple.shade600, fontSize: 11, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis)
+                                        ),
+                                      ],
+                                    )
+                                  ]
+                                ]
+                              )
+                            ),
                             Expanded(flex: 2, child: Text(aluno['turma'] ?? 'Sem turma', style: TextStyle(color: Colors.grey.shade700))),
                             Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: isInadimplente ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)), child: Text(aluno['status'] ?? 'Ativo', style: TextStyle(color: isInadimplente ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12))),
                             const SizedBox(width: 24),
@@ -802,6 +940,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
   bool get wantKeepAlive => true;
 
   String _termoBusca = '';
+  String _filtroDisciplina = 'TODAS'; 
   final _debouncer = Debouncer(milliseconds: 400);
 
   void _confirmarExclusao(BuildContext context, Map<String, dynamic> professor) {
@@ -947,6 +1086,42 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
             children: [
               const Text('Professores Cadastrados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const Spacer(),
+
+              estadoProfessores.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (professores) {
+                  final disciplinasSet = {'TODAS'};
+                  for (var prof in professores) {
+                    final discList = prof['disciplinas'] as List? ?? [];
+                    for (var d in discList) {
+                      final str = d.toString().toUpperCase().trim();
+                      if (str.isNotEmpty) disciplinasSet.add(str);
+                    }
+                  }
+                  final listaDisciplinas = disciplinasSet.toList()..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
+                  if (!listaDisciplinas.contains(_filtroDisciplina)) _filtroDisciplina = 'TODAS';
+
+                  return Container(
+                    constraints: const BoxConstraints(maxWidth: 300),
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: _filtroDisciplina,
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
+                        onChanged: (v) { if (v != null) setState(() => _filtroDisciplina = v); },
+                        items: listaDisciplinas.map((t) => DropdownMenuItem(value: t, child: Text(t == 'TODAS' ? 'Todas as Matérias' : t, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)))).toList(),
+                      ),
+                    ),
+                  );
+                }
+              ),
+              const SizedBox(width: 16),
+
               SizedBox(
                 width: 250, height: 40, 
                 child: TextField(
@@ -964,9 +1139,19 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (erro, stack) => Center(child: Text('Erro ao carregar: $erro')),
               data: (professores) {
-                final filtrados = professores.where((p) => p['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
                 
-                if (filtrados.isEmpty) return const Center(child: Text('Nenhum professor encontrado.'));
+                final filtrados = professores.where((p) {
+                  final busca = _termoBusca.toLowerCase();
+                  final nome = p['nome'].toString().toLowerCase();
+                  final matchBusca = nome.contains(busca);
+                  
+                  final discList = (p['disciplinas'] as List? ?? []).map((e) => e.toString().toUpperCase().trim()).toList();
+                  final matchDisc = _filtroDisciplina == 'TODAS' || discList.contains(_filtroDisciplina);
+
+                  return matchBusca && matchDisc;
+                }).toList();
+                
+                if (filtrados.isEmpty) return const Center(child: Text('Nenhum professor encontrado com esses filtros.'));
 
                 return ListView.separated(
                   itemCount: filtrados.length,
@@ -1024,6 +1209,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with
   bool get wantKeepAlive => true;
 
   String _termoBusca = '';
+  String _filtroFuncao = 'TODAS'; 
   final _debouncer = Debouncer(milliseconds: 400);
 
   void _confirmarExclusao(BuildContext context, Map<String, dynamic> membro) {
@@ -1102,7 +1288,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with
                     children: [
                       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('CPF', mem['cpf']), buildLinha('Nascimento', mem['dataNascimento']), buildLinhaContato('Celular', mem['telefone']), buildLinha('E-mail', mem['email'])])),
                       const SizedBox(width: 24),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('ATUAÇÃO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('Status', mem['status']), const SizedBox(height: 4), buildLinha('Perfil', 'Secretaria Escolar')])),
+                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('ATUAÇÃO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)), const Divider(), buildLinha('Status', mem['status']), const SizedBox(height: 4), buildLinha('Função/Cargo', mem['funcao'] ?? 'Não informada')])),
                     ],
                   ),
                   const SizedBox(height: 24),
@@ -1130,70 +1316,112 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with
 
     return Padding(
       padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: estadoSecretaria.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (erro, stack) => Center(child: Text('Erro: $erro')),
+        data: (equipe) {
+          
+          final funcoesSet = {'TODAS'};
+          for (var mem in equipe) {
+            final funcao = (mem['funcao'] ?? '').toString().toUpperCase().trim();
+            if (funcao.isNotEmpty) funcoesSet.add(funcao);
+          }
+          final listaFuncoes = funcoesSet.toList()..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
+          
+          if (!listaFuncoes.contains(_filtroFuncao)) _filtroFuncao = 'TODAS';
+
+          final filtrados = equipe.where((mem) {
+            final busca = _termoBusca.toLowerCase().trim();
+            final nome = (mem['nome'] ?? '').toString().toLowerCase();
+            final id = (mem['id'] ?? '').toString().toLowerCase();
+            final idApenasNumeros = id.replaceAll(RegExp(r'[^0-9]'), '');
+            final funcao = (mem['funcao'] ?? '').toString().toUpperCase().trim();
+
+            final matchBusca = busca.isEmpty || nome.contains(busca) || id.contains(busca) || idApenasNumeros.contains(busca);
+            final matchFuncao = _filtroFuncao == 'TODAS' || funcao == _filtroFuncao;
+
+            return matchBusca && matchFuncao;
+          }).toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Equipe da Secretaria', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              SizedBox(
-                width: 250, height: 40, 
-                child: TextField(
-                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
-                  decoration: InputDecoration(hintText: 'Pesquisar colaborador...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
-                )
+              Row(
+                children: [
+                  const Text('Equipe da Secretaria', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  
+                  Container(
+                    constraints: const BoxConstraints(maxWidth: 300),
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: _filtroFuncao,
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
+                        onChanged: (v) {
+                          if (v != null) setState(() => _filtroFuncao = v);
+                        },
+                        items: listaFuncoes.map((f) => DropdownMenuItem(value: f, child: Text(f == 'TODAS' ? 'Todas as Funções' : f, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)))).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+
+                  SizedBox(
+                    width: 250, height: 40, 
+                    child: TextField(
+                      onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)), 
+                      decoration: InputDecoration(hintText: 'Pesquisar nome ou ID (ex: 03)...', prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey), contentPadding: const EdgeInsets.symmetric(vertical: 0), filled: true, fillColor: Colors.grey.shade100, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none))
+                    )
+                  ),
+                  const SizedBox(width: 16),
+                  ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/secretaria/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Adicionar Equipe'))
+                ],
               ),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(onPressed: () => context.push('/admin/cadastros/secretaria/novo'), icon: const Icon(Icons.person_add_alt_1_rounded), label: const Text('Adicionar Equipe'))
-            ],
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: estadoSecretaria.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (erro, stack) => Center(child: Text('Erro: $erro')),
-              data: (equipe) {
-                final filtrados = equipe.where((p) => p['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase())).toList();
-                
-                if (filtrados.isEmpty) return const Center(child: Text('Nenhum colaborador encontrado.'));
+              const SizedBox(height: 24),
+              Expanded(
+                child: filtrados.isEmpty 
+                  ? const Center(child: Text('Nenhum colaborador encontrado para o filtro/pesquisa.', style: TextStyle(color: Colors.grey)))
+                  : ListView.separated(
+                      itemCount: filtrados.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final mem = filtrados[index];
+                        final inativo = mem['status'] != 'Ativo';
 
-                return ListView.separated(
-                  itemCount: filtrados.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final mem = filtrados[index];
-                    final inativo = mem['status'] != 'Ativo';
-
-                    return Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-                        child: Row(
-                          children: [
-                            CircleAvatar(radius: 24, backgroundColor: Colors.grey.shade200, backgroundImage: mem['fotoUrl'] != null ? NetworkImage(mem['fotoUrl']) : null, child: mem['fotoUrl'] == null ? const Icon(Icons.support_agent_rounded, color: Colors.grey) : null),
-                            const SizedBox(width: 16),
-                            Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(mem['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('ID: ${mem['id']}  |  Tel: ${mem['telefone']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
-                            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)), child: Text(mem['status'] ?? 'Ativo', style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12))),
-                            const SizedBox(width: 24),
-                            Row(
+                        return Card(
+                          elevation: 1,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                            child: Row(
                               children: [
-                                IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaSecretaria(context, mem)),
-                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => context.push('/admin/cadastros/secretaria/novo', extra: mem)),
-                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, mem)),
+                                CircleAvatar(radius: 24, backgroundColor: Colors.grey.shade200, backgroundImage: mem['fotoUrl'] != null ? NetworkImage(mem['fotoUrl']) : null, child: mem['fotoUrl'] == null ? const Icon(Icons.support_agent_rounded, color: Colors.grey) : null),
+                                const SizedBox(width: 16),
+                                Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(mem['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('ID: ${mem['id']}  |  Função: ${mem['funcao'] ?? 'Não informada'}  |  Tel: ${mem['telefone']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
+                                Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)), child: Text(mem['status'] ?? 'Ativo', style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12))),
+                                const SizedBox(width: 24),
+                                Row(
+                                  children: [
+                                    IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaSecretaria(context, mem)),
+                                    IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => context.push('/admin/cadastros/secretaria/novo', extra: mem)),
+                                    IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, mem)),
+                                  ],
+                                ),
                               ],
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
+                          ),
+                        );
+                      },
+                    )
+              ),
+            ],
+          );
+        },
       ),
     );
   }

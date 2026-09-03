@@ -16,9 +16,12 @@ import '../layout/dashboard_tela.dart';
 // ============================================================================
 import '../layout/admin_layout.dart';
 import '../../modulos/admin/apresentacao/telas/admin_visao_geral_tela.dart';
-import '../../modulos/admin/apresentacao/telas/admin_cadastros_tela.dart';
+
+// ---> TÉCNICA ANTI-BUG: ALIAS DE IMPORTAÇÃO PARA IGNORAR O CACHE <---
+import '../../modulos/admin/apresentacao/telas/admin_cadastros_tela.dart' as central_cadastros; 
+
 import '../../modulos/admin/apresentacao/telas/admin_aluno_form_tela.dart'; 
-import '../../modulos/admin/apresentacao/telas/admin_responsavel_form_tela.dart'; // <-- NOVO IMPORT DE RESPONSÁVEL
+import '../../modulos/admin/apresentacao/telas/admin_responsavel_form_tela.dart'; 
 import '../../modulos/admin/apresentacao/telas/admin_professor_form_tela.dart'; 
 import '../../modulos/admin/apresentacao/telas/admin_secretaria_form_tela.dart'; 
 import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
@@ -43,15 +46,22 @@ class AppRotas {
   AppRotas._();
 
   /// Função utilitária para descobrir se o cliente está acessando via subdomínio
-  /// Exemplo: Ao acessar "escola1.domex.com", ele extrai o "escola1"
-  /// Isso é vital para a arquitetura SaaS (Multi-tenant) no Flutter Web
-  static String? extrairSubdominio() {
+static String? extrairSubdominio() {
     if (kIsWeb) {
-      final host = Uri.base.host;
-      List<String> partes = host.split('.');
-      // Verifica se possui subdomínio e ignora o padrão 'www'
-      if (partes.length >= 3 && partes[0] != 'www') {
-        return partes[0];
+      // 1. Tenta pegar via parâmetro na URL (Ideal para testes no Localhost)
+      // Exemplo: localhost:5000/?escola=primeiravisao
+      final uri = Uri.base;
+      if (uri.queryParameters.containsKey('escola')) {
+        return uri.queryParameters['escola'];
+      }
+
+      // 2. Tenta pegar via subdomínio real (Para quando estiver em Produção)
+      final host = uri.host;
+      if (host != 'localhost' && host != '127.0.0.1') {
+        List<String> partes = host.split('.');
+        if (partes.length >= 3 && partes[0] != 'www') {
+          return partes[0]; 
+        }
       }
     }
     return null;
@@ -62,11 +72,8 @@ class AppRotas {
   // ============================================================================
   static final GoRouter router = GoRouter(
     initialLocation: '/',
-    debugLogDiagnostics: kDebugMode, // Mostra logs de navegação apenas no modo debug
+    debugLogDiagnostics: kDebugMode, 
     
-    // REDIRECIONAMENTO INTELIGENTE (Middlewares)
-    // Se o usuário acessar um subdomínio diretamente na raiz ('/'), 
-    // ele é forçado a ir para a tela de login daquela escola.
     redirect: (BuildContext context, GoRouterState state) {
       final subdominio = extrairSubdominio();
       if (state.matchedLocation == '/' && subdominio != null) {
@@ -84,7 +91,6 @@ class AppRotas {
       GoRoute(path: '/dashboard', builder: (context, state) => const DashboardTela()),
       GoRoute(path: '/mural', builder: (context, state) => const MuralTela()),
       
-      // Rota com passagem de parâmetro via URL (ex: /diario/TURMA-01)
       GoRoute(
         path: '/diario/:idTurma',
         builder: (context, state) => DiarioTela(idTurma: state.pathParameters['idTurma']!),
@@ -92,14 +98,12 @@ class AppRotas {
       
       // ==========================================================
       // GRUPO 2: ESTRUTURA ADMINISTRATIVA DA ESCOLA (Tenant)
-      // Utiliza ShellRoute para manter o AdminLayout (Menu Lateral) sempre visível
       // ==========================================================
       ShellRoute(
         builder: (context, state, child) {
           return AdminLayout(child: child);
         },
         routes: [
-          // --- Dashboards e Paineis Principais ---
           GoRoute(
             path: '/admin',
             builder: (context, state) => const AdminVisaoGeralTela(),
@@ -114,14 +118,12 @@ class AppRotas {
           GoRoute(
             path: '/admin/cadastros',
             builder: (context, state) {
-              // Lê o parâmetro "extra" para saber qual aba abrir
               final aba = state.extra as int? ?? 0; 
-              // O ValueKey força a reconstrução do widget se a aba mudar
-              return AdminCadastrosTela(key: ValueKey(aba), abaInicial: aba);
+              // USO DO ALIAS AQUI PARA BURLAR O CACHE
+              return central_cadastros.AdminCadastrosTela(key: ValueKey(aba), abaInicial: aba); 
             },
           ),
           
-          // --- Formulários de Cadastro / Edição ---
           GoRoute(
             path: '/admin/cadastros/aluno/novo',
             builder: (context, state) {
@@ -130,7 +132,6 @@ class AppRotas {
             },
           ),
 
-          // ---> NOVA ROTA DO RESPONSÁVEL <---
           GoRoute(
             path: '/admin/cadastros/responsavel/novo',
             builder: (context, state) {
@@ -163,7 +164,6 @@ class AppRotas {
             },
           ),
 
-          // ---> ROTA: PAINEL EXCLUSIVO DA TURMA <---
           GoRoute(
             path: '/admin/cadastros/turma/painel',
             builder: (context, state) {
@@ -177,7 +177,6 @@ class AppRotas {
 
       // ==========================================================
       // GRUPO 3: ESTRUTURA MASTER / SUPER ADMIN (Dono do SaaS)
-      // Utiliza ShellRoute para o Menu Lateral Escuro padrão do sistema
       // ==========================================================
       ShellRoute(
         builder: (context, state, child) {
@@ -207,7 +206,6 @@ class AppRotas {
             path: '/professor',
             builder: (context, state) => const ProfessorDashboardTela(),
           ),
-          // Rotas futuras como /professor/turmas virão aqui
         ],
       ),
       

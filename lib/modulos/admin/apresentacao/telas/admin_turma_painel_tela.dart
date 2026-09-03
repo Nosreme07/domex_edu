@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
@@ -7,6 +8,19 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../estado/aluno_provider.dart';
 import '../estado/turma_provider.dart';
 import '../estado/professor_provider.dart';
+
+// ============================================================================
+// FORMATADOR PARA TUDO MAIÚSCULO
+// ============================================================================
+class UpperCaseTextFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    return TextEditingValue(
+      text: newValue.text.toUpperCase(),
+      selection: newValue.selection,
+    );
+  }
+}
 
 class AdminTurmaPainelTela extends ConsumerStatefulWidget {
   final Map<String, dynamic> turma;
@@ -422,8 +436,10 @@ class _ModalGerenciadorCorpoDocente extends ConsumerStatefulWidget {
 
 class _ModalGerenciadorCorpoDocenteState extends ConsumerState<_ModalGerenciadorCorpoDocente> {
   String? _disciplinaSelecionada;
-  String? _professorIdSelecionado;
+  Map<String, dynamic>? _professorSelecionado;
   late List<Map<String, dynamic>> _profsVinculadosLocal;
+
+  int _limpadorIndex = 0; 
 
   @override
   void initState() {
@@ -438,20 +454,23 @@ class _ModalGerenciadorCorpoDocenteState extends ConsumerState<_ModalGerenciador
     widget.aoAtualizar(turmaCompleta);
   }
 
-  void _vincularProfessor(List<Map<String, dynamic>> profsAtivos) async {
-    if (_disciplinaSelecionada == null || _professorIdSelecionado == null) return;
-    final profOficial = profsAtivos.firstWhere((p) => p['id'].toString() == _professorIdSelecionado);
+  void _vincularProfessor() async {
+    if (_disciplinaSelecionada == null || _disciplinaSelecionada!.trim().isEmpty || _professorSelecionado == null) return;
+    
     final novoVinculo = {
       '_keyId': DateTime.now().microsecondsSinceEpoch.toString(),
-      'disciplina': _disciplinaSelecionada,
-      'professorId': _professorIdSelecionado,
-      'professorNome': profOficial['nome'],
+      'disciplina': _disciplinaSelecionada!.trim().toUpperCase(),
+      'professorId': _professorSelecionado!['id'],
+      'professorNome': _professorSelecionado!['nome'],
     };
+
     setState(() {
       _profsVinculadosLocal.add(novoVinculo);
       _disciplinaSelecionada = null;
-      _professorIdSelecionado = null;
+      _professorSelecionado = null;
+      _limpadorIndex++; 
     });
+
     await _salvarNoBanco();
   }
 
@@ -470,10 +489,13 @@ class _ModalGerenciadorCorpoDocenteState extends ConsumerState<_ModalGerenciador
 
     final profs = estadoProfessores.value ?? [];
     profsAtivos = profs.where((p) => p['status'] == 'Ativo').toList();
+    
+    profsAtivos.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
+
     for (var p in profsAtivos) {
       if (p['disciplinas'] != null) {
         for (var d in p['disciplinas']) {
-          disciplinasDoSistema.add(d.toString());
+          disciplinasDoSistema.add(d.toString().toUpperCase().trim());
         }
       }
     }
@@ -488,7 +510,7 @@ class _ModalGerenciadorCorpoDocenteState extends ConsumerState<_ModalGerenciador
         children: [
           const Row(children: [Icon(Icons.assignment_ind, color: Colors.blue), SizedBox(width: 8), Text('Corpo Docente', style: TextStyle(fontWeight: FontWeight.bold))]),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
             onPressed: () {
               Navigator.pop(context); 
               context.push('/admin/cadastros/professor/novo'); 
@@ -508,33 +530,130 @@ class _ModalGerenciadorCorpoDocenteState extends ConsumerState<_ModalGerenciador
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
               child: Row(
+                key: ValueKey(_limpadorIndex),
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _disciplinaSelecionada,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Selecione a Disciplina', border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
-                      items: listaDisciplinas.map((d) => DropdownMenuItem<String>(value: d, child: Text(d))).toList(),
-                      onChanged: (v) => setState(() => _disciplinaSelecionada = v),
+                    flex: 2,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Autocomplete<String>(
+                          optionsBuilder: (TextEditingValue textoDigitado) {
+                            if (textoDigitado.text.isEmpty) return listaDisciplinas;
+                            return listaDisciplinas.where((d) => d.contains(textoDigitado.text.toUpperCase()));
+                          },
+                          onSelected: (selecao) {
+                            setState(() {
+                              _disciplinaSelecionada = selecao;
+                              _professorSelecionado = null; 
+                            });
+                          },
+                          fieldViewBuilder: (ctx, ctrl, focus, onSub) {
+                            return TextFormField(
+                              controller: ctrl,
+                              focusNode: focus,
+                              inputFormatters: [UpperCaseTextFormatter()],
+                              decoration: const InputDecoration(labelText: 'Selecione a Disciplina', border: OutlineInputBorder(), fillColor: Colors.white, filled: true, prefixIcon: Icon(Icons.search, size: 20)),
+                              onChanged: (v) {
+                                setState(() {
+                                  _disciplinaSelecionada = v.toUpperCase();
+                                });
+                              },
+                            );
+                          },
+                          optionsViewBuilder: (ctx, onSel, options) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 4, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                child: SizedBox(
+                                  width: constraints.maxWidth, height: 200,
+                                  child: ListView.builder(
+                                    padding: EdgeInsets.zero, itemCount: options.length,
+                                    itemBuilder: (ctx, idx) => ListTile(title: Text(options.elementAt(idx)), onTap: () => onSel(options.elementAt(idx)))
+                                  )
+                                )
+                              )
+                            );
+                          }
+                        );
+                      }
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _professorIdSelecionado,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Selecione o Professor Ativo', border: OutlineInputBorder(), fillColor: Colors.white, filled: true),
-                      items: profsAtivos.map((p) => DropdownMenuItem<String>(
-                        value: p['id'].toString(),
-                        child: Text('${p['nome']}', overflow: TextOverflow.ellipsis)
-                      )).toList(),
-                      onChanged: (v) => setState(() => _professorIdSelecionado = v),
+                    flex: 3,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return Autocomplete<Map<String, dynamic>>(
+                          displayStringForOption: (prof) => '${prof['nome']}',
+                          optionsBuilder: (TextEditingValue texto) {
+                            Iterable<Map<String, dynamic>> profsFiltrados = profsAtivos;
+
+                            if (_disciplinaSelecionada != null && _disciplinaSelecionada!.trim().isNotEmpty) {
+                              final discBusca = _disciplinaSelecionada!.trim().toUpperCase();
+                              profsFiltrados = profsFiltrados.where((p) {
+                                final disciplinasDoProf = (p['disciplinas'] as List? ?? [])
+                                    .map((d) => d.toString().toUpperCase().trim())
+                                    .toList();
+                                return disciplinasDoProf.any((d) => d.contains(discBusca));
+                              });
+                            }
+
+                            if (texto.text.isNotEmpty) {
+                              final busca = texto.text.toUpperCase();
+                              profsFiltrados = profsFiltrados.where((p) => p['nome'].toString().toUpperCase().contains(busca) || p['id'].toString().contains(busca));
+                            }
+                            
+                            return profsFiltrados;
+                          },
+                          onSelected: (prof) => setState(() => _professorSelecionado = prof),
+                          fieldViewBuilder: (ctx, ctrl, focus, onSub) {
+                            return TextFormField(
+                              controller: ctrl,
+                              focusNode: focus,
+                              inputFormatters: [UpperCaseTextFormatter()],
+                              decoration: const InputDecoration(labelText: 'Selecione o Professor Ativo', border: OutlineInputBorder(), fillColor: Colors.white, filled: true, prefixIcon: Icon(Icons.search, size: 20)),
+                            );
+                          },
+                          optionsViewBuilder: (ctx, onSel, options) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 4, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                child: SizedBox(
+                                  width: constraints.maxWidth, height: 250,
+                                  child: ListView.builder(
+                                    padding: EdgeInsets.zero, itemCount: options.length,
+                                    itemBuilder: (ctx, idx) {
+                                      final prof = options.elementAt(idx);
+                                      final discStr = (prof['disciplinas'] as List? ?? []).join(', ').toUpperCase();
+                                      return ListTile(
+                                        leading: CircleAvatar(
+                                          backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null,
+                                          child: prof['fotoUrl'] == null ? const Icon(Icons.person, size: 20) : null,
+                                        ),
+                                        title: Text(prof['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                        subtitle: Text('Leciona: $discStr', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                                        onTap: () {
+                                          onSel(prof);
+                                          FocusScope.of(ctx).unfocus(); 
+                                        },
+                                      );
+                                    }
+                                  )
+                                )
+                              )
+                            );
+                          }
+                        );
+                      }
                     ),
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton(
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20)),
-                    onPressed: _disciplinaSelecionada != null && _professorIdSelecionado != null ? () => _vincularProfessor(profsAtivos) : null,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey.shade100, foregroundColor: Colors.blueGrey.shade800, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20), elevation: 0),
+                    onPressed: (_disciplinaSelecionada != null && _disciplinaSelecionada!.isNotEmpty && _professorSelecionado != null) ? _vincularProfessor : null,
                     child: const Text('Vincular', style: TextStyle(fontWeight: FontWeight.bold)),
                   )
                 ],
@@ -588,39 +707,56 @@ class _ModalGerenciadorHorarios extends ConsumerStatefulWidget {
 }
 
 class _ModalGerenciadorHorariosState extends ConsumerState<_ModalGerenciadorHorarios> {
-  // REGRA 1: Todos os 7 dias da semana
   final List<String> _diasDaSemana = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
   late List<Map<String, dynamic>> _horariosLocal;
+  
+  Map<String, int> _disciplinaCores = {};
+
+  final List<Color> _bgColors = [Colors.blue.shade50, Colors.green.shade50, Colors.purple.shade50, Colors.orange.shade50, Colors.teal.shade50, Colors.pink.shade50, Colors.cyan.shade50, Colors.amber.shade50, Colors.indigo.shade50, Colors.red.shade50];
+  final List<Color> _tagColors = [Colors.blue.shade100, Colors.green.shade100, Colors.purple.shade100, Colors.orange.shade100, Colors.teal.shade100, Colors.pink.shade100, Colors.cyan.shade100, Colors.amber.shade100, Colors.indigo.shade100, Colors.red.shade100];
+  final List<Color> _textColors = [Colors.blue.shade900, Colors.green.shade900, Colors.purple.shade900, Colors.orange.shade900, Colors.teal.shade900, Colors.pink.shade900, Colors.cyan.shade900, Colors.amber.shade900, Colors.indigo.shade900, Colors.red.shade900];
 
   @override
   void initState() {
     super.initState();
     _horariosLocal = List<Map<String, dynamic>>.from(widget.turma['horarios'] ?? []);
+    _atualizarMapaDeCores();
   }
 
-  // Conversor de Hora para Minutos (Para fazer as contas matemáticas)
+  void _atualizarMapaDeCores() {
+    _disciplinaCores.clear();
+    final disciplinasUnicas = _horariosLocal
+        .map((h) => h['disciplina'].toString())
+        .where((d) => d != 'INTERVALO')
+        .toSet()
+        .toList()..sort();
+        
+    for (int i = 0; i < disciplinasUnicas.length; i++) {
+      _disciplinaCores[disciplinasUnicas[i]] = i;
+    }
+  }
+
   int _timeToMinutes(String time) {
     final parts = time.split(':');
     return int.parse(parts[0]) * 60 + int.parse(parts[1]);
   }
 
-  // Gerador Mágico de Cores Pastel (Para diferenciar as matérias)
   Color _getBgTileColor(String disciplina) {
-    if (disciplina == 'INTERVALO') return Colors.grey.shade200; // Cinza para o intervalo
-    final cores = [Colors.blue.shade50, Colors.green.shade50, Colors.purple.shade50, Colors.pink.shade50, Colors.teal.shade50, Colors.orange.shade50, Colors.cyan.shade50];
-    return cores[disciplina.hashCode.abs() % cores.length];
+    if (disciplina == 'INTERVALO') return Colors.grey.shade100; 
+    int index = _disciplinaCores[disciplina] ?? 0;
+    return _bgColors[index % _bgColors.length];
   }
 
   Color _getBgTagColor(String disciplina) {
     if (disciplina == 'INTERVALO') return Colors.grey.shade400;
-    final cores = [Colors.blue.shade100, Colors.green.shade100, Colors.purple.shade100, Colors.pink.shade100, Colors.teal.shade100, Colors.orange.shade100, Colors.cyan.shade100];
-    return cores[disciplina.hashCode.abs() % cores.length];
+    int index = _disciplinaCores[disciplina] ?? 0;
+    return _tagColors[index % _tagColors.length];
   }
 
   Color _getTextColor(String disciplina) {
     if (disciplina == 'INTERVALO') return Colors.black87;
-    final cores = [Colors.blue.shade900, Colors.green.shade900, Colors.purple.shade900, Colors.pink.shade900, Colors.teal.shade900, Colors.orange.shade900, Colors.cyan.shade900];
-    return cores[disciplina.hashCode.abs() % cores.length];
+    int index = _disciplinaCores[disciplina] ?? 0;
+    return _textColors[index % _textColors.length];
   }
 
   Future<void> _salvarNoBanco() async {
@@ -633,7 +769,6 @@ class _ModalGerenciadorHorariosState extends ConsumerState<_ModalGerenciadorHora
   void _abrirModalEdicaoAula({Map<String, dynamic>? horarioEdicao}) {
     final profsVinculados = widget.turma['professoresVinculados'] as List? ?? [];
     
-    // REGRA 3: Opção INTERVALO e Ordem Alfabética (A-Z)
     List<Map<String, dynamic>> opcoesSelect = List.from(profsVinculados);
     opcoesSelect.add({'disciplina': 'INTERVALO', 'professorNome': 'LIVRE'});
     opcoesSelect.sort((a, b) => a['disciplina'].toString().compareTo(b['disciplina'].toString()));
@@ -644,7 +779,6 @@ class _ModalGerenciadorHorariosState extends ConsumerState<_ModalGerenciadorHora
     final inicioCtrl = TextEditingController(text: horarioEdicao?['inicio'] ?? '');
     final fimCtrl = TextEditingController(text: horarioEdicao?['fim'] ?? '');
     
-    // REGRA 2: Máscaras de HH:MM
     final maskInicio = MaskTextInputFormatter(mask: '##:##', filter: {"#": RegExp(r'[0-9]')}, initialText: inicioCtrl.text);
     final maskFim = MaskTextInputFormatter(mask: '##:##', filter: {"#": RegExp(r'[0-9]')}, initialText: fimCtrl.text);
 
@@ -719,21 +853,18 @@ class _ModalGerenciadorHorariosState extends ConsumerState<_ModalGerenciadorHora
               int novoInicio = _timeToMinutes(inicioCtrl.text);
               int novoFim = _timeToMinutes(fimCtrl.text);
 
-              // Validação: Início não pode ser maior ou igual ao Fim
               if (novoInicio >= novoFim) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Atenção: O horário de início não pode ser maior ou igual ao horário final!'), backgroundColor: Colors.red));
                 return;
               }
 
-              // REGRA 4: BLOQUEADOR DE CONFLITO DE HORÁRIOS
               bool isConflito = _horariosLocal.any((h) {
                 if (h['dia'] != diaSelecionado) return false;
-                if (h['id'] == horarioEdicao?['id']) return false; // Ignora se estiver editando ele mesmo
+                if (h['id'] == horarioEdicao?['id']) return false; 
                 
                 int hInicio = _timeToMinutes(h['inicio']);
                 int hFim = _timeToMinutes(h['fim']);
                 
-                // Conflito ocorre se a nova aula começar antes da outra terminar E terminar depois da outra começar
                 return (novoInicio < hFim) && (novoFim > hInicio);
               });
 
@@ -759,6 +890,7 @@ class _ModalGerenciadorHorariosState extends ConsumerState<_ModalGerenciadorHora
                 } else {
                   _horariosLocal.add(novoHorario);
                 }
+                _atualizarMapaDeCores();
               });
 
               await _salvarNoBanco();
@@ -775,6 +907,7 @@ class _ModalGerenciadorHorariosState extends ConsumerState<_ModalGerenciadorHora
   void _removerHorario(String idHorario) async {
     setState(() {
       _horariosLocal.removeWhere((h) => h['id'] == idHorario);
+      _atualizarMapaDeCores();
     });
     await _salvarNoBanco();
   }
@@ -828,7 +961,7 @@ class _ModalGerenciadorHorariosState extends ConsumerState<_ModalGerenciadorHora
                         return Container(
                           margin: const EdgeInsets.only(bottom: 2),
                           decoration: BoxDecoration(
-                            color: _getBgTileColor(aula['disciplina']), // Fundo dinâmico da disciplina
+                            color: _getBgTileColor(aula['disciplina']), 
                             border: Border(bottom: BorderSide(color: Colors.grey.shade200))
                           ),
                           child: ListTile(

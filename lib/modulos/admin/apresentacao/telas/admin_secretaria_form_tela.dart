@@ -55,6 +55,11 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
   final _bairroCtrl = TextEditingController();
   final _cidadeCtrl = TextEditingController();
 
+  // === NOVO CAMPO: FUNÇÃO ===
+  String? _funcaoSelecionada;
+  final _funcaoCustomizadaCtrl = TextEditingController();
+  final List<String> _funcoesPadrao = ['SECRETÁRIA', 'AUXILIAR ADMINISTRATIVO', 'PORTEIRO', 'ZELADOR', 'MONITOR(A)', 'COORDENADOR(A)', 'DIRETOR(A)', 'OUTROS'];
+
   bool _isAtivo = true;
 
   @override
@@ -76,7 +81,33 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
         _cidadeCtrl.text = mem['endereco']['cidade'] ?? '';
       }
       _isAtivo = mem['status'] == 'Ativo';
+
+      // Tratamento do Cargo/Função
+      final funcaoSalva = mem['funcao'] ?? '';
+      if (funcaoSalva.isNotEmpty) {
+        if (_funcoesPadrao.contains(funcaoSalva)) {
+          _funcaoSelecionada = funcaoSalva;
+        } else {
+          _funcaoSelecionada = 'OUTROS';
+          _funcaoCustomizadaCtrl.text = funcaoSalva;
+        }
+      }
     }
+  }
+
+  @override
+  void dispose() {
+    _nomeCtrl.dispose();
+    _dataNascimentoCtrl.dispose();
+    _cpfCtrl.dispose();
+    _telefoneCtrl.dispose();
+    _emailCtrl.dispose();
+    _ruaCtrl.dispose();
+    _numeroCtrl.dispose();
+    _bairroCtrl.dispose();
+    _cidadeCtrl.dispose();
+    _funcaoCustomizadaCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _escolherFoto() async {
@@ -135,6 +166,11 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
 
   void _revisarESalvar() {
     if (_formKey.currentState!.validate()) {
+      if (_funcaoSelecionada == null) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione a função/cargo.'), backgroundColor: Colors.red));
+        return;
+      }
+
       final isEdicao = widget.membroParaEditar != null;
       String idParaSalvar;
 
@@ -153,6 +189,8 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
         }
         idParaSalvar = 'SEC-${(maiorSequencial + 1).toString().padLeft(2, '0')}'; 
       }
+
+      final funcaoFinal = _funcaoSelecionada == 'OUTROS' ? _funcaoCustomizadaCtrl.text.trim() : _funcaoSelecionada!;
 
       showDialog(
         context: context,
@@ -174,6 +212,7 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                     const SizedBox(height: 16),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Nome: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _nomeCtrl.text)]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'CPF: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _cpfCtrl.text)]))),
+                    Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Função: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: funcaoFinal)]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Status: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _isAtivo ? 'Ativo' : 'Inativo')]))),
                   ],
                 ),
@@ -204,6 +243,7 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                       'telefone': _telefoneCtrl.text,
                       'email': _emailCtrl.text,
                       'fotoUrl': urlFinalFoto,
+                      'funcao': funcaoFinal, // Salvando a nova função no banco de dados
                       'endereco': {'rua': _ruaCtrl.text, 'numero': _numeroCtrl.text, 'bairro': _bairroCtrl.text, 'cidade': _cidadeCtrl.text},
                       'status': _isAtivo ? 'Ativo' : 'Inativo',
                       'dataCadastro': isEdicao ? widget.membroParaEditar!['dataCadastro'] : DateTime.now().toIso8601String(),
@@ -319,6 +359,45 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                         children: [
                           Row(children: [Icon(Icons.location_on_rounded, color: corPrimaria), const SizedBox(width: 8), const Text('Endereço & Atuação', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))]),
                           const Divider(height: 32),
+                          
+                          // ==========================================================
+                          // NOVO BLOCO: FUNÇÃO / CARGO
+                          // ==========================================================
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: DropdownButtonFormField<String>(
+                                  value: _funcaoSelecionada,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(labelText: 'Cargo / Função', border: OutlineInputBorder()),
+                                  items: _funcoesPadrao.map((f) => DropdownMenuItem(value: f, child: Text(f))).toList(),
+                                  onChanged: (v) => setState(() => _funcaoSelecionada = v),
+                                  validator: (v) => v == null ? 'Selecione a função' : null,
+                                ),
+                              ),
+                              if (_funcaoSelecionada == 'OUTROS') ...[
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  flex: 3,
+                                  child: TextFormField(
+                                    controller: _funcaoCustomizadaCtrl,
+                                    inputFormatters: [_upperCase],
+                                    decoration: InputDecoration(
+                                      labelText: 'Qual é a função?', 
+                                      filled: true, 
+                                      fillColor: Colors.orange.shade50,
+                                      border: const OutlineInputBorder()
+                                    ),
+                                    validator: (v) => v!.isEmpty ? 'Informe a função' : null,
+                                  )
+                                )
+                              ]
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+
                           Row(children: [Expanded(flex: 3, child: TextFormField(controller: _ruaCtrl, textInputAction: TextInputAction.next, inputFormatters: [_upperCase], decoration: const InputDecoration(labelText: 'Rua', border: OutlineInputBorder()))), const SizedBox(width: 16), Expanded(flex: 1, child: TextFormField(controller: _numeroCtrl, textInputAction: TextInputAction.next, inputFormatters: [_upperCase], decoration: const InputDecoration(labelText: 'Nº', border: OutlineInputBorder())))]),
                           const SizedBox(height: 16),
                           Row(children: [Expanded(child: TextFormField(controller: _bairroCtrl, textInputAction: TextInputAction.next, inputFormatters: [_upperCase], decoration: const InputDecoration(labelText: 'Bairro', border: OutlineInputBorder()))), const SizedBox(width: 16), Expanded(child: TextFormField(controller: _cidadeCtrl, textInputAction: TextInputAction.done, inputFormatters: [_upperCase], decoration: const InputDecoration(labelText: 'Cidade', border: OutlineInputBorder())))]),
