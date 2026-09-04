@@ -1,21 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-class SuperAdminUsuariosTela extends StatefulWidget {
+// ============================================================================
+// PROVIDER PARA BUSCAR OS USUÁRIOS MASTER NO FIREBASE
+// ============================================================================
+final superAdminsStreamProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
+  // Busca na coleção global de 'usuarios' apenas aqueles que tem a role 'SUPER_ADMIN'
+  return FirebaseFirestore.instance
+      .collection('usuarios')
+      .where('role', isEqualTo: 'SUPER_ADMIN')
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
+});
+
+class SuperAdminUsuariosTela extends ConsumerStatefulWidget {
   const SuperAdminUsuariosTela({super.key});
 
   @override
-  State<SuperAdminUsuariosTela> createState() => _SuperAdminUsuariosTelaState();
+  ConsumerState<SuperAdminUsuariosTela> createState() => _SuperAdminUsuariosTelaState();
 }
 
-class _SuperAdminUsuariosTelaState extends State<SuperAdminUsuariosTela> {
-  // Simulação de usuários logados
-  List<Map<String, dynamic>> usuariosMaster = [
-    {'id': 'USR-01', 'nome': 'Emerson Fernandes', 'email': 'emerson.fernandesantos@gmail.com', 'telefone': '(81) 99999-9999', 'status': 'Ativo'},
-  ];
+class _SuperAdminUsuariosTelaState extends ConsumerState<SuperAdminUsuariosTela> {
 
   // ==========================================================
-  // FUNÇÕES DE AÇÕES DO USUÁRIO
+  // FUNÇÕES DE AÇÕES DO USUÁRIO NO BANCO DE DADOS
   // ==========================================================
   void _abrirFormularioUsuario({Map<String, dynamic>? usuarioParaEditar}) {
     showDialog(
@@ -24,47 +35,107 @@ class _SuperAdminUsuariosTelaState extends State<SuperAdminUsuariosTela> {
       builder: (context) {
         return _FormularioUsuarioMasterDialog(
           usuarioInicial: usuarioParaEditar,
-          aoSalvar: (dadosUsuario) {
-            setState(() {
-              if (usuarioParaEditar == null) {
-                // É um usuário NOVO
-                usuariosMaster.add(dadosUsuario);
-              } else {
-                // É uma EDIÇÃO
-                final index = usuariosMaster.indexWhere((u) => u['id'] == usuarioParaEditar['id']);
-                if (index != -1) {
-                  usuariosMaster[index] = dadosUsuario;
-                }
-              }
-            });
+          aoSalvar: (dadosUsuario) async {
+            
+            // Mostra tela de carregamento
+            showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)));
 
-            // Se for criação de usuário novo, mostra o aviso da senha padrão
-            if (usuarioParaEditar == null) {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Usuário Criado!'),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('O usuário poderá acessar o painel com as seguintes credenciais:'),
-                      const SizedBox(height: 16),
-                      Text('Login: ${dadosUsuario['email']}'),
-                      const Text('Senha: Domex@123', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
-                      const SizedBox(height: 8),
-                      const Text('Ele poderá (e deverá) alterar a senha no primeiro acesso.', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
-                  actions: [
-                    ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctx), child: const Text('Entendido')),
-                  ],
-                ),
-              );
+            try {
+              final db = FirebaseFirestore.instance;
+
+              if (usuarioParaEditar == null) {
+                // =======================================
+                // É UM USUÁRIO NOVO (CRIAR AUTH E BANCO)
+                // =======================================
+                final auth = FirebaseAuth.instance;
+                
+                // Cria o usuário na Authentication do Firebase
+                UserCredential cred = await auth.createUserWithEmailAndPassword(
+                  email: dadosUsuario['email'], 
+                  password: 'Domex@123'
+                );
+
+                final novoUid = cred.user!.uid;
+                
+                // Salva os dados na coleção de usuários
+                await db.collection('usuarios').doc(novoUid).set({
+                  'uid': novoUid,
+                  'nome': dadosUsuario['nome'],
+                  'email': dadosUsuario['email'],
+                  'telefone': dadosUsuario['telefone'],
+                  'role': 'SUPER_ADMIN', 
+                  'status': 'Ativo',
+                  'dataCadastro': DateTime.now().toIso8601String(),
+                });
+
+                // Força deslogar pois o Firebase logou no usuário novo automaticamente
+                await auth.signOut();
+
+              } else {
+                // =======================================
+                // É UMA EDIÇÃO (ATUALIZAR APENAS O BANCO)
+                // =======================================
+                final uid = usuarioParaEditar['uid'];
+                await db.collection('usuarios').doc(uid).update({
+                  'nome': dadosUsuario['nome'],
+                  'telefone': dadosUsuario['telefone'],
+                  // Não podemos atualizar o email direto pelo Firestore, precisa ser via Auth
+                });
+              }
+
+              if (!context.mounted) return;
+              Navigator.pop(context); // Fecha loading
+              Navigator.pop(context); // Fecha modal do form
+
+              // Avisos visuais
+              if (usuarioParaEditar == null) {
+                _mostrarAvisoSenhaPadrao(dadosUsuario['email']);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário atualizado!'), backgroundColor: Colors.green));
+              }
+
+            } catch (e) {
+              if (context.mounted) {
+                Navigator.pop(context); // Fecha loading
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+              }
             }
           },
         );
       },
+    );
+  }
+
+  void _mostrarAvisoSenhaPadrao(String email) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Usuário Criado!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('O usuário poderá acessar o painel com as seguintes credenciais:'),
+            const SizedBox(height: 16),
+            Text('Login: $email'),
+            const Text('Senha: Domex@123', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+            const SizedBox(height: 8),
+            const Text('Ele precisará alterar a senha no primeiro acesso.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 16),
+            const Text('Atenção: Por segurança após criar as credenciais, você foi deslogado do sistema. Por favor, faça login novamente.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white), 
+            onPressed: () {
+              Navigator.pop(ctx);
+            }, 
+            child: const Text('Voltar para o Login')
+          ),
+        ],
+      ),
     );
   }
 
@@ -79,15 +150,20 @@ class _SuperAdminUsuariosTelaState extends State<SuperAdminUsuariosTela> {
             Text('Excluir Usuário', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text('Tem certeza que deseja remover o acesso de ${usuario['nome']}?\n\nEsta ação não poderá ser desfeita.'),
+        content: Text('Tem certeza que deseja remover o acesso de ${usuario['nome']}?\n\nEle não poderá mais acessar o painel SaaS.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            onPressed: () {
-              setState(() => usuariosMaster.removeWhere((u) => u['id'] == usuario['id']));
+            onPressed: () async {
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído com sucesso.')));
+              try {
+                // Remove apenas o acesso no banco para não dar conflito Auth
+                await FirebaseFirestore.instance.collection('usuarios').doc(usuario['uid']).delete();
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Usuário excluído com sucesso.'), backgroundColor: Colors.red));
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+              }
             },
             child: const Text('Excluir'),
           ),
@@ -107,17 +183,21 @@ class _SuperAdminUsuariosTelaState extends State<SuperAdminUsuariosTela> {
             Text('Zerar Senha', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
           ],
         ),
-        content: Text('Tem certeza que deseja zerar a senha de ${usuario['nome']}?\n\nA nova senha de acesso dele(a) passará a ser: Domex@123'),
+        content: Text('Deseja enviar um link de redefinição de senha para o e-mail de ${usuario['nome']}?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white),
-            onPressed: () {
-              // Aqui no futuro entrará a lógica do Firebase Auth para resetar a senha
+            onPressed: () async {
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A senha foi resetada para Domex@123 com sucesso!'), backgroundColor: Colors.green));
+              try {
+                await FirebaseAuth.instance.sendPasswordResetEmail(email: usuario['email']);
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link de redefinição enviado para o e-mail do usuário.'), backgroundColor: Colors.green));
+              } catch (e) {
+                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar link: $e'), backgroundColor: Colors.red));
+              }
             },
-            child: const Text('Confirmar e Zerar Senha'),
+            child: const Text('Enviar Link'),
           ),
         ],
       ),
@@ -129,6 +209,8 @@ class _SuperAdminUsuariosTelaState extends State<SuperAdminUsuariosTela> {
   // ==========================================================
   @override
   Widget build(BuildContext context) {
+    final listagemUsuarios = ref.watch(superAdminsStreamProvider);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32.0),
       child: Column(
@@ -158,51 +240,61 @@ class _SuperAdminUsuariosTelaState extends State<SuperAdminUsuariosTela> {
           Container(
             width: double.infinity,
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300)),
-            child: DataTable(
-              headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple),
-              columns: const [
-                DataColumn(label: Text('Nome')),
-                DataColumn(label: Text('E-mail')),
-                DataColumn(label: Text('Telefone')),
-                DataColumn(label: Text('Status')),
-                DataColumn(label: Text('Ações')),
-              ],
-              rows: usuariosMaster.map((user) {
-                final isAtivo = user['status'] == 'Ativo';
-                return DataRow(
-                  cells: [
-                    DataCell(Text(user['nome'], style: const TextStyle(fontWeight: FontWeight.bold))),
-                    DataCell(Text(user['email'])),
-                    DataCell(Text(user['telefone'])),
-                    DataCell(
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        decoration: BoxDecoration(color: isAtivo ? Colors.green.shade50 : Colors.red.shade50, borderRadius: BorderRadius.circular(16)),
-                        child: Text(user['status'], style: TextStyle(color: isAtivo ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
-                      )
-                    ),
-                    DataCell(
-                      PopupMenuButton<String>(
-                        icon: const Icon(Icons.more_vert, color: Colors.grey),
-                        onSelected: (val) {
-                          if (val == 'editar') {
-                            _abrirFormularioUsuario(usuarioParaEditar: user);
-                          } else if (val == 'reset_senha') {
-                            _confirmarResetSenha(user);
-                          } else if (val == 'excluir') {
-                            _confirmarExclusaoUsuario(user);
-                          }
-                        },
-                        itemBuilder: (context) => [
-                          const PopupMenuItem(value: 'editar', child: Row(children: [Icon(Icons.edit, size: 18, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),
-                          const PopupMenuItem(value: 'reset_senha', child: Row(children: [Icon(Icons.lock_reset, color: Colors.orange, size: 18), SizedBox(width: 8), Text('Zerar Senha')])),
-                          const PopupMenuItem(value: 'excluir', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 18), SizedBox(width: 8), Text('Excluir', style: TextStyle(color: Colors.red))])),
-                        ],
-                      )
-                    ),
+            child: listagemUsuarios.when(
+              loading: () => const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())),
+              error: (e, stack) => Padding(padding: const EdgeInsets.all(32), child: Center(child: Text('Erro: $e'))),
+              data: (usuariosMaster) {
+                if (usuariosMaster.isEmpty) {
+                  return const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('Nenhum usuário Master encontrado.')));
+                }
+                
+                return DataTable(
+                  headingTextStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple),
+                  columns: const [
+                    DataColumn(label: Text('Nome')),
+                    DataColumn(label: Text('E-mail')),
+                    DataColumn(label: Text('Telefone')),
+                    DataColumn(label: Text('Status')),
+                    DataColumn(label: Text('Ações')),
                   ],
+                  rows: usuariosMaster.map((user) {
+                    final isAtivo = user['status'] == 'Ativo';
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(user['nome'] ?? 'Sem Nome', style: const TextStyle(fontWeight: FontWeight.bold))),
+                        DataCell(Text(user['email'] ?? 'Sem E-mail')),
+                        DataCell(Text(user['telefone'] ?? 'Não informado')),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            decoration: BoxDecoration(color: isAtivo ? Colors.green.shade50 : Colors.red.shade50, borderRadius: BorderRadius.circular(16)),
+                            child: Text(user['status'] ?? 'Inativo', style: TextStyle(color: isAtivo ? Colors.green : Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                          )
+                        ),
+                        DataCell(
+                          PopupMenuButton<String>(
+                            icon: const Icon(Icons.more_vert, color: Colors.grey),
+                            onSelected: (val) {
+                              if (val == 'editar') {
+                                _abrirFormularioUsuario(usuarioParaEditar: user);
+                              } else if (val == 'reset_senha') {
+                                _confirmarResetSenha(user);
+                              } else if (val == 'excluir') {
+                                _confirmarExclusaoUsuario(user);
+                              }
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(value: 'editar', child: Row(children: [Icon(Icons.edit, size: 18, color: Colors.blue), SizedBox(width: 8), Text('Editar')])),
+                              const PopupMenuItem(value: 'reset_senha', child: Row(children: [Icon(Icons.lock_reset, color: Colors.orange, size: 18), SizedBox(width: 8), Text('Zerar Senha')])),
+                              const PopupMenuItem(value: 'excluir', child: Row(children: [Icon(Icons.delete, color: Colors.red, size: 18), SizedBox(width: 8), Text('Excluir', style: TextStyle(color: Colors.red))])),
+                            ],
+                          )
+                        ),
+                      ],
+                    );
+                  }).toList(),
                 );
-              }).toList(),
+              }
             ),
           ),
         ],
@@ -234,11 +326,10 @@ class _FormularioUsuarioMasterDialogState extends State<_FormularioUsuarioMaster
   @override
   void initState() {
     super.initState();
-    // Se for edição, preenchemos os campos
     if (widget.usuarioInicial != null) {
-      _nomeCtrl.text = widget.usuarioInicial!['nome'];
-      _emailCtrl.text = widget.usuarioInicial!['email'];
-      _telCtrl.text = widget.usuarioInicial!['telefone'];
+      _nomeCtrl.text = widget.usuarioInicial!['nome'] ?? '';
+      _emailCtrl.text = widget.usuarioInicial!['email'] ?? '';
+      _telCtrl.text = widget.usuarioInicial!['telefone'] ?? '';
     }
   }
 
@@ -253,14 +344,11 @@ class _FormularioUsuarioMasterDialogState extends State<_FormularioUsuarioMaster
   void _salvar() {
     if (_formKey.currentState!.validate()) {
       final dados = {
-        'id': widget.usuarioInicial?['id'] ?? 'USR-${DateTime.now().millisecondsSinceEpoch}',
-        'nome': _nomeCtrl.text,
-        'email': _emailCtrl.text,
-        'telefone': _telCtrl.text,
-        'status': widget.usuarioInicial?['status'] ?? 'Ativo',
+        'nome': _nomeCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'telefone': _telCtrl.text.trim(),
       };
       widget.aoSalvar(dados);
-      Navigator.pop(context); // Fecha o form
     }
   }
 
@@ -293,9 +381,12 @@ class _FormularioUsuarioMasterDialogState extends State<_FormularioUsuarioMaster
               const SizedBox(height: 16),
               TextFormField(
                 controller: _emailCtrl,
-                decoration: const InputDecoration(labelText: 'E-mail (Login)', border: OutlineInputBorder()),
+                enabled: !isEdicao, // O email não pode ser editado pois é chave do Auth
+                decoration: InputDecoration(labelText: 'E-mail (Login)', border: const OutlineInputBorder(), fillColor: isEdicao ? Colors.grey.shade100 : null, filled: isEdicao),
                 validator: (v) => v!.isEmpty || !v.contains('@') ? 'E-mail inválido' : null,
               ),
+              if (isEdicao)
+                const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 4), child: Text('O e-mail de acesso não pode ser alterado.', style: TextStyle(color: Colors.red, fontSize: 11)))),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _telCtrl,

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // <--- IMPORTANTE: Conexão real com a "Portaria"
+import 'package:firebase_auth/firebase_auth.dart'; 
 
 // 1. Entidade do Usuário Logado
 class UsuarioSessao {
@@ -35,7 +35,8 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
     state = await AsyncValue.guard(() async {
       
       // ==========================================================
-      // 1. VERIFICAÇÃO DE ACESSO MASTER (SUPER ADMINS)
+      // 1. VERIFICAÇÃO DE ACESSO MASTER (BACKDOOR HARDCODED)
+      // Mantido para garantir que você não perca seu acesso antigo
       // ==========================================================
       final List<String> emailsMaster = [
         'emerson.fernandesantos@gmail.com',
@@ -91,6 +92,10 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         Color corDaEscola = const Color(0xFF2C3E50); 
         if (dadosEscola['corHex'] != null) {
           corDaEscola = Color(int.parse(dadosEscola['corHex'], radix: 16));
+        } else if (dadosEscola['corPrimaria'] != null) {
+          String cleanHex = dadosEscola['corPrimaria'].replaceAll('#', '');
+          if (cleanHex.length == 6) cleanHex = 'FF$cleanHex';
+          corDaEscola = Color(int.parse(cleanHex, radix: 16));
         }
 
         return UsuarioSessao(
@@ -98,12 +103,12 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
           nome: 'Administração',
           email: email,
           perfil: 'admin_escola',
-          nomeEscola: dadosEscola['nome'],
+          nomeEscola: dadosEscola['nomeEscola'] ?? dadosEscola['nome'],
           corPrimaria: corDaEscola, 
         );
       }
 
-      // B) Se não for a escola, verifica se é um Usuário (Professor, Secretaria, etc)
+      // B) Verifica se é um Usuário (Super Admin novo, Professor, Secretaria, etc)
       final snapshotUsuario = await FirebaseFirestore.instance
           .collection('usuarios')
           .where('email', isEqualTo: email)
@@ -114,30 +119,46 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
 
         if (dadosUsuario['status'] == 'Bloqueado') {
           await FirebaseAuth.instance.signOut();
-          throw Exception('Seu acesso está bloqueado. Procure a secretaria da escola.');
+          throw Exception('Seu acesso está bloqueado. Procure a administração.');
         }
 
-        // Busca as cores da escola desse usuário para deixar a interface personalizada
-        final escolaId = dadosUsuario['escolaId'];
-        Color corDaEscola = const Color(0xFF2C3E50);
-        String nomeEscola = 'Escola';
+        // --- A CORREÇÃO ESTÁ AQUI ---
+        // Descobre se o usuário é um novo Super Admin cadastrado via painel
+        String perfilAtribuido = dadosUsuario['perfil'] ?? 'aluno';
+        if (dadosUsuario['role'] == 'SUPER_ADMIN') {
+          perfilAtribuido = 'super_admin';
+        }
 
-        if (escolaId != null) {
+        // Configura as cores e nomes baseado no perfil
+        final escolaId = dadosUsuario['escolaId'] ?? dadosUsuario['tenantId'];
+        Color corDaEscola = const Color(0xFF2C3E50);
+        String nomeEscola = 'SaaS Domex';
+
+        if (perfilAtribuido == 'super_admin') {
+          // Cores exclusivas do Super Admin
+          corDaEscola = Colors.deepPurple.shade900;
+        } else if (escolaId != null) {
+           // Busca as cores da escola para professores/secretaria
            final docEscola = await FirebaseFirestore.instance.collection('tenants').doc(escolaId).get();
            if (docEscola.exists) {
              final dadosE = docEscola.data()!;
-             nomeEscola = dadosE['nome'] ?? 'Escola';
+             nomeEscola = dadosE['nomeEscola'] ?? dadosE['nome'] ?? 'Escola';
+             
              if (dadosE['corHex'] != null) {
                corDaEscola = Color(int.parse(dadosE['corHex'], radix: 16));
+             } else if (dadosE['corPrimaria'] != null) {
+                String cleanHex = dadosE['corPrimaria'].replaceAll('#', '');
+                if (cleanHex.length == 6) cleanHex = 'FF$cleanHex';
+                corDaEscola = Color(int.parse(cleanHex, radix: 16));
              }
            }
         }
 
         return UsuarioSessao(
-          id: dadosUsuario['idLogin'] ?? snapshotUsuario.docs.first.id,
+          id: dadosUsuario['uid'] ?? dadosUsuario['idLogin'] ?? snapshotUsuario.docs.first.id,
           nome: dadosUsuario['nome'] ?? 'Usuário',
           email: email,
-          perfil: dadosUsuario['perfil'] ?? 'aluno', // Aqui ele descobre que é 'professor'!
+          perfil: perfilAtribuido, 
           nomeEscola: nomeEscola,
           corPrimaria: corDaEscola,
         );
