@@ -60,7 +60,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
               Tab(icon: Icon(Icons.school_rounded), text: 'Alunos'),
               Tab(icon: Icon(Icons.family_restroom_rounded), text: 'Responsáveis'),
               Tab(icon: Icon(Icons.assignment_ind_rounded), text: 'Professores'),
-              Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretária'),
+              Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretaria'),
               Tab(icon: Icon(Icons.meeting_room_rounded), text: 'Turmas'),
               Tab(icon: Icon(Icons.admin_panel_settings_rounded), text: 'Usuários'),
             ],

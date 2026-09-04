@@ -7,6 +7,13 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+// === NOVAS IMPORTAÇÕES PARA GERAR O LOGIN AUTOMÁTICO ===
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
+
 import '../estado/secretaria_provider.dart';
 
 class UpperCaseTextFormatter extends TextInputFormatter {
@@ -55,7 +62,7 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
   final _bairroCtrl = TextEditingController();
   final _cidadeCtrl = TextEditingController();
 
-  // === NOVO CAMPO: FUNÇÃO ===
+  // === CAMPO: FUNÇÃO ===
   String? _funcaoSelecionada;
   final _funcaoCustomizadaCtrl = TextEditingController();
   final List<String> _funcoesPadrao = ['SECRETÁRIA', 'AUXILIAR ADMINISTRATIVO', 'PORTEIRO', 'ZELADOR', 'MONITOR(A)', 'COORDENADOR(A)', 'DIRETOR(A)', 'OUTROS'];
@@ -82,7 +89,6 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
       }
       _isAtivo = mem['status'] == 'Ativo';
 
-      // Tratamento do Cargo/Função
       final funcaoSalva = mem['funcao'] ?? '';
       if (funcaoSalva.isNotEmpty) {
         if (_funcoesPadrao.contains(funcaoSalva)) {
@@ -187,7 +193,7 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
             if (sequencial > maiorSequencial) maiorSequencial = sequencial;
           }
         }
-        idParaSalvar = 'SEC-${(maiorSequencial + 1).toString().padLeft(2, '0')}'; 
+        idParaSalvar = 'SEC-${(maiorSequencial + 1).toString().padLeft(3, '0')}'; 
       }
 
       final funcaoFinal = _funcaoSelecionada == 'OUTROS' ? _funcaoCustomizadaCtrl.text.trim() : _funcaoSelecionada!;
@@ -209,10 +215,15 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                       padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200)),
                       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text('ID: ', style: TextStyle(fontSize: 16, color: Colors.blue)), Text(idParaSalvar, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue))]),
                     ),
+                    if (!isEdicao && _emailCtrl.text.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Align(alignment: Alignment.center, child: Text('*O acesso deste colaborador será gerado automaticamente (Senha Padrão: Domex@123)', style: TextStyle(color: Colors.orange, fontSize: 12))),
+                    ],
                     const SizedBox(height: 16),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Nome: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _nomeCtrl.text)]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'CPF: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _cpfCtrl.text)]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Função: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: funcaoFinal)]))),
+                    Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'E-mail: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _emailCtrl.text)]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Status: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _isAtivo ? 'Ativo' : 'Inativo')]))),
                   ],
                 ),
@@ -237,24 +248,77 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
 
                     final dadosSalvar = {
                       'id': idParaSalvar,
-                      'nome': _nomeCtrl.text,
+                      'nome': _nomeCtrl.text.trim(),
                       'dataNascimento': _dataNascimentoCtrl.text,
                       'cpf': _cpfCtrl.text,
                       'telefone': _telefoneCtrl.text,
-                      'email': _emailCtrl.text,
+                      'email': _emailCtrl.text.trim().toLowerCase(),
                       'fotoUrl': urlFinalFoto,
-                      'funcao': funcaoFinal, // Salvando a nova função no banco de dados
+                      'funcao': funcaoFinal,
                       'endereco': {'rua': _ruaCtrl.text, 'numero': _numeroCtrl.text, 'bairro': _bairroCtrl.text, 'cidade': _cidadeCtrl.text},
                       'status': _isAtivo ? 'Ativo' : 'Inativo',
                       'dataCadastro': isEdicao ? widget.membroParaEditar!['dataCadastro'] : DateTime.now().toIso8601String(),
                     };
 
+                    // Salva a Ficha do Funcionário
                     await ref.read(secretariaServiceProvider).salvarSecretaria(dadosSalvar);
+
+                    // ==========================================================
+                    // CRIAÇÃO AUTOMÁTICA DO LOGIN DO FUNCIONÁRIO
+                    // ==========================================================
+                    if (!isEdicao && _emailCtrl.text.isNotEmpty) {
+                      final authState = ref.read(authProvider).value;
+                      final tenantId = authState?.id ?? '';
+
+                      if (tenantId.isNotEmpty) {
+                        FirebaseApp appSecundario = await Firebase.initializeApp(
+                          name: 'AppCriacaoSec_${DateTime.now().millisecondsSinceEpoch}',
+                          options: Firebase.app().options,
+                        );
+                        
+                        String emailFuncionario = _emailCtrl.text.trim().toLowerCase();
+                        
+                        UserCredential userCred = await FirebaseAuth.instanceFor(app: appSecundario)
+                            .createUserWithEmailAndPassword(email: emailFuncionario, password: 'Domex@123');
+                        
+                        final String uidFuncionario = userCred.user!.uid;
+                        await appSecundario.delete();
+
+                        final db = FirebaseFirestore.instance;
+                        WriteBatch batch = db.batch();
+
+                        // Salva o registro Global de login
+                        batch.set(db.collection('usuarios').doc(uidFuncionario), {
+                          'uid': uidFuncionario,
+                          'nome': _nomeCtrl.text.trim(),
+                          'email': emailFuncionario,
+                          'role': 'USER',
+                          'tenantId': tenantId,
+                          'dataCadastro': DateTime.now().toIso8601String(),
+                        });
+
+                        // Salva o registro Local (Tenant) para aparecer na aba de Usuários
+                        batch.set(db.collection('tenants').doc(tenantId).collection('usuarios').doc(uidFuncionario), {
+                          'id': uidFuncionario,
+                          'uid': uidFuncionario,
+                          'idLogin': idParaSalvar,
+                          'nome': _nomeCtrl.text.trim(),
+                          'email': emailFuncionario,
+                          'perfil': 'secretaria',
+                          'status': _isAtivo ? 'Ativo' : 'Inativo',
+                          'telefone': _telefoneCtrl.text.trim(),
+                          'dataCadastro': DateTime.now().toIso8601String(),
+                        });
+
+                        await batch.commit();
+                      }
+                    }
+
                     if (!context.mounted) return;
                     Navigator.of(context, rootNavigator: true).pop(); 
                     Navigator.pop(context); 
                     context.pop(); 
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdicao ? 'Atualizado!' : 'Membro da equipe salvo! ID: $idParaSalvar', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdicao ? 'Atualizado!' : 'Membro da equipe e Login salvos! ID: $idParaSalvar', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
                   } catch (e) {
                     if (context.mounted) {
                       Navigator.of(context, rootNavigator: true).pop(); 
@@ -336,7 +400,16 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                                         const SizedBox(width: 16),
                                         Expanded(child: TextFormField(controller: _telefoneCtrl, textInputAction: TextInputAction.next, inputFormatters: [_telMask, _upperCase], decoration: const InputDecoration(labelText: 'Telefone/WhatsApp', hintText: '(xx) xxxxx-xxxx', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Obrigatório' : null)),
                                         const SizedBox(width: 16),
-                                        Expanded(flex: 2, child: TextFormField(controller: _emailCtrl, textInputAction: TextInputAction.next, inputFormatters: [_lowerCase], decoration: const InputDecoration(labelText: 'E-mail', border: OutlineInputBorder()), validator: (v) => v!.isEmpty || !v.contains('@') ? 'E-mail inválido' : null)),
+                                        Expanded(
+                                          flex: 2, 
+                                          child: TextFormField(
+                                            controller: _emailCtrl, 
+                                            textInputAction: TextInputAction.next, 
+                                            inputFormatters: [_lowerCase], 
+                                            decoration: const InputDecoration(labelText: 'E-mail (Usado para Login)', border: OutlineInputBorder()), 
+                                            validator: (v) => v!.isEmpty || !v.contains('@') ? 'E-mail inválido' : null
+                                          )
+                                        ),
                                       ],
                                     ),
                                   ],
@@ -360,9 +433,6 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                           Row(children: [Icon(Icons.location_on_rounded, color: corPrimaria), const SizedBox(width: 8), const Text('Endereço & Atuação', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))]),
                           const Divider(height: 32),
                           
-                          // ==========================================================
-                          // NOVO BLOCO: FUNÇÃO / CARGO
-                          // ==========================================================
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [

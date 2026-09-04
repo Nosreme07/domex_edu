@@ -6,8 +6,7 @@ import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
 import '../estado/turma_provider.dart';
 
-// Importações necessárias para o Injetor de Massa funcionar
-import '../estado/injetor_massa_service.dart';
+// O AuthProvider continua importado caso no futuro precisemos do TenantID na Visão Geral
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart'; 
 
 class AdminVisaoGeralTela extends ConsumerStatefulWidget {
@@ -67,7 +66,7 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                 ),
                 const Spacer(),
                 
-                // NOVO: SELETOR DE ANO LETIVO
+                // SELETOR DE ANO LETIVO
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200, width: 1.5)),
@@ -160,17 +159,6 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                               _BotaoAtalho(titulo: 'Novo Funcionário', icone: Icons.support_agent_rounded, cor: Colors.teal, onTap: () => context.push('/admin/cadastros/secretaria/novo')),
                               _BotaoAtalho(titulo: 'Nova Turma', icone: Icons.meeting_room_rounded, cor: Colors.orange, onTap: () => context.push('/admin/cadastros/turma/novo')),
                               _BotaoAtalho(titulo: 'Novo Acesso', icone: Icons.manage_accounts_rounded, cor: Colors.deepPurple, onTap: () => context.go('/admin/cadastros', extra: 5)),
-                              
-                              // === BOTÃO PARA INJETAR DADOS FAKES ===
-                              _BotaoAtalho(
-                                titulo: 'INJETAR TESTES', 
-                                icone: Icons.warning_amber_rounded, 
-                                cor: Colors.red, 
-                                onTap: () async {
-                                  final tenantId = ref.read(authProvider).value?.id ?? 'escola_desconhecida';
-                                  await InjetorMassaService(tenantId).saturarBanco(context);
-                                }
-                              ),
                             ],
                           )
                         ],

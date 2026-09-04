@@ -10,7 +10,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:firebase_core/firebase_core.dart'; 
+import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:cloud_firestore/cloud_firestore.dart'; 
 
+import '../../../autenticacao/apresentacao/estado/auth_provider.dart'; 
 import '../estado/aluno_provider.dart';
 import '../estado/turma_provider.dart';
 
@@ -62,6 +66,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
   final _nomeAlunoCtrl = TextEditingController();
   final _raCtrl = TextEditingController(); 
   final _telefoneAlunoCtrl = TextEditingController();
+  final _emailAlunoCtrl = TextEditingController(); // NOVO CAMPO DE EMAIL
   final _cpfAlunoCtrl = TextEditingController();
   final _rgAlunoCtrl = TextEditingController();
   final _orgaoExpedidorCtrl = TextEditingController();
@@ -110,7 +115,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
   final _emerg3NomeCtrl = TextEditingController();
   final _emerg3TelCtrl = TextEditingController();
 
-  // === LISTA DE ANEXOS ===
   List<Map<String, dynamic>> _anexos = [];
 
   final List<String> _tiposSanguineos = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'NÃO SABE/NÃO INFORMADO'];
@@ -127,6 +131,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
       _nomeAlunoCtrl.text = aluno['nome'] ?? '';
       _raCtrl.text = aluno['ra'] ?? '';
       _telefoneAlunoCtrl.text = aluno['telefone'] ?? '';
+      _emailAlunoCtrl.text = aluno['email'] ?? ''; // Carregando o E-mail
       _cpfAlunoCtrl.text = aluno['cpf'] ?? '';
       _rgAlunoCtrl.text = aluno['rg'] ?? '';
       _orgaoExpedidorCtrl.text = aluno['orgaoExpedidor'] ?? '';
@@ -205,7 +210,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
         }
       }
 
-      // CARREGA ANEXOS
       if (aluno['anexos'] != null) {
         _anexos = List<Map<String, dynamic>>.from(aluno['anexos']);
       }
@@ -214,7 +218,14 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
 
   @override
   void dispose() {
-    _nomeAlunoCtrl.dispose(); _raCtrl.dispose(); _telefoneAlunoCtrl.dispose(); _cpfAlunoCtrl.dispose(); _rgAlunoCtrl.dispose(); _orgaoExpedidorCtrl.dispose(); _naturalidadeCtrl.dispose();
+    _nomeAlunoCtrl.dispose(); 
+    _raCtrl.dispose(); 
+    _telefoneAlunoCtrl.dispose(); 
+    _emailAlunoCtrl.dispose(); // Descartando o E-mail
+    _cpfAlunoCtrl.dispose(); 
+    _rgAlunoCtrl.dispose(); 
+    _orgaoExpedidorCtrl.dispose(); 
+    _naturalidadeCtrl.dispose();
     _dataNascimentoCtrl.dispose(); _ruaCtrl.dispose(); _numeroCtrl.dispose(); _bairroCtrl.dispose(); _cidadeCtrl.dispose(); _referenciaCtrl.dispose();
     _resp1NomeCtrl.dispose(); _resp1CpfCtrl.dispose(); _resp1TelCtrl.dispose(); _resp1EmailCtrl.dispose();
     _resp2NomeCtrl.dispose(); _resp2CpfCtrl.dispose(); _resp2TelCtrl.dispose(); _resp2EmailCtrl.dispose();
@@ -227,13 +238,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
     super.dispose();
   }
 
-  Widget _buildDropdownComBusca({
-    required String label,
-    required List<String> opcoes,
-    required String? valorInicial,
-    required Function(String) aoSelecionar,
-    bool obrigatorio = false,
-  }) {
+  Widget _buildDropdownComBusca({required String label, required List<String> opcoes, required String? valorInicial, required Function(String) aoSelecionar, bool obrigatorio = false}) {
     return Autocomplete<String>(
       initialValue: TextEditingValue(text: valorInicial ?? ''),
       optionsBuilder: (TextEditingValue textoDigitado) {
@@ -243,15 +248,8 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
       onSelected: (selecao) => aoSelecionar(selecao),
       fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
         return TextFormField(
-          controller: controller,
-          focusNode: focusNode,
-          textInputAction: TextInputAction.next,
-          inputFormatters: [_upperCase],
-          decoration: InputDecoration(
-            labelText: label,
-            border: const OutlineInputBorder(),
-            suffixIcon: const Icon(Icons.arrow_drop_down),
-          ),
+          controller: controller, focusNode: focusNode, textInputAction: TextInputAction.next, inputFormatters: [_upperCase],
+          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder(), suffixIcon: const Icon(Icons.arrow_drop_down)),
           validator: (v) => obrigatorio && (v == null || v.isEmpty) ? 'Obrigatório' : null,
           onChanged: (val) => aoSelecionar(val),
         );
@@ -274,13 +272,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
       sourcePath: path,
       aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), 
       uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: 'Enquadrar Foto 3x4', 
-          toolbarColor: Theme.of(context).primaryColor, 
-          toolbarWidgetColor: Colors.white, 
-          initAspectRatio: CropAspectRatioPreset.original, 
-          lockAspectRatio: true
-        ),
+        AndroidUiSettings(toolbarTitle: 'Enquadrar Foto 3x4', toolbarColor: Theme.of(context).primaryColor, toolbarWidgetColor: Colors.white, initAspectRatio: CropAspectRatioPreset.original, lockAspectRatio: true),
         WebUiSettings(context: context),
       ],
     );
@@ -319,26 +311,13 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
     );
   }
 
-  // === FUNÇÕES PARA ANEXOS ===
   Future<void> _escolherAnexos() async {
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        allowMultiple: true,
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
-        withData: true, 
-      );
-
+      FilePickerResult? result = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.custom, allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'], withData: true);
       if (result != null) {
         setState(() {
           for (var file in result.files) {
-            _anexos.add({
-              'idLocal': DateTime.now().microsecondsSinceEpoch.toString(), 
-              'nome': file.name,
-              'bytes': file.bytes, 
-              'extensao': file.extension?.toLowerCase() ?? 'pdf',
-              'url': null, 
-            });
+            _anexos.add({'idLocal': DateTime.now().microsecondsSinceEpoch.toString(), 'nome': file.name, 'bytes': file.bytes, 'extensao': file.extension?.toLowerCase() ?? 'pdf', 'url': null});
           }
         });
       }
@@ -348,11 +327,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
     }
   }
 
-  void _removerAnexo(int index) {
-    setState(() {
-      _anexos.removeAt(index);
-    });
-  }
+  void _removerAnexo(int index) => setState(() => _anexos.removeAt(index));
 
   Future<void> _abrirAnexoUrl(String url) async {
     if (await canLaunchUrl(Uri.parse(url))) {
@@ -384,7 +359,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
         matriculaParaSalvar = '$anoAtual${(maiorSequencial + 1).toString().padLeft(4, '0')}'; 
       }
 
-      // TRATAMENTO DA EXIBIÇÃO DE IRMÃOS NA REVISÃO
       String textoIrmaosRevisao = 'NÃO';
       if (_temIrmao) {
         if (_irmaosSelecionados.isNotEmpty) {
@@ -407,8 +381,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
               ],
             ),
             content: SizedBox(
-              width: 600, 
-              height: 500, 
+              width: 600, height: 500, 
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,13 +392,16 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text('Matrícula: ', style: TextStyle(fontSize: 16, color: Colors.blue)),
+                          const Text('Matrícula / Acesso: ', style: TextStyle(fontSize: 16, color: Colors.blue)),
                           Text(matriculaParaSalvar, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue)),
                         ],
                       ),
                     ),
+                    if (!isEdicao) ...[
+                      const SizedBox(height: 8),
+                      const Align(alignment: Alignment.center, child: Text('*O login deste aluno será gerado automaticamente (Senha Padrão: 123456)', style: TextStyle(color: Colors.orange, fontSize: 12))),
+                    ],
                     const SizedBox(height: 24),
-                    
                     const Text('DADOS DO ALUNO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const Divider(),
                     _resumoLinha('Nome', _nomeAlunoCtrl.text),
@@ -433,45 +409,35 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     _resumoLinha('Nascimento', _dataNascimentoCtrl.text),
                     _resumoLinha('Sexo', _sexoSelecionado ?? 'NÃO INFORMADO'),
                     if (_telefoneAlunoCtrl.text.isNotEmpty) _resumoLinha('Celular', _telefoneAlunoCtrl.text),
+                    if (_emailAlunoCtrl.text.isNotEmpty) _resumoLinha('E-mail', _emailAlunoCtrl.text), // Exibe o email na revisão
                     if (_cpfAlunoCtrl.text.isNotEmpty) _resumoLinha('CPF', _cpfAlunoCtrl.text),
                     if (_rgAlunoCtrl.text.isNotEmpty) _resumoLinha('RG', '${_rgAlunoCtrl.text} - Órgão: ${_orgaoExpedidorCtrl.text}'),
                     if (_naturalidadeCtrl.text.isNotEmpty) _resumoLinha('Naturalidade', '${_naturalidadeCtrl.text} / ${_estadoNaturalidadeSelecionado ?? ""}'),
-                    
                     const SizedBox(height: 16),
-                    
                     const Text('DADOS ACADÊMICOS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const Divider(),
                     _resumoLinha('Turma', _turmaSelecionada ?? 'NÃO INFORMADA'),
-                    _resumoLinha('Irmão(s)', textoIrmaosRevisao), // AGORA EXIBE OS NOMES AQUI NA REVISÃO
-
+                    _resumoLinha('Irmão(s)', textoIrmaosRevisao),
                     const SizedBox(height: 16),
-                    
                     const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const Divider(),
                     _resumoLinha('Logradouro', '${_ruaCtrl.text}, Nº ${_numeroCtrl.text}'),
                     _resumoLinha('Bairro/Cidade', '${_bairroCtrl.text} - ${_cidadeCtrl.text} / ${_estadoEnderecoSelecionado ?? ""}'),
                     if (_referenciaCtrl.text.isNotEmpty) _resumoLinha('Referência', _referenciaCtrl.text),
-
                     const SizedBox(height: 16),
-                    
                     const Text('RESPONSÁVEIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const Divider(),
                     _resumoLinha('Resp. Principal', '${_resp1NomeCtrl.text} (Tel: ${_resp1TelCtrl.text})'),
                     if (_resp1CpfCtrl.text.isNotEmpty) _resumoLinha('CPF Principal', _resp1CpfCtrl.text),
                     if (_resp2NomeCtrl.text.isNotEmpty) _resumoLinha('Resp. Secundário', '${_resp2NomeCtrl.text} (Tel: ${_resp2TelCtrl.text})'),
                     _resumoLinha('Autoriza Sair Só', _autorizaSairSo ? 'SIM' : 'NÃO'),
-                    
                     if (_pessoasAutorizadas.where((p) => p.nomeCtrl.text.isNotEmpty).isNotEmpty) ...[
                       const SizedBox(height: 16),
                       const Text('AUTORIZADOS A BUSCAR', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                       const Divider(),
-                      ..._pessoasAutorizadas.where((p) => p.nomeCtrl.text.isNotEmpty).map((p) => 
-                        _resumoLinha('Autorizado', '${p.nomeCtrl.text} (Tel: ${p.telCtrl.text})')
-                      ),
+                      ..._pessoasAutorizadas.where((p) => p.nomeCtrl.text.isNotEmpty).map((p) => _resumoLinha('Autorizado', '${p.nomeCtrl.text} (Tel: ${p.telCtrl.text})')),
                     ],
-
                     const SizedBox(height: 16),
-                    
                     const Text('SAÚDE E EMERGÊNCIA', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                     const Divider(),
                     _resumoLinha('Tipo Sanguíneo', _tipoSanguineoSelecionado ?? 'NÃO INFORMADO'),
@@ -479,11 +445,9 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     _resumoLinha('Toma Remédio', _tomaRemedio ? 'SIM: ${_remedioCtrl.text}' : 'NÃO'),
                     _resumoLinha('Alergias', _temAlergia ? 'SIM: ${_alergiaCtrl.text}' : 'NÃO'),
                     if (_obsMedicasCtrl.text.isNotEmpty) _resumoLinha('Obs. Médicas', _obsMedicasCtrl.text),
-                    
                     if (_emerg1NomeCtrl.text.isNotEmpty) _resumoLinha('Emergência 1', '${_emerg1NomeCtrl.text} (Tel: ${_emerg1TelCtrl.text})'),
                     if (_emerg2NomeCtrl.text.isNotEmpty) _resumoLinha('Emergência 2', '${_emerg2NomeCtrl.text} (Tel: ${_emerg2TelCtrl.text})'),
                     if (_emerg3NomeCtrl.text.isNotEmpty) _resumoLinha('Emergência 3', '${_emerg3NomeCtrl.text} (Tel: ${_emerg3TelCtrl.text})'),
-
                     const SizedBox(height: 16),
                     _resumoLinha('Documentos Anexados', '${_anexos.length} arquivo(s)'),
                   ],
@@ -498,7 +462,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                   showDialog(context: context, barrierDismissible: false, builder: (dialogContext) => const Center(child: CircularProgressIndicator(color: Colors.white)));
 
                   try {
-                    // Upload da Foto
                     String? urlFinalFoto = _fotoUrlExistente;
                     if (_fotoSelecionada != null) {
                       final bytesFoto = await _fotoSelecionada!.readAsBytes();
@@ -509,24 +472,14 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                       urlFinalFoto = null;
                     }
 
-                    // Upload dos Documentos Anexos
                     List<Map<String, dynamic>> anexosParaSalvar = [];
                     for (var anexo in _anexos) {
                       if (anexo['url'] == null && anexo['bytes'] != null) {
                         String nomeUnico = 'anexo_${DateTime.now().millisecondsSinceEpoch}.${anexo['extensao']}';
                         String? urlDownload = await ref.read(alunoServiceProvider).fazerUploadArquivo(matriculaParaSalvar, nomeUnico, anexo['bytes'], anexo['extensao']);
-                        
-                        anexosParaSalvar.add({
-                          'nome': anexo['nome'],
-                          'url': urlDownload,
-                          'extensao': anexo['extensao'],
-                        });
+                        anexosParaSalvar.add({'nome': anexo['nome'], 'url': urlDownload, 'extensao': anexo['extensao']});
                       } else {
-                        anexosParaSalvar.add({
-                          'nome': anexo['nome'],
-                          'url': anexo['url'],
-                          'extensao': anexo['extensao'],
-                        });
+                        anexosParaSalvar.add({'nome': anexo['nome'], 'url': anexo['url'], 'extensao': anexo['extensao']});
                       }
                     }
 
@@ -534,28 +487,24 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     if (isEdicao && widget.alunoParaEditar!['turmaId'] != null) {
                       turmaIdSalvar = widget.alunoParaEditar!['turmaId'];
                     }
-
+                    
                     final listaTurmas = ref.read(turmasStreamProvider).value ?? [];
                     for (var t in listaTurmas) {
                       final turnoFormatado = t['turno'] ?? '';
                       final nomeFormatado = '${t['nome']} (${t['anoLetivo']}) - $turnoFormatado'.toUpperCase();
-                      
                       if (nomeFormatado == _turmaSelecionada?.toUpperCase()) {
-                        turmaIdSalvar = t['id']?.toString() ?? '';
-                        break;
+                        turmaIdSalvar = t['id']?.toString() ?? ''; break;
                       }
                     }
 
-                    final autorizadosSalvar = _pessoasAutorizadas
-                        .where((p) => p.nomeCtrl.text.trim().isNotEmpty)
-                        .map((p) => {'nome': p.nomeCtrl.text, 'telefone': p.telCtrl.text})
-                        .toList();
+                    final autorizadosSalvar = _pessoasAutorizadas.where((p) => p.nomeCtrl.text.trim().isNotEmpty).map((p) => {'nome': p.nomeCtrl.text, 'telefone': p.telCtrl.text}).toList();
 
                     final dadosAluno = {
                       'matricula': matriculaParaSalvar,
                       'nome': _nomeAlunoCtrl.text,
                       'ra': _raCtrl.text,
                       'telefone': _telefoneAlunoCtrl.text,
+                      'email': _emailAlunoCtrl.text.trim().toLowerCase(), // Inserindo no Banco
                       'cpf': _cpfAlunoCtrl.text,
                       'rg': _rgAlunoCtrl.text,
                       'orgaoExpedidor': _orgaoExpedidorCtrl.text,
@@ -569,26 +518,15 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                       'irmaosVinculadosRaw': _irmaosSelecionados.map((a) => {'nome': a['nome'], 'matricula': a['matricula']}).toList(),
                       'irmaosVinculados': _irmaosSelecionados.map((a) => '${a['nome']} (${a['matricula']})'.toUpperCase()).toList(),
                       'fotoUrl': urlFinalFoto,
-                      'anexos': anexosParaSalvar, // Salvando a lista de documentos no banco!
-                      'endereco': {
-                        'rua': _ruaCtrl.text, 'numero': _numeroCtrl.text,
-                        'bairro': _bairroCtrl.text, 'cidade': _cidadeCtrl.text,
-                        'estado': _estadoEnderecoSelecionado, 
-                        'referencia': _referenciaCtrl.text,
-                      },
+                      'anexos': anexosParaSalvar,
+                      'endereco': { 'rua': _ruaCtrl.text, 'numero': _numeroCtrl.text, 'bairro': _bairroCtrl.text, 'cidade': _cidadeCtrl.text, 'estado': _estadoEnderecoSelecionado, 'referencia': _referenciaCtrl.text },
                       'responsaveis': [
                         {'nome': _resp1NomeCtrl.text, 'cpf': _resp1CpfCtrl.text, 'telefone': _resp1TelCtrl.text, 'email': _resp1EmailCtrl.text, 'principal': true},
                         if (_resp2NomeCtrl.text.isNotEmpty) {'nome': _resp2NomeCtrl.text, 'cpf': _resp2CpfCtrl.text, 'telefone': _resp2TelCtrl.text, 'email': _resp2EmailCtrl.text, 'principal': false}
                       ],
                       'autorizaSairSo': _autorizaSairSo,
                       'pessoasAutorizadas': autorizadosSalvar,
-                      'fichaMedica': {
-                        'tipoSanguineo': _tipoSanguineoSelecionado,
-                        'temProblema': _temProbSaude, 'problema': _probSaudeCtrl.text,
-                        'tomaRemedio': _tomaRemedio, 'remedio': _remedioCtrl.text,
-                        'temAlergia': _temAlergia, 'alergia': _alergiaCtrl.text,
-                        'observacoes': _obsMedicasCtrl.text,
-                      },
+                      'fichaMedica': { 'tipoSanguineo': _tipoSanguineoSelecionado, 'temProblema': _temProbSaude, 'problema': _probSaudeCtrl.text, 'tomaRemedio': _tomaRemedio, 'remedio': _remedioCtrl.text, 'temAlergia': _temAlergia, 'alergia': _alergiaCtrl.text, 'observacoes': _obsMedicasCtrl.text },
                       'emergencia': [
                         if (_emerg1NomeCtrl.text.isNotEmpty) {'nome': _emerg1NomeCtrl.text, 'telefone': _emerg1TelCtrl.text},
                         if (_emerg2NomeCtrl.text.isNotEmpty) {'nome': _emerg2NomeCtrl.text, 'telefone': _emerg2TelCtrl.text},
@@ -599,13 +537,62 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     };
 
                     await ref.read(alunoServiceProvider).salvarAluno(dadosAluno);
+
+                    // ==========================================================
+                    // CRIAÇÃO AUTOMÁTICA DO LOGIN DO ALUNO (Com E-mail Fake)
+                    // ==========================================================
+                    if (!isEdicao) {
+                      final authState = ref.read(authProvider).value;
+                      final tenantId = authState?.id ?? '';
+
+                      if (tenantId.isNotEmpty) {
+                        FirebaseApp appSecundario = await Firebase.initializeApp(
+                          name: 'AppCriacaoAluno_${DateTime.now().millisecondsSinceEpoch}',
+                          options: Firebase.app().options,
+                        );
+                        
+                        // O e-mail fake que permite login usando apenas a matrícula
+                        String emailFicticioAluno = '$matriculaParaSalvar@aluno.com';
+                        
+                        UserCredential userCred = await FirebaseAuth.instanceFor(app: appSecundario)
+                            .createUserWithEmailAndPassword(email: emailFicticioAluno, password: '123456');
+                        
+                        final String uidAluno = userCred.user!.uid;
+                        await appSecundario.delete();
+
+                        final db = FirebaseFirestore.instance;
+                        WriteBatch batch = db.batch();
+
+                        batch.set(db.collection('usuarios').doc(uidAluno), {
+                          'uid': uidAluno,
+                          'nome': _nomeAlunoCtrl.text,
+                          'email': emailFicticioAluno,
+                          'role': 'USER',
+                          'tenantId': tenantId,
+                          'dataCadastro': DateTime.now().toIso8601String(),
+                        });
+
+                        batch.set(db.collection('tenants').doc(tenantId).collection('usuarios').doc(uidAluno), {
+                          'id': uidAluno,
+                          'uid': uidAluno,
+                          'idLogin': matriculaParaSalvar,
+                          'nome': _nomeAlunoCtrl.text,
+                          'email': emailFicticioAluno,
+                          'perfil': 'aluno',
+                          'status': 'Ativo',
+                          'dataCadastro': DateTime.now().toIso8601String(),
+                        });
+
+                        await batch.commit();
+                      }
+                    }
                     
                     if (!context.mounted) return;
                     Navigator.of(context, rootNavigator: true).pop(); 
                     Navigator.pop(context); 
                     context.pop(); 
                     
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdicao ? 'Atualizado com sucesso!' : 'Matriculado com sucesso!', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(isEdicao ? 'Atualizado com sucesso!' : 'Matriculado e Acesso Criado!', style: const TextStyle(color: Colors.white)), backgroundColor: Colors.green));
                   } catch (e) {
                     if (context.mounted) {
                       Navigator.of(context, rootNavigator: true).pop(); 
@@ -666,9 +653,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ==========================================================
-                  // 1. DADOS DO ALUNO
-                  // ==========================================================
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
@@ -706,11 +690,17 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                     const SizedBox(height: 16),
                                     Row(
                                       children: [
-                                        Expanded(child: TextFormField(controller: _dataNascimentoCtrl, textInputAction: TextInputAction.next, inputFormatters: [_dataMask, _upperCase], decoration: const InputDecoration(labelText: 'Nascimento', hintText: 'DD/MM/AAAA', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Obrigatório' : null)),
+                                        Expanded(flex: 2, child: TextFormField(controller: _dataNascimentoCtrl, textInputAction: TextInputAction.next, inputFormatters: [_dataMask, _upperCase], decoration: const InputDecoration(labelText: 'Nascimento', hintText: 'DD/MM/AAAA', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Obrigatório' : null)),
                                         const SizedBox(width: 16),
-                                        Expanded(child: _buildDropdownComBusca(label: 'Sexo', opcoes: _sexos, valorInicial: _sexoSelecionado, aoSelecionar: (v) => setState(() => _sexoSelecionado = v))),
+                                        Expanded(flex: 2, child: _buildDropdownComBusca(label: 'Sexo', opcoes: _sexos, valorInicial: _sexoSelecionado, aoSelecionar: (v) => setState(() => _sexoSelecionado = v))),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      children: [
+                                        Expanded(flex: 2, child: TextFormField(controller: _telefoneAlunoCtrl, textInputAction: TextInputAction.next, inputFormatters: [_telMask, _upperCase], decoration: const InputDecoration(labelText: 'Celular (Opcional)', hintText: '(xx) xxxxx-xxxx', border: OutlineInputBorder()))),
                                         const SizedBox(width: 16),
-                                        Expanded(child: TextFormField(controller: _telefoneAlunoCtrl, textInputAction: TextInputAction.next, inputFormatters: [_telMask, _upperCase], decoration: const InputDecoration(labelText: 'Celular (Opcional)', hintText: '(xx) xxxxx-xxxx', border: OutlineInputBorder()))),
+                                        Expanded(flex: 3, child: TextFormField(controller: _emailAlunoCtrl, textInputAction: TextInputAction.next, inputFormatters: [_lowerCase], keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'E-mail (Opcional)', hintText: 'aluno@escola.com', border: OutlineInputBorder()), validator: (v) => (v != null && v.isNotEmpty && !v.contains('@')) ? 'E-mail inválido' : null)),
                                       ],
                                     ),
                                   ],
@@ -719,7 +709,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                             ],
                           ),
                           const SizedBox(height: 24),
-                          
                           Row(
                             children: [
                               Expanded(flex: 2, child: TextFormField(controller: _cpfAlunoCtrl, textInputAction: TextInputAction.next, inputFormatters: [_cpfMask, _upperCase], decoration: const InputDecoration(labelText: 'CPF (Opcional)', hintText: 'xxx.xxx.xxx-xx', border: OutlineInputBorder()))),
@@ -738,10 +727,8 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                             ],
                           ),
                           const SizedBox(height: 24),
-                          
                           _buildDropdownComBusca(label: 'Turma (ou Futura Turma)', opcoes: turmasDisponiveis, valorInicial: _turmaSelecionada, obrigatorio: true, aoSelecionar: (v) => setState(() => _turmaSelecionada = v)),
                           const SizedBox(height: 24),
-                          
                           SwitchListTile(title: const Text('Tem irmão(s) matriculado(s) nesta escola?'), activeThumbColor: corPrimaria, value: _temIrmao, onChanged: (v) => setState(() => _temIrmao = v)),
                           if (_temIrmao)
                             Container(
@@ -767,21 +754,11 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                   }),
                                   if (_irmaosSelecionados.isNotEmpty) ...[
                                     const SizedBox(height: 12),
-                                    Wrap(
-                                      spacing: 8, runSpacing: 8,
-                                      children: _irmaosSelecionados.map((irmao) {
-                                        return Chip(
-                                          avatar: const Icon(Icons.group, size: 16, color: Colors.blue),
-                                          label: Text('${irmao['nome']} (${irmao['matricula']})'.toUpperCase()),
-                                          onDeleted: () => setState(() => _irmaosSelecionados.removeWhere((a) => a['matricula'] == irmao['matricula'])),
-                                        );
-                                      }).toList(),
-                                    ),
+                                    Wrap(spacing: 8, runSpacing: 8, children: _irmaosSelecionados.map((irmao) { return Chip(avatar: const Icon(Icons.group, size: 16, color: Colors.blue), label: Text('${irmao['nome']} (${irmao['matricula']})'.toUpperCase()), onDeleted: () => setState(() => _irmaosSelecionados.removeWhere((a) => a['matricula'] == irmao['matricula'])));}).toList()),
                                   ]
                                 ],
                               ),
                             ),
-                            
                           const SizedBox(height: 24),
                           const Text('Endereço', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                           const SizedBox(height: 16),
@@ -795,10 +772,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // ==========================================================
-                  // 2. DADOS DOS RESPONSÁVEIS
-                  // ==========================================================
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
@@ -820,9 +793,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                           const SizedBox(height: 16),
                           Row(children: [Expanded(flex: 2, child: TextFormField(controller: _resp2CpfCtrl, textInputAction: TextInputAction.next, inputFormatters: [_cpfMask, _upperCase], decoration: const InputDecoration(labelText: 'CPF', hintText: 'xxx.xxx.xxx-xx', border: OutlineInputBorder()))), const SizedBox(width: 16), Expanded(flex: 2, child: TextFormField(controller: _resp2TelCtrl, textInputAction: TextInputAction.next, inputFormatters: [_telMask, _upperCase], decoration: const InputDecoration(labelText: 'Telefone', hintText: '(xx) xxxxx-xxxx', border: OutlineInputBorder()))), const SizedBox(width: 16), Expanded(flex: 3, child: TextFormField(controller: _resp2EmailCtrl, textInputAction: TextInputAction.next, inputFormatters: [_lowerCase], decoration: const InputDecoration(labelText: 'E-mail (Para Login)', border: OutlineInputBorder())))]),
                           const Divider(height: 32),
-                          
                           SwitchListTile(title: const Text('Autoriza o aluno a sair SOZINHO da escola?'), subtitle: const Text('Válido para saída ao término das aulas.'), activeThumbColor: corPrimaria, value: _autorizaSairSo, onChanged: (v) => setState(() => _autorizaSairSo = v)),
-                          
                           const SizedBox(height: 24),
                           const Text('Pessoas Autorizadas a Buscar o Aluno na Escola', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepPurple)),
                           const SizedBox(height: 16),
@@ -843,21 +814,12 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                             );
                           }),
                           const SizedBox(height: 8),
-                          TextButton.icon(
-                            style: TextButton.styleFrom(foregroundColor: Colors.deepPurple),
-                            onPressed: () => setState(() => _pessoasAutorizadas.add(PessoaAutorizada(nomeCtrl: TextEditingController(), telCtrl: TextEditingController()))),
-                            icon: const Icon(Icons.add_circle_outline),
-                            label: const Text('ADICIONAR PESSOA AUTORIZADA', style: TextStyle(fontWeight: FontWeight.bold)),
-                          ),
+                          TextButton.icon(style: TextButton.styleFrom(foregroundColor: Colors.deepPurple), onPressed: () => setState(() => _pessoasAutorizadas.add(PessoaAutorizada(nomeCtrl: TextEditingController(), telCtrl: TextEditingController()))), icon: const Icon(Icons.add_circle_outline), label: const Text('ADICIONAR PESSOA AUTORIZADA', style: TextStyle(fontWeight: FontWeight.bold))),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // ==========================================================
-                  // 3. ANEXOS / DOCUMENTOS
-                  // ==========================================================
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
@@ -869,62 +831,27 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               const Row(children: [Icon(Icons.folder_shared_rounded, color: Colors.deepPurple), SizedBox(width: 8), Text('Documentos do Aluno (RG, Histórico, etc.)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.deepPurple))]),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white),
-                                onPressed: _escolherAnexos,
-                                icon: const Icon(Icons.upload_file_rounded),
-                                label: const Text('Adicionar Arquivo'),
-                              )
+                              ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.deepPurple, foregroundColor: Colors.white), onPressed: _escolherAnexos, icon: const Icon(Icons.upload_file_rounded), label: const Text('Adicionar Arquivo'))
                             ],
                           ),
                           const Divider(height: 32),
                           if (_anexos.isEmpty)
                             Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(32),
-                              decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid)),
-                              child: Column(
-                                children: [
-                                  Icon(Icons.cloud_upload_outlined, size: 48, color: Colors.grey.shade400),
-                                  const SizedBox(height: 16),
-                                  Text('Nenhum documento anexado.', style: TextStyle(color: Colors.grey.shade600)),
-                                  const Text('Envie PDFs ou imagens (RG dos pais, Histórico Escolar, Laudo Médico).', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                ],
-                              ),
+                              width: double.infinity, padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade300, style: BorderStyle.solid)),
+                              child: Column(children: [Icon(Icons.cloud_upload_outlined, size: 48, color: Colors.grey.shade400), const SizedBox(height: 16), Text('Nenhum documento anexado.', style: TextStyle(color: Colors.grey.shade600)), const Text('Envie PDFs ou imagens (RG dos pais, Histórico Escolar, Laudo Médico).', style: TextStyle(color: Colors.grey, fontSize: 12))]),
                             )
                           else
                             ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _anexos.length,
-                              separatorBuilder: (ctx, index) => const SizedBox(height: 8),
+                              shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: _anexos.length, separatorBuilder: (ctx, index) => const SizedBox(height: 8),
                               itemBuilder: (context, index) {
                                 final anexo = _anexos[index];
                                 final isPDF = anexo['extensao'] == 'pdf';
                                 final isSalvo = anexo['url'] != null;
-
                                 return Container(
                                   decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
                                   child: ListTile(
-                                    leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue, size: 32),
-                                    title: Text(anexo['nome'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    subtitle: Text(isSalvo ? 'Salvo nas nuvens' : 'Pronto para enviar', style: TextStyle(color: isSalvo ? Colors.green : Colors.orange, fontSize: 12)),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (isSalvo)
-                                          IconButton(
-                                            icon: const Icon(Icons.download_rounded, color: Colors.blue),
-                                            tooltip: 'Baixar / Visualizar Arquivo',
-                                            onPressed: () => _abrirAnexoUrl(anexo['url']),
-                                          ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-                                          tooltip: 'Remover Anexo',
-                                          onPressed: () => _removerAnexo(index),
-                                        ),
-                                      ],
-                                    ),
+                                    leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue, size: 32), title: Text(anexo['nome'], style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text(isSalvo ? 'Salvo nas nuvens' : 'Pronto para enviar', style: TextStyle(color: isSalvo ? Colors.green : Colors.orange, fontSize: 12)),
+                                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [if (isSalvo) IconButton(icon: const Icon(Icons.download_rounded, color: Colors.blue), tooltip: 'Baixar / Visualizar Arquivo', onPressed: () => _abrirAnexoUrl(anexo['url'])), IconButton(icon: const Icon(Icons.delete_outline_rounded, color: Colors.red), tooltip: 'Remover Anexo', onPressed: () => _removerAnexo(index))]),
                                   ),
                                 );
                               },
@@ -934,10 +861,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     ),
                   ),
                   const SizedBox(height: 24),
-
-                  // ==========================================================
-                  // 4. FICHA MÉDICA E EMERGÊNCIA
-                  // ==========================================================
                   Card(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     child: Padding(
