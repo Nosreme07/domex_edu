@@ -1,104 +1,133 @@
-import 'dart:typed_data'; 
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart'; 
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
 class AlunoService {
   final String tenantId;
+
   AlunoService(this.tenantId);
 
-  CollectionReference get _colecao => FirebaseFirestore.instance
-      .collection('tenants')
-      .doc(tenantId)
-      .collection('alunos');
+  // Usamos "get" para garantir que a instância do Firebase seja chamada
+  // APENAS no momento exato do uso, evitando o erro de "Null FirebaseFirestore".
+  FirebaseFirestore get _db => FirebaseFirestore.instance;
+  FirebaseStorage get _storage => FirebaseStorage.instance;
 
-  Future<void> salvarAluno(Map<String, dynamic> dados) async {
-    await _colecao.doc(dados['matricula'].toString()).set(dados);
+  Future<String> fazerUploadFoto(
+    String matricula,
+    Uint8List bytes,
+    String extensao,
+  ) async {
+    final path = 'tenants/$tenantId/alunos/$matricula/foto_perfil.$extensao';
+    final ref = _storage.ref().child(path);
+    await ref.putData(bytes);
+    return await ref.getDownloadURL();
+  }
 
-    if (dados['temIrmao'] == true && dados['irmaosVinculadosRaw'] != null) {
-      final matriculaAtual = dados['matricula'].toString();
-      final nomeAtual = dados['nome'].toString();
-      final irmaos = dados['irmaosVinculadosRaw'] as List;
+  Future<String> fazerUploadArquivo(
+    String matricula,
+    String nomeArquivo,
+    Uint8List bytes,
+    String extensao,
+  ) async {
+    final path = 'tenants/$tenantId/alunos/$matricula/anexos/$nomeArquivo';
+    final ref = _storage.ref().child(path);
+    await ref.putData(bytes);
+    return await ref.getDownloadURL();
+  }
 
-      for (var irmao in irmaos) {
-        final matIrmao = irmao['matricula'].toString();
-        
-        final docIrmao = await _colecao.doc(matIrmao).get();
-        if (docIrmao.exists) {
-          final dadosIrmao = docIrmao.data() as Map<String, dynamic>;
-          final irmaosDoIrmao = List<Map<String, dynamic>>.from(dadosIrmao['irmaosVinculadosRaw'] ?? []);
-          
-          bool jaVinculado = irmaosDoIrmao.any((i) => i['matricula'].toString() == matriculaAtual);
-          
-          if (!jaVinculado) {
-            irmaosDoIrmao.add({'nome': nomeAtual, 'matricula': matriculaAtual});
-            
-            await _colecao.doc(matIrmao).update({
-              'temIrmao': true,
-              'irmaosVinculadosRaw': irmaosDoIrmao,
-              'irmaosVinculados': irmaosDoIrmao.map((i) => '${i['nome']} (${i['matricula']})'.toUpperCase()).toList(),
+  Future<void> salvarAluno(Map<String, dynamic> dadosAluno) async {
+    dadosAluno['tenantId'] = tenantId;
+    await _db
+        .collection('tenants')
+        .doc(tenantId)
+        .collection('alunos')
+        .doc(dadosAluno['matricula'])
+        .set(dadosAluno);
+  }
+
+  Future<void> atualizarStatus(String matricula, String novoStatus) async {
+    await _db
+        .collection('tenants')
+        .doc(tenantId)
+        .collection('alunos')
+        .doc(matricula)
+        .update({'status': novoStatus});
+  }
+
+  // ==========================================================
+  // EXCLUSÃO COMPLETA E SEGURA EM LOTE (BATCH)
+  // ==========================================================
+  Future<void> excluirAluno(String matricula) async {
+    try {
+      final db = FirebaseFirestore.instance;
+      final batch = db.batch();
+
+      // 1. Apaga a ficha do aluno
+      final alunoRef = db
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('alunos')
+          .doc(matricula);
+      batch.delete(alunoRef);
+
+      // 2. Apaga o login de acesso do aluno (se existir)
+      final snapshotUsers = await db
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('usuarios')
+          .where('idLogin', isEqualTo: matricula)
+          .get();
+      for (var doc in snapshotUsers.docs) {
+        batch.delete(doc.reference); // Apaga do tenant local
+        batch.delete(
+          db.collection('usuarios').doc(doc.id),
+        ); // Apaga do Auth global
+      }
+
+      // 3. Verifica os Responsáveis vinculados para limpeza
+      final snapshotResponsaveis = await db
+          .collection('tenants')
+          .doc(tenantId)
+          .collection('responsaveis')
+          .get();
+      for (var doc in snapshotResponsaveis.docs) {
+        final dados = doc.data();
+        final vinculosRaw = dados['alunosVinculadosRaw'] as List? ?? [];
+
+        // Se este responsável tem o aluno excluído na lista de filhos
+        if (vinculosRaw.any((v) => v['matricula'] == matricula)) {
+          // Se só tem esse filho matriculado, apaga o responsável inteiro e seu acesso
+          if (vinculosRaw.length == 1) {
+            batch.delete(doc.reference); // Apaga ficha do responsável
+            batch.delete(
+              db.collection('usuarios').doc(doc.id),
+            ); // Apaga acesso do responsável
+          } else {
+            // Se tem outros filhos matriculados, apenas desvincula o aluno apagado
+            vinculosRaw.removeWhere((v) => v['matricula'] == matricula);
+
+            // Recria a lista de texto visual
+            List<String> vinculosTexto = [];
+            for (var v in vinculosRaw) {
+              vinculosTexto.add(
+                '${v['nome']} (${v['matricula']})'.toUpperCase(),
+              );
+            }
+
+            batch.update(doc.reference, {
+              'alunosVinculadosRaw': vinculosRaw,
+              'alunosVinculados': vinculosTexto,
             });
           }
         }
       }
-    }
 
-    final docUsuario = FirebaseFirestore.instance.collection('usuarios').doc(dados['matricula'].toString());
-    final snapUsuario = await docUsuario.get();
-
-    if (snapUsuario.exists) {
-      await docUsuario.update({
-        'nome': dados['nome'],
-        'telefone': dados['telefone'],
-      });
-    } else {
-      await docUsuario.set({
-        'idLogin': dados['matricula'].toString(),
-        'nome': dados['nome'],
-        'email': '', 
-        'telefone': dados['telefone'],
-        'perfil': 'aluno',
-        'status': 'Inativo', 
-        'escolaId': tenantId,
-        'dataCriacao': FieldValue.serverTimestamp(),
-      });
-    }
-  }
-
-  Future<void> excluirAluno(String matricula) async {
-    await _colecao.doc(matricula).delete();
-  }
-
-  Future<String?> fazerUploadFoto(String matricula, Uint8List bytes, String extensao) async {
-    try {
-      final caminhoArquivo = 'tenants/$tenantId/alunos/$matricula/foto_perfil.$extensao';
-      final ref = FirebaseStorage.instance.ref().child(caminhoArquivo);
-      final metadados = SettableMetadata(contentType: 'image/$extensao');
-      final uploadTask = await ref.putData(bytes, metadados);
-      return await uploadTask.ref.getDownloadURL();
+      // Executa todas as exclusões e atualizações ao mesmo tempo!
+      await batch.commit();
     } catch (e) {
-      throw Exception('Falha no Storage (Foto): $e');
-    }
-  }
-
-  // === NOVA FUNÇÃO PARA UPLOAD DE DOCUMENTOS (PDF E IMAGENS) ===
-  Future<String?> fazerUploadArquivo(String matricula, String nomeArquivo, Uint8List bytes, String extensao) async {
-    try {
-      final caminhoArquivo = 'tenants/$tenantId/alunos/$matricula/documentos/$nomeArquivo';
-      final ref = FirebaseStorage.instance.ref().child(caminhoArquivo);
-      
-      String contentType = 'application/pdf';
-      if (['jpg', 'jpeg', 'png'].contains(extensao.toLowerCase())) {
-        contentType = 'image/${extensao.toLowerCase()}';
-      }
-      
-      final metadados = SettableMetadata(contentType: contentType);
-      final uploadTask = await ref.putData(bytes, metadados);
-      
-      return await uploadTask.ref.getDownloadURL();
-    } catch (e) {
-      throw Exception('Falha no Storage (Documento): $e');
+      throw Exception('Falha ao excluir dados no banco: $e');
     }
   }
 }
@@ -111,12 +140,12 @@ final alunoServiceProvider = Provider<AlunoService>((ref) {
 final alunosStreamProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {
   final usuario = ref.watch(authProvider).value;
   if (usuario == null) return Stream.value([]);
-  
+
   return FirebaseFirestore.instance
       .collection('tenants')
       .doc(usuario.id)
       .collection('alunos')
-      .orderBy('nome')
+      .where('matricula', isNotEqualTo: '_setup') // Ignora documentos de setup
       .snapshots()
-      .map((snap) => snap.docs.map((doc) => doc.data()).toList());
+      .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
 });
