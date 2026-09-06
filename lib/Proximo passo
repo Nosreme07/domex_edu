@@ -1,31 +1,26 @@
 
-
-***Página de cadastro***
-
-professor:
-- Na visualização do professor mostrar a turmas atreladas
-para que ao conectar no seu sistema mostre...
-- 
-
-
+-----------------------------------------------------------
 ***CENTRAL DE CADASTRO***
 
 *ALUNOS*
 *RESPONSÁVEIS*
 *PROFESSORES*
 *SECRETARIA*
-*TURMAS*
-- deixar as turmas ordenadas de acordo com o mec. da menor turma até o ensino médio.
+- colocar campo para anexar arquivos.
 
+*TURMAS*
 *USUARIOS*
 
-
---- gestão de usuários master ---
-- dar funcionalidade na inclusão de novos usuários. Criar as funções
-de editar e excluir usuários.
-
+-----------------------------------------------------------
+**VISÃO GERAL**
+- CARDS ALUNOS, PROFESSORES, TURMAS E FUNCIONÁRIOS
+- ACRESCENTAR CALENDÁRIO ESCOLAR COM CAMPOS ABERTOS PARA ACRESCENTAR OS EVENTOS DA ESCOLA.
 - 
+-----------------------------------------------------------
 
+**GESTÃO MASTER**
+
+-----------------------------------------------------------
 OBS: Em todos os campos de pesquisa possa pesquisar pelo numero do ID
 sem precisar colocar a sigla PROF... Só colocando o numero 0001 01
 
