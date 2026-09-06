@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../estado/aluno_provider.dart';
 import '../estado/responsavel_provider.dart';
 import '../estado/professor_provider.dart';
@@ -184,9 +187,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                   await ref
                       .read(alunoServiceProvider)
                       .excluirAluno(aluno['matricula']);
-                  if (!context.mounted) {
-                    return;
-                  }
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -198,14 +199,13 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                     ),
                   );
                 } catch (e) {
-                  if (context.mounted) {
+                  if (context.mounted)
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Erro ao excluir: $e'),
                         backgroundColor: Colors.red,
                       ),
                     );
-                  }
                 }
               },
               child: const Text('Sim, Excluir Aluno'),
@@ -273,7 +273,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                           mode: LaunchMode.externalApplication,
                         );
                       } else {
-                        if (ctx.mounted) {
+                        if (ctx.mounted)
                           ScaffoldMessenger.of(ctx).showSnackBar(
                             const SnackBar(
                               content: Text(
@@ -281,7 +281,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               ),
                             ),
                           );
-                        }
                       }
                     },
                   ),
@@ -300,14 +299,75 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
     );
   }
 
+  // ==========================================================================
+  // PDF REVISADO: Cabeçalho Profissional e Ficha Completa
+  // ==========================================================================
   Future<void> _gerarEImprimirPdf(Map<String, dynamic> aluno) async {
     final doc = pw.Document();
+
+    // 1. Carrega os dados da Escola do Firebase
+    final usuario = ref.read(authProvider).value;
+    Map<String, dynamic> dadosEscola = {};
+    if (usuario != null) {
+      try {
+        final docEscola = await FirebaseFirestore.instance
+            .collection('tenants')
+            .doc(usuario.id)
+            .get();
+        if (docEscola.exists && docEscola.data() != null) {
+          dadosEscola = docEscola.data()!;
+        }
+      } catch (e) {
+        debugPrint('Erro ao buscar dados da escola pro PDF: $e');
+      }
+    }
+
+    final nomeEscola =
+        dadosEscola['nomeEscola'] ??
+        dadosEscola['nome'] ??
+        'ESCOLA NÃO CONFIGURADA';
+    final slogan = dadosEscola['slogan'] ?? '';
+    final cnpj = dadosEscola['cnpj'] ?? '';
+
+    final endEscola = dadosEscola['endereco'] ?? {};
+    final logradouroEscola = endEscola['rua'] ?? '';
+    final numeroEscola = endEscola['numero'] ?? '';
+    final bairroEscola = endEscola['bairro'] ?? '';
+    final cidadeEscola = endEscola['cidade'] ?? '';
+    final ufEscola = endEscola['estado'] ?? '';
+
+    String enderecoCompletoEscola = '';
+    if (logradouroEscola.isNotEmpty) {
+      enderecoCompletoEscola =
+          '$logradouroEscola, Nº $numeroEscola - $bairroEscola, $cidadeEscola/$ufEscola';
+    }
+
+    final logoEscolaUrl =
+        dadosEscola['logoUrl'] ?? dadosEscola['fotoUrl'] ?? dadosEscola['logo'];
+
+    // 2. Carrega as Imagens (Aluno e Escola)
     pw.ImageProvider? fotoAluno;
     if (aluno['fotoUrl'] != null) {
       try {
         fotoAluno = await networkImage(aluno['fotoUrl']);
       } catch (e) {
-        debugPrint('Erro ao carregar foto pro PDF: $e');
+        debugPrint('Erro foto PDF: $e');
+      }
+    }
+
+    pw.ImageProvider? logoEscolaImg;
+    if (logoEscolaUrl != null && logoEscolaUrl.isNotEmpty) {
+      try {
+        logoEscolaImg = await networkImage(logoEscolaUrl);
+      } catch (e) {
+        debugPrint('Erro ao carregar logo da escola pro PDF: $e');
+      }
+    } else {
+      try {
+        final ByteData bytes = await rootBundle.load('assets/logo.png');
+        logoEscolaImg = pw.MemoryImage(bytes.buffer.asUint8List());
+      } catch (e) {
+        debugPrint('Logo padrão não encontrada.');
       }
     }
 
@@ -412,42 +472,101 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
+              // CABEÇALHO DO PDF (Dinâmico)
               pw.Row(
-                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
+                  if (logoEscolaImg != null)
+                    pw.Image(
+                      logoEscolaImg,
+                      width: 60,
+                      height: 60,
+                      fit: pw.BoxFit.contain,
+                    )
+                  else
+                    pw.Container(
+                      width: 60,
+                      height: 60,
+                      decoration: const pw.BoxDecoration(
+                        color: PdfColors.blue100,
+                        shape: pw.BoxShape.circle,
+                      ),
+                      child: pw.Center(
+                        child: pw.Text(
+                          'LOGO',
+                          style: pw.TextStyle(color: PdfColors.blue800),
+                        ),
+                      ),
+                    ),
+
+                  pw.SizedBox(width: 16),
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          nomeEscola.toUpperCase(),
+                          style: pw.TextStyle(
+                            fontSize: 18,
+                            fontWeight: pw.FontWeight.bold,
+                            color: PdfColors.orange700,
+                          ),
+                        ),
+                        if (slogan.isNotEmpty)
+                          pw.Text(
+                            slogan,
+                            style: const pw.TextStyle(
+                              fontSize: 10,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                        pw.SizedBox(height: 4),
+                        if (cnpj.isNotEmpty)
+                          pw.Text(
+                            'CNPJ: $cnpj',
+                            style: const pw.TextStyle(
+                              fontSize: 9,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                        if (enderecoCompletoEscola.isNotEmpty)
+                          pw.Text(
+                            'Endereço: $enderecoCompletoEscola',
+                            style: const pw.TextStyle(
+                              fontSize: 9,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                   pw.Column(
-                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
                       pw.Text(
-                        'ESCOLA CONEXÃO',
+                        'FICHA CADASTRAL',
                         style: pw.TextStyle(
-                          fontSize: 22,
+                          fontSize: 14,
                           fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.orange700,
+                          color: PdfColors.blue800,
                         ),
                       ),
                       pw.Text(
-                        'Educação que transforma o futuro',
-                        style: const pw.TextStyle(
-                          fontSize: 10,
-                          color: PdfColors.grey700,
+                        'ALUNO',
+                        style: pw.TextStyle(
+                          fontSize: 14,
+                          color: PdfColors.blue800,
                         ),
                       ),
                     ],
                   ),
-                  pw.Text(
-                    'FICHA CADASTRAL DO ALUNO',
-                    style: pw.TextStyle(
-                      fontSize: 14,
-                      fontWeight: pw.FontWeight.bold,
-                      color: PdfColors.blue800,
-                    ),
-                  ),
                 ],
               ),
+
               pw.SizedBox(height: 12),
               pw.Divider(thickness: 2, color: PdfColors.orange700),
               pw.SizedBox(height: 12),
+
               pw.Expanded(
                 child: pw.FittedBox(
                   fit: pw.BoxFit.scaleDown,
@@ -545,6 +664,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                                         ),
                                       ],
                                     ),
+                                    pdfLinha('E-mail', aluno['email']),
                                     pw.SizedBox(height: 4),
                                     pw.Divider(
                                       thickness: 0.5,
@@ -555,7 +675,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                                       children: [
                                         pw.Expanded(
                                           child: pdfLinha(
-                                            'Turma',
+                                            'Turma Principal',
                                             aluno['turma'],
                                           ),
                                         ),
@@ -648,6 +768,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                                                   ),
                                                 ],
                                               ),
+                                              pdfLinha('E-mail', r['email']),
                                             ],
                                           ),
                                         ),
@@ -774,7 +895,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
               pw.SizedBox(height: 4),
               pw.Center(
                 child: pw.Text(
-                  'Ficha cadastral gerada pelo sistema de gestão escolar Domex Edu - $dataHora',
+                  'Ficha gerada pelo sistema Domex Edu - $dataHora',
                   style: const pw.TextStyle(
                     fontSize: 8,
                     color: PdfColors.grey600,
@@ -879,6 +1000,9 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
     );
   }
 
+  // ==========================================================================
+  // FICHA VISUAL DO ALUNO (Com Dropdown de Status Funcional)
+  // ==========================================================================
   void _abrirFichaAluno(BuildContext context, Map<String, dynamic> aluno) {
     final corPrimaria = Theme.of(context).primaryColor;
     final anexos = aluno['anexos'] as List? ?? [];
@@ -899,319 +1023,412 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          titlePadding: const EdgeInsets.all(0),
-          title: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: corPrimaria.withAlpha(13),
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
+        return StatefulBuilder(
+          builder: (context, setStateModal) {
+            final statusAtual = aluno['status'] ?? 'Ativo';
+            final corStatus = statusAtual == 'Ativo'
+                ? Colors.green
+                : (statusAtual == 'Inadimplente' ? Colors.red : Colors.orange);
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-            ),
-            child: Row(
-              children: [
-                InkWell(
-                  onTap: aluno['fotoUrl'] != null
-                      ? () => _mostrarFotoAmpliada(context, aluno['fotoUrl'])
-                      : null,
-                  child: CircleAvatar(
-                    radius: 32,
-                    backgroundColor: Colors.white,
-                    backgroundImage: aluno['fotoUrl'] != null
-                        ? NetworkImage(aluno['fotoUrl'])
-                        : null,
-                    child: aluno['fotoUrl'] == null
-                        ? Icon(Icons.person, size: 32, color: corPrimaria)
-                        : null,
+              titlePadding: const EdgeInsets.all(0),
+              title: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: corPrimaria.withAlpha(13),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(16),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        aluno['nome'] ?? 'Aluno',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Matrícula: ${aluno['matricula']}',
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                if (anexos.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 12.0),
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple.shade50,
-                        foregroundColor: Colors.deepPurple,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                      ),
-                      icon: const Icon(Icons.folder_open_rounded, size: 20),
-                      label: Text(
-                        '${anexos.length} Anexos',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () => _mostrarAnexosDialog(context, anexos),
-                    ),
-                  ),
-
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-          ),
-          content: SizedBox(
-            width: 800,
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSecao(
-                                Icons.person_rounded,
-                                'Dados Pessoais',
-                                corPrimaria,
-                              ),
-                              _buildLinha('R.A.', aluno['ra']),
-                              _buildLinha(
-                                'Nascimento',
-                                aluno['dataNascimento'],
-                              ),
-                              _buildLinha('Sexo', aluno['sexo']),
-                              _buildLinhaTelefone('Celular', aluno['telefone']),
-                              _buildLinha('CPF', aluno['cpf']),
-                              _buildLinha(
-                                'RG',
-                                '${aluno['rg'] ?? ''} ${aluno['orgaoExpedidor'] != null && aluno['orgaoExpedidor'].toString().isNotEmpty ? '(${aluno['orgaoExpedidor']})' : ''}',
-                              ),
-                              _buildLinha(
-                                'Naturalidade',
-                                '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}',
-                              ),
-                            ],
-                          ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSecao(
-                                Icons.school_rounded,
-                                'Acadêmico',
-                                corPrimaria,
-                              ),
-                              _buildLinha('Turma', aluno['turma']),
-                              _buildLinha('Status', aluno['status']),
-                              _buildLinha('Irmão(s)', textoIrmaosFicha),
-                            ],
-                          ),
-                        ),
-                      ],
+                    InkWell(
+                      onTap: aluno['fotoUrl'] != null
+                          ? () =>
+                                _mostrarFotoAmpliada(context, aluno['fotoUrl'])
+                          : null,
+                      child: CircleAvatar(
+                        radius: 32,
+                        backgroundColor: Colors.white,
+                        backgroundImage: aluno['fotoUrl'] != null
+                            ? NetworkImage(aluno['fotoUrl'])
+                            : null,
+                        child: aluno['fotoUrl'] == null
+                            ? Icon(Icons.person, size: 32, color: corPrimaria)
+                            : null,
+                      ),
                     ),
-                    const Divider(height: 32),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSecao(
-                                Icons.family_restroom_rounded,
-                                'Responsáveis e Endereço',
-                                corPrimaria,
-                              ),
-                              if (aluno['responsaveis'] != null)
-                                ...(aluno['responsaveis'] as List).map(
-                                  (r) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8.0),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        _buildLinha('Nome', r['nome']),
-                                        _buildLinha('CPF', r['cpf']),
-                                        _buildLinhaTelefone(
-                                          'Tel',
-                                          r['telefone'],
-                                        ),
-                                        _buildLinha('E-mail', r['email']),
-                                        const SizedBox(height: 4),
-                                      ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            aluno['nome'] ?? 'Aluno',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Matrícula: ${aluno['matricula']}',
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // DROPDOWN DE STATUS
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 0,
+                      ),
+                      decoration: BoxDecoration(
+                        color: corStatus.withAlpha(30),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: corStatus),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value:
+                              [
+                                'Ativo',
+                                'Inativo',
+                                'Transferido',
+                                'Inadimplente',
+                              ].contains(statusAtual)
+                              ? statusAtual
+                              : 'Ativo',
+                          icon: Icon(Icons.arrow_drop_down, color: corStatus),
+                          style: TextStyle(
+                            color: corStatus,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Ativo',
+                              child: Text('ATIVO'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Inativo',
+                              child: Text('INATIVO'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Transferido',
+                              child: Text('TRANSFERIDO'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Inadimplente',
+                              child: Text('INADIMPLENTE'),
+                            ),
+                          ],
+                          onChanged: (novoStatus) async {
+                            if (novoStatus != null) {
+                              try {
+                                await ref
+                                    .read(alunoServiceProvider)
+                                    .atualizarStatus(
+                                      aluno['matricula'],
+                                      novoStatus,
+                                    );
+                                setStateModal(
+                                  () => aluno['status'] = novoStatus,
+                                );
+                              } catch (e) {
+                                if (context.mounted)
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Erro ao atualizar: $e'),
                                     ),
-                                  ),
-                                ),
-                              const SizedBox(height: 8),
-                              _buildLinha(
-                                'Endereço',
-                                '${aluno['endereco']?['rua'] ?? ''}, ${aluno['endereco']?['numero'] ?? ''} - ${aluno['endereco']?['bairro'] ?? ''} - ${aluno['endereco']?['cidade'] ?? ''} / ${aluno['endereco']?['estado'] ?? ''}',
-                              ),
-                              _buildLinha(
-                                'Referência',
-                                aluno['endereco']?['referencia'],
-                              ),
-                              _buildLinha(
-                                'Autorizado sair sozinho?',
-                                aluno['autorizaSairSo'] == true ? 'SIM' : 'NÃO',
-                              ),
-                            ],
-                          ),
+                                  );
+                              }
+                            }
+                          },
                         ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSecao(
-                                Icons.badge_rounded,
-                                'Autorizados a Buscar',
-                                Colors.deepPurple,
-                              ),
-                              if (aluno['pessoasAutorizadas'] != null &&
-                                  (aluno['pessoasAutorizadas'] as List)
-                                      .isNotEmpty)
-                                ...(aluno['pessoasAutorizadas'] as List).map(
-                                  (p) => _buildLinhaTelefone(
-                                    p['nome'] ?? 'Autorizado',
-                                    p['telefone'],
-                                  ),
-                                )
-                              else
-                                const Text(
-                                  'Ninguém cadastrado.',
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
-                    const Divider(height: 32),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSecao(
-                                Icons.medical_information_rounded,
-                                'Ficha Médica',
-                                corPrimaria,
-                              ),
-                              _buildLinha(
-                                'Tipo Sanguíneo',
-                                aluno['fichaMedica']?['tipoSanguineo'],
-                              ),
-                              _buildLinha(
-                                'Problema de Saúde',
-                                aluno['fichaMedica']?['temProblema'] == true
-                                    ? 'SIM: ${aluno['fichaMedica']?['problema']}'
-                                    : 'NÃO',
-                              ),
-                              _buildLinha(
-                                'Remédio',
-                                aluno['fichaMedica']?['tomaRemedio'] == true
-                                    ? 'SIM: ${aluno['fichaMedica']?['remedio']}'
-                                    : 'NÃO',
-                              ),
-                              _buildLinha(
-                                'Alergia',
-                                aluno['fichaMedica']?['temAlergia'] == true
-                                    ? 'SIM: ${aluno['fichaMedica']?['alergia']}'
-                                    : 'NÃO',
-                              ),
-                              _buildLinha(
-                                'Observações',
-                                aluno['fichaMedica']?['observacoes'],
-                              ),
-                            ],
+                    const SizedBox(width: 16),
+
+                    if (anexos.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12.0),
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.deepPurple.shade50,
+                            foregroundColor: Colors.deepPurple,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
                           ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildSecao(
-                                Icons.emergency_rounded,
-                                'Contatos de Emergência',
-                                Colors.red.shade400,
-                              ),
-                              if (aluno['emergencia'] != null &&
-                                  (aluno['emergencia'] as List).isNotEmpty)
-                                ...(aluno['emergencia'] as List).map(
-                                  (e) => _buildLinhaTelefone(
-                                    e['nome'] ?? 'Emergência',
-                                    e['telefone'],
-                                  ),
-                                )
-                              else
-                                const Text(
-                                  'Nenhum contato cadastrado.',
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                            ],
+                          icon: const Icon(Icons.folder_open_rounded, size: 20),
+                          label: Text(
+                            '${anexos.length} Anexos',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
+                          onPressed: () =>
+                              _mostrarAnexosDialog(context, anexos),
                         ),
-                      ],
+                      ),
+
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(context),
                     ),
                   ],
                 ),
               ),
-            ),
-          ),
-          actionsPadding: const EdgeInsets.all(24),
-          actions: [
-            TextButton.icon(
-              onPressed: () => _gerarEImprimirPdf(aluno),
-              icon: const Icon(Icons.print_rounded, color: Colors.blue),
-              label: const Text(
-                'Exportar PDF / Imprimir',
-                style: TextStyle(color: Colors.blue),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: corPrimaria,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
+              content: SizedBox(
+                width: 800,
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildSecao(
+                                    Icons.person_rounded,
+                                    'Dados Pessoais',
+                                    corPrimaria,
+                                  ),
+                                  _buildLinha('R.A.', aluno['ra']),
+                                  _buildLinha(
+                                    'Nascimento',
+                                    aluno['dataNascimento'],
+                                  ),
+                                  _buildLinha('Sexo', aluno['sexo']),
+                                  _buildLinhaTelefone(
+                                    'Celular',
+                                    aluno['telefone'],
+                                  ),
+                                  _buildLinha('CPF', aluno['cpf']),
+                                  _buildLinha(
+                                    'RG',
+                                    '${aluno['rg'] ?? ''} ${aluno['orgaoExpedidor'] != null && aluno['orgaoExpedidor'].toString().isNotEmpty ? '(${aluno['orgaoExpedidor']})' : ''}',
+                                  ),
+                                  _buildLinha(
+                                    'Naturalidade',
+                                    '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}',
+                                  ),
+                                  _buildLinha('E-mail', aluno['email']),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildSecao(
+                                    Icons.school_rounded,
+                                    'Acadêmico',
+                                    corPrimaria,
+                                  ),
+                                  _buildLinha('Turma', aluno['turma']),
+                                  _buildLinha('Status', aluno['status']),
+                                  _buildLinha('Irmão(s)', textoIrmaosFicha),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 32),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildSecao(
+                                    Icons.family_restroom_rounded,
+                                    'Responsáveis e Endereço',
+                                    corPrimaria,
+                                  ),
+                                  if (aluno['responsaveis'] != null)
+                                    ...(aluno['responsaveis'] as List).map(
+                                      (r) => Padding(
+                                        padding: const EdgeInsets.only(
+                                          bottom: 8.0,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            _buildLinha('Nome', r['nome']),
+                                            _buildLinha('CPF', r['cpf']),
+                                            _buildLinhaTelefone(
+                                              'Tel',
+                                              r['telefone'],
+                                            ),
+                                            _buildLinha('E-mail', r['email']),
+                                            const SizedBox(height: 4),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(height: 8),
+                                  _buildLinha(
+                                    'Endereço',
+                                    '${aluno['endereco']?['rua'] ?? ''}, ${aluno['endereco']?['numero'] ?? ''} - ${aluno['endereco']?['bairro'] ?? ''} - ${aluno['endereco']?['cidade'] ?? ''} / ${aluno['endereco']?['estado'] ?? ''}',
+                                  ),
+                                  _buildLinha(
+                                    'Referência',
+                                    aluno['endereco']?['referencia'],
+                                  ),
+                                  _buildLinha(
+                                    'Autorizado sair sozinho?',
+                                    aluno['autorizaSairSo'] == true
+                                        ? 'SIM'
+                                        : 'NÃO',
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildSecao(
+                                    Icons.badge_rounded,
+                                    'Autorizados a Buscar',
+                                    Colors.deepPurple,
+                                  ),
+                                  if (aluno['pessoasAutorizadas'] != null &&
+                                      (aluno['pessoasAutorizadas'] as List)
+                                          .isNotEmpty)
+                                    ...(aluno['pessoasAutorizadas'] as List)
+                                        .map(
+                                          (p) => _buildLinhaTelefone(
+                                            p['nome'] ?? 'Autorizado',
+                                            p['telefone'],
+                                          ),
+                                        )
+                                  else
+                                    const Text(
+                                      'Ninguém cadastrado.',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 32),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildSecao(
+                                    Icons.medical_information_rounded,
+                                    'Ficha Médica',
+                                    corPrimaria,
+                                  ),
+                                  _buildLinha(
+                                    'Tipo Sanguíneo',
+                                    aluno['fichaMedica']?['tipoSanguineo'],
+                                  ),
+                                  _buildLinha(
+                                    'Problema de Saúde',
+                                    aluno['fichaMedica']?['temProblema'] == true
+                                        ? 'SIM: ${aluno['fichaMedica']?['problema']}'
+                                        : 'NÃO',
+                                  ),
+                                  _buildLinha(
+                                    'Remédio',
+                                    aluno['fichaMedica']?['tomaRemedio'] == true
+                                        ? 'SIM: ${aluno['fichaMedica']?['remedio']}'
+                                        : 'NÃO',
+                                  ),
+                                  _buildLinha(
+                                    'Alergia',
+                                    aluno['fichaMedica']?['temAlergia'] == true
+                                        ? 'SIM: ${aluno['fichaMedica']?['alergia']}'
+                                        : 'NÃO',
+                                  ),
+                                  _buildLinha(
+                                    'Observações',
+                                    aluno['fichaMedica']?['observacoes'],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildSecao(
+                                    Icons.emergency_rounded,
+                                    'Contatos de Emergência',
+                                    Colors.red.shade400,
+                                  ),
+                                  if (aluno['emergencia'] != null &&
+                                      (aluno['emergencia'] as List).isNotEmpty)
+                                    ...(aluno['emergencia'] as List).map(
+                                      (e) => _buildLinhaTelefone(
+                                        e['nome'] ?? 'Emergência',
+                                        e['telefone'],
+                                      ),
+                                    )
+                                  else
+                                    const Text(
+                                      'Nenhum contato cadastrado.',
+                                      style: TextStyle(color: Colors.grey),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fechar Ficha'),
-            ),
-          ],
+              actionsPadding: const EdgeInsets.all(24),
+              actions: [
+                TextButton.icon(
+                  onPressed: () => _gerarEImprimirPdf(aluno),
+                  icon: const Icon(Icons.print_rounded, color: Colors.blue),
+                  label: const Text(
+                    'Exportar PDF / Imprimir',
+                    style: TextStyle(color: Colors.blue),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: corPrimaria,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Fechar Ficha'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -1236,7 +1453,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
               ),
               const Spacer(),
 
-              // === FILTRO DE TURMAS ===
               estadoAlunos.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => const SizedBox.shrink(),
@@ -1247,15 +1463,12 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                         .toString()
                         .toUpperCase()
                         .trim();
-                    if (t.isNotEmpty) {
-                      turmasSet.add(t);
-                    }
+                    if (t.isNotEmpty) turmasSet.add(t);
                   }
                   final listaTurmas = turmasSet.toList()
                     ..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
-                  if (!listaTurmas.contains(_filtroTurma)) {
+                  if (!listaTurmas.contains(_filtroTurma))
                     _filtroTurma = 'TODAS';
-                  }
 
                   return Container(
                     constraints: const BoxConstraints(maxWidth: 250),
@@ -1281,9 +1494,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                           fontSize: 13,
                         ),
                         onChanged: (v) {
-                          if (v != null) {
-                            setState(() => _filtroTurma = v);
-                          }
+                          if (v != null) setState(() => _filtroTurma = v);
                         },
                         items: listaTurmas
                             .map(
@@ -1304,7 +1515,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
               ),
               const SizedBox(width: 16),
 
-              // === FILTRO DE STATUS ===
               Container(
                 constraints: const BoxConstraints(maxWidth: 200),
                 height: 40,
@@ -1329,9 +1539,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                       fontSize: 13,
                     ),
                     onChanged: (v) {
-                      if (v != null) {
-                        setState(() => _filtroStatus = v);
-                      }
+                      if (v != null) setState(() => _filtroStatus = v);
                     },
                     items: const [
                       DropdownMenuItem(
@@ -1419,14 +1627,12 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                   Center(child: Text('Erro ao carregar alunos: $erro')),
               data: (alunos) {
                 final alunosFiltrados = alunos.where((aluno) {
-                  // Filtro Texto
                   final busca = _termoBusca.toLowerCase();
                   final nome = aluno['nome'].toString().toLowerCase();
                   final mat = aluno['matricula'].toString().toLowerCase();
                   final matchBusca =
                       nome.contains(busca) || mat.contains(busca);
 
-                  // Filtro Turma
                   final t = (aluno['turma'] ?? '')
                       .toString()
                       .toUpperCase()
@@ -1434,7 +1640,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                   final matchTurma =
                       _filtroTurma == 'TODAS' || t == _filtroTurma;
 
-                  // Filtro Status
                   final status = (aluno['status'] ?? 'Ativo')
                       .toString()
                       .toUpperCase();
@@ -1444,14 +1649,21 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                   return matchBusca && matchTurma && matchStatus;
                 }).toList();
 
-                if (alunosFiltrados.isEmpty) {
+                if (alunosFiltrados.isEmpty)
                   return const Center(
                     child: Text(
                       'Nenhum aluno encontrado.',
                       style: TextStyle(color: Colors.grey),
                     ),
                   );
-                }
+
+                // ORDENAÇÃO A-Z DOS ALUNOS NA LISTA GERAL
+                alunosFiltrados.sort(
+                  (a, b) => (a['nome'] ?? '')
+                      .toString()
+                      .toUpperCase()
+                      .compareTo((b['nome'] ?? '').toString().toUpperCase()),
+                );
 
                 return ListView.separated(
                   itemCount: alunosFiltrados.length,
@@ -1459,9 +1671,13 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                       const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final aluno = alunosFiltrados[index];
-                    final isInadimplente = aluno['status'] == 'Inadimplente';
+                    final statusAluno = aluno['status'] ?? 'Ativo';
+                    final corStatusCard = statusAluno == 'Ativo'
+                        ? Colors.green
+                        : (statusAluno == 'Inadimplente'
+                              ? Colors.red
+                              : Colors.orange);
 
-                    // LÓGICA DE EXIBIÇÃO DE IRMÃOS NO CARD
                     final temIrmao = aluno['temIrmao'] == true;
                     final irmaoInfo =
                         aluno['irmaoSelecionado']?.toString().trim() ?? '';
@@ -1483,7 +1699,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
-                          color: isInadimplente
+                          color: statusAluno == 'Inadimplente'
                               ? Colors.red.shade200
                               : Colors.grey.shade300,
                         ),
@@ -1538,7 +1754,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                                       fontSize: 12,
                                     ),
                                   ),
-
                                   if (temIrmao) ...[
                                     const SizedBox(height: 4),
                                     Row(
@@ -1582,17 +1797,13 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                                 vertical: 6,
                               ),
                               decoration: BoxDecoration(
-                                color: isInadimplente
-                                    ? Colors.red.shade50
-                                    : Colors.green.shade50,
+                                color: corStatusCard.withAlpha(30),
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Text(
-                                aluno['status'] ?? 'Ativo',
+                                statusAluno,
                                 style: TextStyle(
-                                  color: isInadimplente
-                                      ? Colors.red.shade700
-                                      : Colors.green.shade700,
+                                  color: corStatusCard,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 12,
                                 ),
@@ -1715,7 +1926,6 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
             .toList() ??
         [];
 
-    // Filtra os dados completos dos alunos vinculados para mostrar os botões
     final alunosCompletos = todosAlunos
         .where((a) => alunosVinculadosIds.contains(a['matricula'].toString()))
         .toList();
@@ -1854,7 +2064,6 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                       ),
                     ),
 
-                    // SWITCH PARA STATUS
                     Row(
                       children: [
                         Text(
@@ -1879,14 +2088,13 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                                 resp['status'] = novoStatus;
                               });
                             } catch (e) {
-                              if (context.mounted) {
+                              if (context.mounted)
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text('Erro ao atualizar: $e'),
                                     backgroundColor: Colors.red,
                                   ),
                                 );
-                              }
                             }
                           },
                         ),
@@ -2061,10 +2269,7 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
       for (var aluno in alunos) {
         final matriculaAluno = aluno['matricula']?.toString() ?? '';
         final nomeAluno = aluno['nome']?.toString() ?? '';
-
-        if (matriculaAluno.isEmpty) {
-          continue;
-        }
+        if (matriculaAluno.isEmpty) continue;
 
         final listaResponsaveisFicha = aluno['responsaveis'] as List? ?? [];
         int indexParentesco = 1;
@@ -2073,10 +2278,7 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
           final cpf = (resp['cpf'] ?? '').toString().trim();
           final nome = (resp['nome'] ?? '').toString().trim().toUpperCase();
 
-          // IGNORA RESPONSÁVEIS VAZIOS OU INCOMPLETOS
-          if (nome.isEmpty || cpf.isEmpty || cpf.length < 14) {
-            continue;
-          }
+          if (nome.isEmpty || cpf.isEmpty || cpf.length < 14) continue;
 
           int indexExistente = responsaveisExistentes.indexWhere((existente) {
             final cpfExistente = (existente['cpf'] ?? '').toString().trim();
@@ -2084,13 +2286,8 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                 .toString()
                 .trim()
                 .toUpperCase();
-
-            if (cpf.isNotEmpty && cpfExistente == cpf) {
-              return true;
-            }
-            if (nomeExistente == nome) {
-              return true;
-            }
+            if (cpf.isNotEmpty && cpfExistente == cpf) return true;
+            if (nomeExistente == nome) return true;
             return false;
           });
 
@@ -2103,9 +2300,8 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
 
           if (indexExistente == -1) {
             String newId = 'RESP-$matriculaAluno';
-            if (indexParentesco > 1) {
+            if (indexParentesco > 1)
               newId = 'RESP-$matriculaAluno-$indexParentesco';
-            }
 
             final novoResponsavel = {
               'id': newId,
@@ -2117,7 +2313,7 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
               'dataCadastro': DateTime.now().toIso8601String(),
               'alunosVinculados': [alunoVinculoStr],
               'alunosVinculadosRaw': [alunoVinculoRaw],
-              'endereco': aluno['endereco'], // Copia o endereço do filho
+              'endereco': aluno['endereco'],
             };
 
             await servico.salvarResponsavel(novoResponsavel);
@@ -2172,18 +2368,15 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
         }
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Erro ao importar: $e'),
             backgroundColor: Colors.red,
           ),
         );
-      }
     } finally {
-      if (mounted) {
-        setState(() => _sincronizando = false);
-      }
+      if (mounted) setState(() => _sincronizando = false);
     }
   }
 
@@ -2259,22 +2452,18 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (erro, stack) => Center(child: Text('Erro: $erro')),
               data: (lista) {
-                // Filtra a busca e ignora documentos defeituosos/nulos
                 final filtrados = lista.where((p) {
                   final nome = p['nome']?.toString() ?? '';
-                  if (nome.trim().isEmpty) {
-                    return false;
-                  }
+                  if (nome.trim().isEmpty) return false;
                   return nome.toLowerCase().contains(_termoBusca.toLowerCase());
                 }).toList();
 
-                if (filtrados.isEmpty) {
+                if (filtrados.isEmpty)
                   return const Center(
                     child: Text(
                       'Nenhum responsável encontrado. Clique em "Puxar dos Alunos".',
                     ),
                   );
-                }
 
                 return ListView.separated(
                   itemCount: filtrados.length,
@@ -2283,7 +2472,6 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                   itemBuilder: (context, index) {
                     final resp = filtrados[index];
                     final inativo = resp['status'] != 'Ativo';
-
                     final alunosVinculadosRaw =
                         resp['alunosVinculadosRaw'] as List? ?? [];
 
@@ -2487,9 +2675,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                   await ref
                       .read(professorServiceProvider)
                       .excluirProfessor(professor['id']);
-                  if (!context.mounted) {
-                    return;
-                  }
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -2501,14 +2687,13 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                     ),
                   );
                 } catch (e) {
-                  if (context.mounted) {
+                  if (context.mounted)
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Erro ao excluir: $e'),
                         backgroundColor: Colors.red,
                       ),
                     );
-                  }
                 }
               },
               child: const Text('Sim, Excluir'),
@@ -2605,7 +2790,6 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
     showDialog(
       context: context,
       builder: (context) {
-        // Usa StatefulBuilder para atualizar o Switch em tempo real dentro do Modal
         return StatefulBuilder(
           builder: (context, setStateModal) {
             final statusAtual = prof['status'] ?? 'Ativo';
@@ -2670,10 +2854,6 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                         ],
                       ),
                     ),
-
-                    // ==========================================================
-                    // BOTÃO DE LIGAR/DESLIGAR (ATIVO/INATIVO)
-                    // ==========================================================
                     Row(
                       children: [
                         Text(
@@ -2691,21 +2871,18 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                           onChanged: (val) async {
                             final novoStatus = val ? 'Ativo' : 'Inativo';
                             try {
-                              // Atualiza no banco de dados
                               await ref
                                   .read(professorServiceProvider)
                                   .atualizarStatus(prof['id'], novoStatus);
-                              // Atualiza visualmente no popup
                               setStateModal(() => prof['status'] = novoStatus);
                             } catch (e) {
-                              if (context.mounted) {
+                              if (context.mounted)
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text('Erro ao atualizar: $e'),
                                     backgroundColor: Colors.red,
                                   ),
                                 );
-                              }
                             }
                           },
                         ),
@@ -2870,7 +3047,6 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                         'Bairro/Cidade',
                         '${prof['endereco']?['bairro'] ?? ''} - ${prof['endereco']?['cidade'] ?? ''}',
                       ),
-
                       const SizedBox(height: 24),
                       const Text(
                         'DOCUMENTOS E CERTIFICADOS',
@@ -2924,7 +3100,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                                       mode: LaunchMode.externalApplication,
                                     );
                                   } else {
-                                    if (context.mounted) {
+                                    if (context.mounted)
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
@@ -2934,7 +3110,6 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                                           ),
                                         ),
                                       );
-                                    }
                                   }
                                 },
                               ),
@@ -2986,7 +3161,6 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const Spacer(),
-
               estadoProfessores.when(
                 loading: () => const SizedBox.shrink(),
                 error: (_, __) => const SizedBox.shrink(),
@@ -2996,16 +3170,13 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                     final discList = prof['disciplinas'] as List? ?? [];
                     for (var d in discList) {
                       final str = d.toString().toUpperCase().trim();
-                      if (str.isNotEmpty) {
-                        disciplinasSet.add(str);
-                      }
+                      if (str.isNotEmpty) disciplinasSet.add(str);
                     }
                   }
                   final listaDisciplinas = disciplinasSet.toList()
                     ..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
-                  if (!listaDisciplinas.contains(_filtroDisciplina)) {
+                  if (!listaDisciplinas.contains(_filtroDisciplina))
                     _filtroDisciplina = 'TODAS';
-                  }
 
                   return Container(
                     constraints: const BoxConstraints(maxWidth: 300),
@@ -3031,9 +3202,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                           fontSize: 13,
                         ),
                         onChanged: (v) {
-                          if (v != null) {
-                            setState(() => _filtroDisciplina = v);
-                          }
+                          if (v != null) setState(() => _filtroDisciplina = v);
                         },
                         items: listaDisciplinas
                             .map(
@@ -3053,7 +3222,6 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                 },
               ),
               const SizedBox(width: 16),
-
               SizedBox(
                 width: 250,
                 height: 40,
@@ -3096,15 +3264,8 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                 final filtrados = professores.where((p) {
                   final nome = p['nome']?.toString() ?? '';
                   final id = p['id']?.toString() ?? '';
-
-                  // ==========================================================
-                  // TRAVA CONTRA USUÁRIOS FANTASMAS (NULL)
-                  // ==========================================================
-                  if (nome.trim().isEmpty ||
-                      id.trim().isEmpty ||
-                      id == 'null') {
+                  if (nome.trim().isEmpty || id.trim().isEmpty || id == 'null')
                     return false;
-                  }
 
                   final busca = _termoBusca.toLowerCase();
                   final matchBusca = nome.toLowerCase().contains(busca);
@@ -3119,15 +3280,13 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                   return matchBusca && matchDisc;
                 }).toList();
 
-                if (filtrados.isEmpty) {
+                if (filtrados.isEmpty)
                   return const Center(
                     child: Text(
                       'Nenhum professor encontrado com esses filtros.',
                     ),
                   );
-                }
 
-                // ORDEM ALFABÉTICA (A-Z)
                 filtrados.sort(
                   (a, b) => (a['nome'] ?? '').toString().compareTo(
                     (b['nome'] ?? '').toString(),
@@ -3338,9 +3497,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                   await ref
                       .read(secretariaServiceProvider)
                       .excluirSecretaria(membro['id']);
-                  if (!context.mounted) {
-                    return;
-                  }
+                  if (!context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -3349,14 +3506,13 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                     ),
                   );
                 } catch (e) {
-                  if (context.mounted) {
+                  if (context.mounted)
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Erro: $e'),
                         backgroundColor: Colors.red,
                       ),
                     );
-                  }
                 }
               },
               child: const Text(
@@ -3507,8 +3663,6 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                         ],
                       ),
                     ),
-
-                    // SWITCH PARA STATUS
                     Row(
                       children: [
                         Text(
@@ -3663,27 +3817,17 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                 .toString()
                 .toUpperCase()
                 .trim();
-            if (funcao.isNotEmpty) {
-              funcoesSet.add(funcao);
-            }
+            if (funcao.isNotEmpty) funcoesSet.add(funcao);
           }
           final listaFuncoes = funcoesSet.toList()
             ..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
-
-          if (!listaFuncoes.contains(_filtroFuncao)) {
-            _filtroFuncao = 'TODAS';
-          }
+          if (!listaFuncoes.contains(_filtroFuncao)) _filtroFuncao = 'TODAS';
 
           final filtrados = equipe.where((mem) {
             final nome = (mem['nome'] ?? '').toString().toLowerCase();
             final id = (mem['id'] ?? '').toString().toLowerCase();
-
-            // ==========================================================
-            // TRAVA CONTRA USUÁRIOS FANTASMAS (NULL)
-            // ==========================================================
-            if (nome.trim().isEmpty || id.trim().isEmpty || id == 'null') {
+            if (nome.trim().isEmpty || id.trim().isEmpty || id == 'null')
               return false;
-            }
 
             final busca = _termoBusca.toLowerCase().trim();
             final idApenasNumeros = id.replaceAll(RegExp(r'[^0-9]'), '');
@@ -3703,7 +3847,6 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
             return matchBusca && matchFuncao;
           }).toList();
 
-          // ORDEM ALFABÉTICA (A-Z)
           filtrados.sort(
             (a, b) => (a['nome'] ?? '').toString().compareTo(
               (b['nome'] ?? '').toString(),
@@ -3745,9 +3888,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                           fontSize: 13,
                         ),
                         onChanged: (v) {
-                          if (v != null) {
-                            setState(() => _filtroFuncao = v);
-                          }
+                          if (v != null) setState(() => _filtroFuncao = v);
                         },
                         items: listaFuncoes
                             .map(
@@ -3833,27 +3974,18 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                               ),
                               child: Row(
                                 children: [
-                                  InkWell(
-                                    onTap: mem['fotoUrl'] != null
-                                        ? () => _mostrarFotoAmpliada(
-                                            context,
-                                            mem['fotoUrl'],
+                                  CircleAvatar(
+                                    radius: 24,
+                                    backgroundColor: Colors.grey.shade200,
+                                    backgroundImage: mem['fotoUrl'] != null
+                                        ? NetworkImage(mem['fotoUrl'])
+                                        : null,
+                                    child: mem['fotoUrl'] == null
+                                        ? const Icon(
+                                            Icons.support_agent_rounded,
+                                            color: Colors.grey,
                                           )
                                         : null,
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: CircleAvatar(
-                                      radius: 24,
-                                      backgroundColor: Colors.grey.shade200,
-                                      backgroundImage: mem['fotoUrl'] != null
-                                          ? NetworkImage(mem['fotoUrl'])
-                                          : null,
-                                      child: mem['fotoUrl'] == null
-                                          ? const Icon(
-                                              Icons.support_agent_rounded,
-                                              color: Colors.grey,
-                                            )
-                                          : null,
-                                    ),
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
@@ -3969,102 +4101,56 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
   final _debouncer = Debouncer(milliseconds: 400);
   String _anoSelecionado = DateTime.now().year.toString();
 
-  // ==========================================================================
-  // FUNÇÃO MÁGICA: PESO DA TURMA (MEC + EXTRACURRICULAR)
-  // ==========================================================================
   int _calcularPesoTurmaMEC(String nome) {
     final n = nome.toUpperCase();
-
-    // 1. ENSINO MÉDIO
     if (n.contains('MÉDIO') ||
         n.contains('MEDIO') ||
         n.contains('SÉRIE') ||
         n.contains('SERIE') ||
         n.contains('TERCEIRÃO')) {
-      if (n.contains('1') || n.contains('PRIMEIR')) {
-        return 210;
-      }
-      if (n.contains('2') || n.contains('SEGUND')) {
-        return 220;
-      }
-      if (n.contains('3') || n.contains('TERCEIR')) {
-        return 230;
-      }
+      if (n.contains('1') || n.contains('PRIMEIR')) return 210;
+      if (n.contains('2') || n.contains('SEGUND')) return 220;
+      if (n.contains('3') || n.contains('TERCEIR')) return 230;
       return 200;
     }
-
-    // 2. ENSINO FUNDAMENTAL
     if (n.contains('ANO') || n.contains('FUNDAMENTAL')) {
-      if (n.contains('1') || n.contains('PRIMEIR')) {
-        return 110;
-      }
-      if (n.contains('2') || n.contains('SEGUND')) {
-        return 120;
-      }
-      if (n.contains('3') || n.contains('TERCEIR')) {
-        return 130;
-      }
-      if (n.contains('4') || n.contains('QUART')) {
-        return 140;
-      }
-      if (n.contains('5') || n.contains('QUINT')) {
-        return 150;
-      }
-      if (n.contains('6') || n.contains('SEXT')) {
-        return 160;
-      }
-      if (n.contains('7') || n.contains('SÉTIM') || n.contains('SETIM')) {
+      if (n.contains('1') || n.contains('PRIMEIR')) return 110;
+      if (n.contains('2') || n.contains('SEGUND')) return 120;
+      if (n.contains('3') || n.contains('TERCEIR')) return 130;
+      if (n.contains('4') || n.contains('QUART')) return 140;
+      if (n.contains('5') || n.contains('QUINT')) return 150;
+      if (n.contains('6') || n.contains('SEXT')) return 160;
+      if (n.contains('7') || n.contains('SÉTIM') || n.contains('SETIM'))
         return 170;
-      }
-      if (n.contains('8') || n.contains('OITAV')) {
-        return 180;
-      }
-      if (n.contains('9') || n.contains('NON')) {
-        return 190;
-      }
+      if (n.contains('8') || n.contains('OITAV')) return 180;
+      if (n.contains('9') || n.contains('NON')) return 190;
       return 100;
     }
-
-    // 3. EDUCAÇÃO INFANTIL
-    if (n.contains('BERÇÁRIO') || n.contains('BERCARIO')) {
-      return 10;
-    }
-    if (n.contains('MATERNAL')) {
-      return 20;
-    }
+    if (n.contains('BERÇÁRIO') || n.contains('BERCARIO')) return 10;
+    if (n.contains('MATERNAL')) return 20;
     if (n.contains('INFANTIL I') ||
         n.contains('INFANTIL 1') ||
         n.contains('JARDIM I') ||
-        n.contains('JARDIM 1')) {
+        n.contains('JARDIM 1'))
       return 30;
-    }
     if (n.contains('INFANTIL II') ||
         n.contains('INFANTIL 2') ||
         n.contains('JARDIM II') ||
-        n.contains('JARDIM 2')) {
+        n.contains('JARDIM 2'))
       return 40;
-    }
-    if (n.contains('INFANTIL III') || n.contains('INFANTIL 3')) {
-      return 50;
-    }
+    if (n.contains('INFANTIL III') || n.contains('INFANTIL 3')) return 50;
     if (n.contains('INFANTIL IV') ||
         n.contains('INFANTIL 4') ||
         n.contains('PRÉ I') ||
-        n.contains('PRÉ 1')) {
+        n.contains('PRÉ 1'))
       return 60;
-    }
     if (n.contains('INFANTIL V') ||
         n.contains('INFANTIL 5') ||
         n.contains('PRÉ II') ||
         n.contains('PRÉ 2') ||
-        n.contains('PRÉ')) {
+        n.contains('PRÉ'))
       return 70;
-    }
-    if (n.contains('INFANTIL')) {
-      return 80;
-    }
-
-    // 4. EXTRACURRICULARES
+    if (n.contains('INFANTIL')) return 80;
     return 999;
   }
 
@@ -4092,9 +4178,7 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
             onPressed: () async {
               try {
                 await ref.read(turmaServiceProvider).excluirTurma(turma['id']);
-                if (!context.mounted) {
-                  return;
-                }
+                if (!context.mounted) return;
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -4103,14 +4187,13 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
                   ),
                 );
               } catch (e) {
-                if (context.mounted) {
+                if (context.mounted)
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text('Erro ao excluir: $e'),
                       backgroundColor: Colors.red,
                     ),
                   );
-                }
               }
             },
             child: const Text(
@@ -4156,7 +4239,6 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
             return matchBusca && matchAno;
           }).toList();
 
-          // ORDENAÇÃO MEC
           filtradas.sort((a, b) {
             final pesoA = _calcularPesoTurmaMEC(a['nome'] ?? '');
             final pesoB = _calcularPesoTurmaMEC(b['nome'] ?? '');
@@ -4202,9 +4284,8 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
                           fontSize: 14,
                         ),
                         onChanged: (novoAno) {
-                          if (novoAno != null) {
+                          if (novoAno != null)
                             setState(() => _anoSelecionado = novoAno);
-                          }
                         },
                         items: listaAnos
                             .map(
@@ -4282,12 +4363,9 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
                           final isExtra =
                               _calcularPesoTurmaMEC(turma['nome'] ?? '') == 999;
 
-                          // Contagem de Professores
                           final profsCount =
                               (turma['professoresVinculados'] as List? ?? [])
                                   .length;
-
-                          // Contagem de Alunos
                           final idTurma = turma['id'].toString();
                           final turnoFormatado = turma['turno'] ?? '';
                           final turmaNomeOficial =
@@ -4300,9 +4378,8 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
                           int alunosCount = 0;
                           for (var a in alunosDoSistema) {
                             if (a['status'] == 'Transferido' ||
-                                a['status'] == 'Inativo') {
+                                a['status'] == 'Inativo')
                               continue;
-                            }
                             final turmaAluno = (a['turma'] ?? '')
                                 .toString()
                                 .trim()
