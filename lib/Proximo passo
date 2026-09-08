@@ -13,14 +13,23 @@
 
 -----------------------------------------------------------
 ***VISÃO GERAL***
-- quero deixar CARDS ALUNOS, PROFESSORES, TURMAS E FUNCIONÁRIOS 
-- ACRESCENTAR CALENDÁRIO ESCOLAR COM CAMPOS ABERTOS PARA ACRESCENTAR OS EVENTOS DA ESCOLA.
+
 - 
 -----------------------------------------------------------
 
 **GESTÃO MASTER**
 
 -----------------------------------------------------------
+***CALENDÁRIO ESCOLAR***
+-  adicionar botão de exportar calendário PDF.
+- Analisar caso de enviar em massa com push para os pais e alunos.
+- Permitir que professores acrescentem atividades no calendário escolar.
+
+
+
+-----------------------------------------------------------
+
+
 OBS: Em todos os campos de pesquisa possa pesquisar pelo numero do ID
 sem precisar colocar a sigla PROF... Só colocando o numero 0001 01
 

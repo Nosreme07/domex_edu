@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 // ============================================================================
 // IMPORTS: TELAS GERAIS E APLICATIVO MOBILE
 // ============================================================================
-import '../../app.dart'; 
+import '../../app.dart';
 import '../../modulos/autenticacao/apresentacao/telas/login_tela.dart';
 import '../../modulos/academico/apresentacao/telas/diario_tela.dart';
 import '../../modulos/comunicacao/apresentacao/telas/mural_tela.dart';
@@ -18,15 +18,18 @@ import '../layout/admin_layout.dart';
 import '../../modulos/admin/apresentacao/telas/admin_visao_geral_tela.dart';
 
 // ---> TÉCNICA ANTI-BUG: ALIAS DE IMPORTAÇÃO PARA IGNORAR O CACHE <---
-import '../../modulos/admin/apresentacao/telas/admin_cadastros_tela.dart' as central_cadastros; 
+import '../../modulos/admin/apresentacao/telas/admin_cadastros_tela.dart'
+    as central_cadastros;
 
-import '../../modulos/admin/apresentacao/telas/admin_aluno_form_tela.dart'; 
-import '../../modulos/admin/apresentacao/telas/admin_responsavel_form_tela.dart'; 
-import '../../modulos/admin/apresentacao/telas/admin_professor_form_tela.dart'; 
-import '../../modulos/admin/apresentacao/telas/admin_secretaria_form_tela.dart'; 
+import '../../modulos/admin/apresentacao/telas/admin_aluno_form_tela.dart';
+import '../../modulos/admin/apresentacao/telas/admin_responsavel_form_tela.dart';
+import '../../modulos/admin/apresentacao/telas/admin_professor_form_tela.dart';
+import '../../modulos/admin/apresentacao/telas/admin_secretaria_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_configuracoes_tela.dart';
-import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart'; 
+import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart';
+// ---> NOVO IMPORT DO CALENDÁRIO <---
+import '../../modulos/admin/apresentacao/telas/admin_calendario_tela.dart';
 
 // ============================================================================
 // IMPORTS: PAINEL MASTER (SUPER ADMIN / DONO DO SAAS)
@@ -46,7 +49,7 @@ class AppRotas {
   AppRotas._();
 
   /// Função utilitária para descobrir se o cliente está acessando via subdomínio
-static String? extrairSubdominio() {
+  static String? extrairSubdominio() {
     if (kIsWeb) {
       // 1. Tenta pegar via parâmetro na URL (Ideal para testes no Localhost)
       // Exemplo: localhost:5000/?escola=primeiravisao
@@ -60,7 +63,7 @@ static String? extrairSubdominio() {
       if (host != 'localhost' && host != '127.0.0.1') {
         List<String> partes = host.split('.');
         if (partes.length >= 3 && partes[0] != 'www') {
-          return partes[0]; 
+          return partes[0];
         }
       }
     }
@@ -72,14 +75,14 @@ static String? extrairSubdominio() {
   // ============================================================================
   static final GoRouter router = GoRouter(
     initialLocation: '/',
-    debugLogDiagnostics: kDebugMode, 
-    
+    debugLogDiagnostics: kDebugMode,
+
     redirect: (BuildContext context, GoRouterState state) {
       final subdominio = extrairSubdominio();
       if (state.matchedLocation == '/' && subdominio != null) {
-        return '/login'; 
+        return '/login';
       }
-      return null; 
+      return null;
     },
 
     routes: [
@@ -88,14 +91,18 @@ static String? extrairSubdominio() {
       // ==========================================================
       GoRoute(path: '/', builder: (context, state) => const TelaInicialDomex()),
       GoRoute(path: '/login', builder: (context, state) => const LoginTela()),
-      GoRoute(path: '/dashboard', builder: (context, state) => const DashboardTela()),
+      GoRoute(
+        path: '/dashboard',
+        builder: (context, state) => const DashboardTela(),
+      ),
       GoRoute(path: '/mural', builder: (context, state) => const MuralTela()),
-      
+
       GoRoute(
         path: '/diario/:idTurma',
-        builder: (context, state) => DiarioTela(idTurma: state.pathParameters['idTurma']!),
+        builder: (context, state) =>
+            DiarioTela(idTurma: state.pathParameters['idTurma']!),
       ),
-      
+
       // ==========================================================
       // GRUPO 2: ESTRUTURA ADMINISTRATIVA DA ESCOLA (Tenant)
       // ==========================================================
@@ -108,22 +115,31 @@ static String? extrairSubdominio() {
             path: '/admin',
             builder: (context, state) => const AdminVisaoGeralTela(),
           ),
-          
+
           GoRoute(
             path: '/admin/configuracoes',
             builder: (context, state) => const AdminConfiguracoesTela(),
+          ),
+
+          // --- NOVO: MÓDULO DE CALENDÁRIO ---
+          GoRoute(
+            path: '/admin/calendario',
+            builder: (context, state) => const AdminCalendarioTela(),
           ),
 
           // --- Central de Cadastros (Com Abas) ---
           GoRoute(
             path: '/admin/cadastros',
             builder: (context, state) {
-              final aba = state.extra as int? ?? 0; 
+              final aba = state.extra as int? ?? 0;
               // USO DO ALIAS AQUI PARA BURLAR O CACHE
-              return central_cadastros.AdminCadastrosTela(key: ValueKey(aba), abaInicial: aba); 
+              return central_cadastros.AdminCadastrosTela(
+                key: ValueKey(aba),
+                abaInicial: aba,
+              );
             },
           ),
-          
+
           GoRoute(
             path: '/admin/cadastros/aluno/novo',
             builder: (context, state) {
@@ -135,16 +151,21 @@ static String? extrairSubdominio() {
           GoRoute(
             path: '/admin/cadastros/responsavel/novo',
             builder: (context, state) {
-              final responsavelParaEditar = state.extra as Map<String, dynamic>?;
-              return AdminResponsavelFormTela(responsavelParaEditar: responsavelParaEditar);
+              final responsavelParaEditar =
+                  state.extra as Map<String, dynamic>?;
+              return AdminResponsavelFormTela(
+                responsavelParaEditar: responsavelParaEditar,
+              );
             },
           ),
-          
+
           GoRoute(
             path: '/admin/cadastros/professor/novo',
             builder: (context, state) {
               final professorParaEditar = state.extra as Map<String, dynamic>?;
-              return AdminProfessorFormTela(professorParaEditar: professorParaEditar);
+              return AdminProfessorFormTela(
+                professorParaEditar: professorParaEditar,
+              );
             },
           ),
 
@@ -152,7 +173,9 @@ static String? extrairSubdominio() {
             path: '/admin/cadastros/secretaria/novo',
             builder: (context, state) {
               final membroParaEditar = state.extra as Map<String, dynamic>?;
-              return AdminSecretariaFormTela(membroParaEditar: membroParaEditar);
+              return AdminSecretariaFormTela(
+                membroParaEditar: membroParaEditar,
+              );
             },
           ),
 
@@ -168,7 +191,10 @@ static String? extrairSubdominio() {
             path: '/admin/cadastros/turma/painel',
             builder: (context, state) {
               final turmaExtra = state.extra as Map<String, dynamic>?;
-              if (turmaExtra == null) return const Scaffold(body: Center(child: Text('Turma não encontrada.')));
+              if (turmaExtra == null)
+                return const Scaffold(
+                  body: Center(child: Text('Turma não encontrada.')),
+                );
               return AdminTurmaPainelTela(turma: turmaExtra);
             },
           ),
@@ -208,7 +234,6 @@ static String? extrairSubdominio() {
           ),
         ],
       ),
-      
     ],
   );
 }
