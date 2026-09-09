@@ -29,6 +29,22 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
     return null; 
   }
 
+  // Helper para não quebrar o login caso a corHex ou corPrimaria venha zuada do Firebase
+  Color _safelyParseColor(Map<String, dynamic> dados) {
+    Color fallback = const Color(0xFF2C3E50);
+    String? corBruta = dados['corHex'] ?? dados['corPrimaria'];
+    
+    if (corBruta == null || corBruta.isEmpty) return fallback;
+    
+    try {
+      String cleanHex = corBruta.replaceAll('#', '').replaceAll('Color(0xff', '').replaceAll(')', '');
+      if (cleanHex.length == 6) cleanHex = 'FF$cleanHex';
+      return Color(int.parse(cleanHex, radix: 16));
+    } catch (_) {
+      return fallback;
+    }
+  }
+
   Future<void> fazerLogin(String email, String senha) async {
     state = const AsyncLoading();
 
@@ -75,7 +91,7 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
       // 3. IDENTIFICAÇÃO DE PERFIL NO BANCO DE DADOS (Firestore)
       // ==========================================================
       
-      // A) Verifica se é o Dono da Escola (Admin)
+      // A) Verifica se é o Dono da Escola (Admin / Tenant)
       final snapshotEscola = await FirebaseFirestore.instance
           .collection('tenants')
           .where('email', isEqualTo: email)
@@ -89,26 +105,17 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
           throw Exception('O acesso desta escola está bloqueado. Contate o suporte da Domex.');
         }
 
-        Color corDaEscola = const Color(0xFF2C3E50); 
-        if (dadosEscola['corHex'] != null) {
-          corDaEscola = Color(int.parse(dadosEscola['corHex'], radix: 16));
-        } else if (dadosEscola['corPrimaria'] != null) {
-          String cleanHex = dadosEscola['corPrimaria'].replaceAll('#', '');
-          if (cleanHex.length == 6) cleanHex = 'FF$cleanHex';
-          corDaEscola = Color(int.parse(cleanHex, radix: 16));
-        }
-
         return UsuarioSessao(
           id: dadosEscola['id'] ?? snapshotEscola.docs.first.id,
           nome: 'Administração',
           email: email,
           perfil: 'admin_escola',
           nomeEscola: dadosEscola['nomeEscola'] ?? dadosEscola['nome'],
-          corPrimaria: corDaEscola, 
+          corPrimaria: _safelyParseColor(dadosEscola), 
         );
       }
 
-      // B) Verifica se é um Usuário (Super Admin novo, Professor, Secretaria, etc)
+      // B) Verifica se é um Usuário de Acesso (Professor, Secretaria, Aluno)
       final snapshotUsuario = await FirebaseFirestore.instance
           .collection('usuarios')
           .where('email', isEqualTo: email)
@@ -122,35 +129,28 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
           throw Exception('Seu acesso está bloqueado. Procure a administração.');
         }
 
-        // --- A CORREÇÃO ESTÁ AQUI ---
-        // Descobre se o usuário é um novo Super Admin cadastrado via painel
+        // --- CORREÇÃO: Lê as permissões com segurança ---
         String perfilAtribuido = dadosUsuario['perfil'] ?? 'aluno';
         if (dadosUsuario['role'] == 'SUPER_ADMIN') {
           perfilAtribuido = 'super_admin';
         }
 
-        // Configura as cores e nomes baseado no perfil
+        // Configura as cores e nomes baseado na escola onde ele trabalha
         final escolaId = dadosUsuario['escolaId'] ?? dadosUsuario['tenantId'];
         Color corDaEscola = const Color(0xFF2C3E50);
         String nomeEscola = 'SaaS Domex';
 
         if (perfilAtribuido == 'super_admin') {
-          // Cores exclusivas do Super Admin
           corDaEscola = Colors.deepPurple.shade900;
         } else if (escolaId != null) {
-           // Busca as cores da escola para professores/secretaria
            final docEscola = await FirebaseFirestore.instance.collection('tenants').doc(escolaId).get();
-           if (docEscola.exists) {
+           if (docEscola.exists && docEscola.data() != null) {
              final dadosE = docEscola.data()!;
              nomeEscola = dadosE['nomeEscola'] ?? dadosE['nome'] ?? 'Escola';
-             
-             if (dadosE['corHex'] != null) {
-               corDaEscola = Color(int.parse(dadosE['corHex'], radix: 16));
-             } else if (dadosE['corPrimaria'] != null) {
-                String cleanHex = dadosE['corPrimaria'].replaceAll('#', '');
-                if (cleanHex.length == 6) cleanHex = 'FF$cleanHex';
-                corDaEscola = Color(int.parse(cleanHex, radix: 16));
-             }
+             corDaEscola = _safelyParseColor(dadosE);
+           } else {
+             await FirebaseAuth.instance.signOut();
+             throw Exception('Não foi possível localizar o cadastro da sua instituição de ensino.');
            }
         }
 
@@ -164,7 +164,7 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         );
       }
 
-      // C) Passou pela portaria, mas a ficha sumiu do banco de dados
+      // C) Passou pela portaria do Auth, mas a ficha sumiu do banco de dados Firestore
       await FirebaseAuth.instance.signOut();
       throw Exception('Sua conta foi autenticada, mas seu perfil não foi encontrado no sistema.');
     });

@@ -10,11 +10,18 @@
 
 *TURMAS*
 *USUARIOS*
+- Verificar o status dos professores
+
+
 
 -----------------------------------------------------------
 ***VISÃO GERAL***
+- Colocar dentro do visão geral um aviso que vem do calendário
+evento semanal e o que tem no diário.
 
-- 
+
+
+
 -----------------------------------------------------------
 
 **GESTÃO MASTER**
@@ -24,7 +31,7 @@
 -  adicionar botão de exportar calendário PDF.
 - Analisar caso de enviar em massa com push para os pais e alunos.
 - Permitir que professores acrescentem atividades no calendário escolar.
-
+- 
 
 
 -----------------------------------------------------------

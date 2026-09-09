@@ -7,10 +7,15 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+// Importações do Firebase para criação automática do usuário
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../estado/professor_provider.dart';
 
 // ============================================================================
@@ -55,15 +60,12 @@ class AdminProfessorFormTela extends ConsumerStatefulWidget {
       _AdminProfessorFormTelaState();
 }
 
-class _AdminProfessorFormTelaState
-    extends ConsumerState<AdminProfessorFormTela> {
+class _AdminProfessorFormTelaState extends ConsumerState<AdminProfessorFormTela> {
   final _formKey = GlobalKey<FormState>();
 
-  // Formatadores de texto
   final _upperCase = UpperCaseTextFormatter();
   final _lowerCase = LowerCaseTextFormatter();
 
-  // Máscaras de entrada para os campos de formulário
   final _cpfMask = MaskTextInputFormatter(
     mask: '###.###.###-##',
     filter: {"#": RegExp(r'[0-9]')},
@@ -77,12 +79,10 @@ class _AdminProfessorFormTelaState
     filter: {"#": RegExp(r'[0-9]')},
   );
 
-  // Variáveis para gerenciar a foto do perfil
   XFile? _fotoSelecionada;
   String? _fotoUrlExistente;
   final ImagePicker _picker = ImagePicker();
 
-  // Controladores de texto para os campos do formulário
   final _nomeCtrl = TextEditingController();
   final _dataNascimentoCtrl = TextEditingController();
   final _cpfCtrl = TextEditingController();
@@ -94,21 +94,18 @@ class _AdminProfessorFormTelaState
   final _bairroCtrl = TextEditingController();
   final _cidadeCtrl = TextEditingController();
 
-  bool _isAtivo = true; // Status padrão é Ativo
+  bool _isAtivo = true; 
 
-  // Variáveis para gerenciar as disciplinas
   List<String> _disciplinasDisponiveis = [];
   final Set<String> _disciplinasSelecionadas = {};
   final _outraDisciplinaCtrl = TextEditingController();
 
-  // Lista para gerenciar anexos (documentos e certificados)
   List<Map<String, dynamic>> _anexos = [];
 
   @override
   void initState() {
     super.initState();
 
-    // Inicializa a lista de disciplinas padrão
     _disciplinasDisponiveis = [
       'MATEMÁTICA',
       'PORTUGUÊS',
@@ -129,7 +126,6 @@ class _AdminProfessorFormTelaState
       'OUTROS',
     ];
 
-    // Se estiver editando um professor existente, preenche os campos do formulário
     if (widget.professorParaEditar != null) {
       final prof = widget.professorParaEditar!;
 
@@ -140,7 +136,6 @@ class _AdminProfessorFormTelaState
       _telefoneCtrl.text = prof['telefone'] ?? '';
       _emailCtrl.text = prof['email'] ?? '';
 
-      // Preenche os dados de endereço
       if (prof['endereco'] != null) {
         _ruaCtrl.text = prof['endereco']['rua'] ?? '';
         _numeroCtrl.text = prof['endereco']['numero'] ?? '';
@@ -150,13 +145,11 @@ class _AdminProfessorFormTelaState
 
       _isAtivo = prof['status'] == 'Ativo';
 
-      // Carrega e seleciona as disciplinas do professor
       if (prof['disciplinas'] != null) {
         for (var d in prof['disciplinas']) {
           String disc = d.toString().toUpperCase();
           if (disc != 'OUTROS') {
             _disciplinasSelecionadas.add(disc);
-            // Se a disciplina não estiver na lista padrão, adiciona-a antes de 'OUTROS'
             if (!_disciplinasDisponiveis.contains(disc)) {
               _disciplinasDisponiveis.insert(
                 _disciplinasDisponiveis.length - 1,
@@ -167,7 +160,6 @@ class _AdminProfessorFormTelaState
         }
       }
 
-      // Carrega os anexos existentes
       if (prof['anexos'] != null) {
         _anexos = List<Map<String, dynamic>>.from(prof['anexos']);
       }
@@ -176,7 +168,6 @@ class _AdminProfessorFormTelaState
 
   @override
   void dispose() {
-    // Libera os controladores de texto
     _nomeCtrl.dispose();
     _dataNascimentoCtrl.dispose();
     _cpfCtrl.dispose();
@@ -190,7 +181,6 @@ class _AdminProfessorFormTelaState
     super.dispose();
   }
 
-  // Adiciona uma disciplina personalizada à lista
   void _adicionarDisciplinaCustomizada() {
     final nova = _outraDisciplinaCtrl.text.trim().toUpperCase();
     if (nova.isNotEmpty && !_disciplinasDisponiveis.contains(nova)) {
@@ -210,7 +200,6 @@ class _AdminProfessorFormTelaState
     }
   }
 
-  // Abre a galeria para selecionar uma foto de perfil
   Future<void> _escolherFoto() async {
     try {
       final XFile? imagem = await _picker.pickImage(
@@ -229,7 +218,6 @@ class _AdminProfessorFormTelaState
     }
   }
 
-  // Recorta a imagem selecionada para o formato 3x4
   Future<void> _recortarEEnquadrar(String path) async {
     final croppedFile = await ImageCropper().cropImage(
       sourcePath: path,
@@ -252,7 +240,6 @@ class _AdminProfessorFormTelaState
     }
   }
 
-  // Exibe opções para trocar, recortar ou excluir a foto de perfil
   void _abrirOpcoesFoto() {
     showDialog(
       context: context,
@@ -365,7 +352,6 @@ class _AdminProfessorFormTelaState
     );
   }
 
-  // Abre o seletor de arquivos para anexar documentos
   Future<void> _escolherAnexos() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
@@ -398,14 +384,12 @@ class _AdminProfessorFormTelaState
     }
   }
 
-  // Remove um anexo da lista
   void _removerAnexo(int index) {
     setState(() {
       _anexos.removeAt(index);
     });
   }
 
-  // Abre a URL de um anexo
   Future<void> _abrirAnexoUrl(String url) async {
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -418,7 +402,45 @@ class _AdminProfessorFormTelaState
     }
   }
 
-  // Valida o formulário, abre o modal de revisão e salva os dados
+  // ==========================================================================
+  // FUNÇÃO DE CRIAÇÃO AUTOMÁTICA DO ACESSO (Auth + Firestore)
+  // ==========================================================================
+  Future<void> _criarAcessoAutomatico(String idProfessor, String nomeProfessor, String emailProfessor, String telefone) async {
+    final usuario = ref.read(authProvider).value;
+    if (usuario == null || emailProfessor.isEmpty) return;
+    
+    final db = FirebaseFirestore.instance.collection('usuarios');
+    final escolaId = usuario.id;
+
+    // 1. Cria a conta no Firebase Auth sem deslogar o Admin
+    FirebaseApp appSecundario = await Firebase.initializeApp(
+      name: 'AppCriacaoAcesso_${DateTime.now().millisecondsSinceEpoch}',
+      options: Firebase.app().options,
+    );
+    
+    UserCredential userCred = await FirebaseAuth.instanceFor(app: appSecundario)
+        .createUserWithEmailAndPassword(email: emailProfessor, password: 'Domex@123'); // Senha Padrão
+    
+    final String novoUid = userCred.user!.uid;
+    await appSecundario.delete();
+
+    // 2. Salva o perfil do Professor na aba de Usuários do Firestore
+    final dadosAcesso = {
+      'uid': novoUid,
+      'escolaId': escolaId,
+      'tenantId': escolaId,
+      'idLogin': idProfessor,
+      'nome': nomeProfessor,
+      'email': emailProfessor,
+      'telefone': telefone,
+      'perfil': 'professor',
+      'status': 'Ativo',
+      'dataCriacao': DateTime.now().toIso8601String(),
+    };
+
+    await db.doc(novoUid).set(dadosAcesso, SetOptions(merge: true));
+  }
+
   void _revisarESalvar() {
     if (_formKey.currentState!.validate()) {
       final disciplinasParaSalvar = _disciplinasSelecionadas
@@ -444,9 +466,7 @@ class _AdminProfessorFormTelaState
       if (isEdicao) {
         idParaSalvar = widget.professorParaEditar!['id'];
       } else {
-        // Gera um novo ID para o professor
-        final listaProfessores =
-            ref.read(professoresStreamProvider).value ?? [];
+        final listaProfessores = ref.read(professoresStreamProvider).value ?? [];
         int maiorSequencial = 0;
         for (var prof in listaProfessores) {
           final idProf = prof['id']?.toString() ?? '';
@@ -458,8 +478,7 @@ class _AdminProfessorFormTelaState
             }
           }
         }
-        idParaSalvar =
-            'PROF-${(maiorSequencial + 1).toString().padLeft(2, '0')}';
+        idParaSalvar = 'PROF-${(maiorSequencial + 1).toString().padLeft(2, '0')}';
       }
 
       showDialog(
@@ -512,9 +531,33 @@ class _AdminProfessorFormTelaState
                         ],
                       ),
                     ),
+                    if (!isEdicao) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.amber.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.key, color: Colors.orange, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Atenção: Ao salvar, o sistema criará automaticamente o login deste professor com a senha padrão "Domex@123".',
+                                style: TextStyle(color: Colors.orange.shade800, fontSize: 12),
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     _resumoLinha('Nome', _nomeCtrl.text),
                     _resumoLinha('CPF', _cpfCtrl.text),
+                    _resumoLinha('E-mail', _emailCtrl.text),
                     _resumoLinha(
                       'Status',
                       _isAtivo ? 'Ativo (Disponível para aulas)' : 'Inativo',
@@ -566,38 +609,22 @@ class _AdminProfessorFormTelaState
 
                   try {
                     String? urlFinalFoto = _fotoUrlExistente;
-                    // Upload da foto de perfil, se uma nova foi selecionada
                     if (_fotoSelecionada != null) {
                       final bytesFoto = await _fotoSelecionada!.readAsBytes();
-                      String extensao = _fotoSelecionada!.name
-                          .split('.')
-                          .last
-                          .toLowerCase();
-                      if (extensao != 'png' &&
-                          extensao != 'jpg' &&
-                          extensao != 'jpeg') {
+                      String extensao = _fotoSelecionada!.name.split('.').last.toLowerCase();
+                      if (extensao != 'png' && extensao != 'jpg' && extensao != 'jpeg') {
                         extensao = 'png';
                       }
-                      urlFinalFoto = await ref
-                          .read(professorServiceProvider)
-                          .fazerUploadFoto(idParaSalvar, bytesFoto, extensao);
+                      urlFinalFoto = await ref.read(professorServiceProvider).fazerUploadFoto(idParaSalvar, bytesFoto, extensao);
                     } else if (_fotoUrlExistente == null) {
                       urlFinalFoto = null;
                     }
 
-                    // Upload e organização dos anexos
                     List<Map<String, dynamic>> anexosParaSalvar = [];
                     for (var anexo in _anexos) {
                       if (anexo['url'] == null && anexo['bytes'] != null) {
-                        String nomeUnico =
-                            '${idParaSalvar}_anexo_${DateTime.now().millisecondsSinceEpoch}';
-                        String? urlDownload = await ref
-                            .read(professorServiceProvider)
-                            .fazerUploadFoto(
-                              nomeUnico,
-                              anexo['bytes'],
-                              anexo['extensao'],
-                            );
+                        String nomeUnico = '${idParaSalvar}_anexo_${DateTime.now().millisecondsSinceEpoch}';
+                        String? urlDownload = await ref.read(professorServiceProvider).fazerUploadFoto(nomeUnico, anexo['bytes'], anexo['extensao']);
 
                         anexosParaSalvar.add({
                           'nome': anexo['nome'],
@@ -613,7 +640,6 @@ class _AdminProfessorFormTelaState
                       }
                     }
 
-                    // Monta o mapa de dados para salvar
                     final dadosProfessor = {
                       'id': idParaSalvar,
                       'nome': _nomeCtrl.text,
@@ -636,50 +662,45 @@ class _AdminProfessorFormTelaState
                           : DateTime.now().toIso8601String(),
                     };
 
-                    // Salva os dados usando o Provider
-                    await ref
-                        .read(professorServiceProvider)
-                        .salvarProfessor(dadosProfessor);
+                    await ref.read(professorServiceProvider).salvarProfessor(dadosProfessor);
+                    
+                    // ==============================================================
+                    // SE FOR NOVO PROFESSOR, CRIA O LOGIN DELE AUTOMATICAMENTE!
+                    // ==============================================================
+                    if (!isEdicao) {
+                      await _criarAcessoAutomatico(idParaSalvar, _nomeCtrl.text, _emailCtrl.text, _telefoneCtrl.text);
+                    }
+
                     if (!context.mounted) {
                       return;
                     }
-                    Navigator.of(
-                      context,
-                      rootNavigator: true,
-                    ).pop(); // Fecha o loading
-                    Navigator.pop(context); // Fecha o modal de revisão
+                    Navigator.of(context, rootNavigator: true).pop(); // Fecha o loading
+                    Navigator.pop(context); // Fecha a revisão
                     context.pop(); // Volta para a tela anterior
+                    
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
                           isEdicao
-                              ? 'Professor atualizado!'
-                              : 'Professor salvo no Firebase! ID: $idParaSalvar',
-                          style: const TextStyle(color: Colors.white),
+                              ? 'Professor atualizado com sucesso!'
+                              : 'Professor cadastrado e Login gerado! Senha: Domex@123',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                         ),
                         backgroundColor: Colors.green,
+                        duration: const Duration(seconds: 5),
                       ),
                     );
                   } catch (e) {
                     if (context.mounted) {
-                      Navigator.of(
-                        context,
-                        rootNavigator: true,
-                      ).pop(); // Fecha o loading
+                      Navigator.of(context, rootNavigator: true).pop(); // Fecha loading
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Erro: $e'),
-                          backgroundColor: Colors.red,
-                        ),
+                        SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
                       );
                     }
                   }
                 },
                 icon: const Icon(Icons.check_rounded, color: Colors.white),
-                label: const Text(
-                  'Confirmar Cadastro',
-                  style: TextStyle(color: Colors.white),
-                ),
+                label: const Text('Confirmar Cadastro', style: TextStyle(color: Colors.white)),
               ),
             ],
           );
@@ -688,7 +709,6 @@ class _AdminProfessorFormTelaState
     }
   }
 
-  // Widget auxiliar para criar linhas de resumo no modal
   Widget _resumoLinha(String label, String valor) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
@@ -787,9 +807,9 @@ class _AdminProfessorFormTelaState
                               InkWell(
                                 onTap:
                                     (_fotoSelecionada == null &&
-                                        _fotoUrlExistente == null)
-                                    ? _escolherFoto
-                                    : _abrirOpcoesFoto,
+                                            _fotoUrlExistente == null)
+                                        ? _escolherFoto
+                                        : _abrirOpcoesFoto,
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
                                   width: 120,
@@ -803,48 +823,48 @@ class _AdminProfessorFormTelaState
                                   ),
                                   child:
                                       (_fotoSelecionada == null &&
-                                          _fotoUrlExistente == null)
-                                      ? Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.add_a_photo,
-                                              color: Colors.grey.shade400,
-                                              size: 40,
-                                            ),
-                                            const SizedBox(height: 8),
-                                            const Text(
-                                              'Foto 3x4',
-                                              style: TextStyle(
-                                                color: Colors.grey,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        )
-                                      : ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          child: _fotoSelecionada != null
-                                              ? (kIsWeb
-                                                    ? Image.network(
-                                                        _fotoSelecionada!.path,
-                                                        fit: BoxFit.cover,
-                                                      )
-                                                    : Image.file(
-                                                        File(
-                                                          _fotoSelecionada!
-                                                              .path,
-                                                        ),
-                                                        fit: BoxFit.cover,
-                                                      ))
-                                              : Image.network(
-                                                  _fotoUrlExistente!,
-                                                  fit: BoxFit.cover,
+                                              _fotoUrlExistente == null)
+                                          ? Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.add_a_photo,
+                                                  color: Colors.grey.shade400,
+                                                  size: 40,
                                                 ),
-                                        ),
+                                                const SizedBox(height: 8),
+                                                const Text(
+                                                  'Foto 3x4',
+                                                  style: TextStyle(
+                                                    color: Colors.grey,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : ClipRRect(
+                                              borderRadius: BorderRadius.circular(
+                                                12,
+                                              ),
+                                              child: _fotoSelecionada != null
+                                                  ? (kIsWeb
+                                                      ? Image.network(
+                                                          _fotoSelecionada!.path,
+                                                          fit: BoxFit.cover,
+                                                        )
+                                                      : Image.file(
+                                                          File(
+                                                            _fotoSelecionada!
+                                                                .path,
+                                                          ),
+                                                          fit: BoxFit.cover,
+                                                        ))
+                                                  : Image.network(
+                                                      _fotoUrlExistente!,
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                            ),
                                 ),
                               ),
                               const SizedBox(width: 24),
@@ -935,9 +955,6 @@ class _AdminProfessorFormTelaState
                                           ),
                                         ),
                                         const SizedBox(width: 16),
-                                        // ==========================================
-                                        // CAMPO DE E-MAIL USANDO O FORMATADOR MINÚSCULO
-                                        // ==========================================
                                         Expanded(
                                           flex: 2,
                                           child: TextFormField(
@@ -946,7 +963,7 @@ class _AdminProfessorFormTelaState
                                                 TextInputAction.next,
                                             inputFormatters: [_lowerCase],
                                             decoration: const InputDecoration(
-                                              labelText: 'E-mail Profissional',
+                                              labelText: 'E-mail Profissional (Login)',
                                               border: OutlineInputBorder(),
                                             ),
                                             validator: (v) =>
@@ -1000,7 +1017,7 @@ class _AdminProfessorFormTelaState
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                             subtitle: const Text(
-                              'Apenas professores ativos podem ser vinculados a turmas e diários.',
+                              'Apenas professores ativos podem ser vinculados a turmas e logar no sistema.',
                             ),
                             activeThumbColor: corPrimaria,
                             value: _isAtivo,
@@ -1034,8 +1051,8 @@ class _AdminProfessorFormTelaState
                                 side: BorderSide(
                                   color: isSelecionada
                                       ? (disciplina == 'OUTROS'
-                                            ? Colors.orange
-                                            : corPrimaria)
+                                          ? Colors.orange
+                                          : corPrimaria)
                                       : Colors.grey.shade300,
                                 ),
                                 onSelected: (bool selected) {
@@ -1226,7 +1243,7 @@ class _AdminProfessorFormTelaState
                                     subtitle: Text(
                                       isSalvo
                                           ? 'Salvo nas nuvens'
-                                          : 'Pronto para enviar (Aguardando Salvar Cadastro)',
+                                          : 'Pronto para enviar (Aguardando Salvar)',
                                       style: TextStyle(
                                         color: isSalvo
                                             ? Colors.green
@@ -1244,7 +1261,7 @@ class _AdminProfessorFormTelaState
                                               color: Colors.blue,
                                             ),
                                             tooltip:
-                                                'Baixar / Visualizar Arquivo',
+                                                'Baixar / Visualizar',
                                             onPressed: () =>
                                                 _abrirAnexoUrl(anexo['url']),
                                           ),
@@ -1371,7 +1388,7 @@ class _AdminProfessorFormTelaState
                       label: Text(
                         isEdicao
                             ? 'ATUALIZAR CADASTRO'
-                            : 'SALVAR CADASTRO DO PROFESSOR',
+                            : 'SALVAR CADASTRO E GERAR LOGIN',
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
