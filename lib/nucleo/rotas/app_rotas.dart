@@ -100,7 +100,7 @@ class AppRotas {
       GoRoute(
         path: '/diario/:idTurma',
         builder: (context, state) =>
-            DiarioTela(idTurma: state.pathParameters['idTurma']!),
+            DiarioTela(turmaId: state.pathParameters['idTurma']!),
       ),
 
       // ==========================================================
@@ -191,10 +191,11 @@ class AppRotas {
             path: '/admin/cadastros/turma/painel',
             builder: (context, state) {
               final turmaExtra = state.extra as Map<String, dynamic>?;
-              if (turmaExtra == null)
+              if (turmaExtra == null) {
                 return const Scaffold(
                   body: Center(child: Text('Turma não encontrada.')),
                 );
+              }
               return AdminTurmaPainelTela(turma: turmaExtra);
             },
           ),

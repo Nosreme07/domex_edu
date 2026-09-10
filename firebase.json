@@ -1,1 +1,35 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"domex-edu","appId":"1:270552038209:android:d9937cf8f6e2f039abbfc0","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"domex-edu","configurations":{"web":"1:270552038209:web:add300d7b781a202abbfc0"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "domex-edu",
+          "appId": "1:270552038209:android:d9937cf8f6e2f039abbfc0",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "domex-edu",
+          "configurations": {
+            "web": "1:270552038209:web:add300d7b781a202abbfc0"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

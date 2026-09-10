@@ -129,7 +129,6 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
           throw Exception('Seu acesso está bloqueado. Procure a administração.');
         }
 
-        // --- CORREÇÃO: Lê as permissões com segurança ---
         String perfilAtribuido = dadosUsuario['perfil'] ?? 'aluno';
         if (dadosUsuario['role'] == 'SUPER_ADMIN') {
           perfilAtribuido = 'super_admin';
@@ -155,7 +154,12 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         }
 
         return UsuarioSessao(
-          id: dadosUsuario['uid'] ?? dadosUsuario['idLogin'] ?? snapshotUsuario.docs.first.id,
+          // ==============================================================
+          // A MÁGICA ACONTECE AQUI:
+          // Agora forçamos o sistema a usar o 'escolaId' na sessão. 
+          // Todos os provedores de dados vão baixar os dados corretos!
+          // ==============================================================
+          id: escolaId ?? dadosUsuario['uid'] ?? snapshotUsuario.docs.first.id,
           nome: dadosUsuario['nome'] ?? 'Usuário',
           email: email,
           perfil: perfilAtribuido, 
