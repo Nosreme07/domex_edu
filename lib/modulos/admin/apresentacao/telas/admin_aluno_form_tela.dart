@@ -96,6 +96,8 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
 
   String? _sexoSelecionado;
   final _dataNascimentoCtrl = TextEditingController();
+  final FocusNode _dataNascimentoFocus = FocusNode();
+
   String? _turmaSelecionada;
   bool _temIrmao = false;
   final List<Map<String, dynamic>> _irmaosSelecionados = [];
@@ -139,50 +141,58 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
   List<Map<String, dynamic>> _anexos = [];
 
   final List<String> _tiposSanguineos = [
-    'A+',
-    'A-',
-    'B+',
-    'B-',
-    'AB+',
-    'AB-',
-    'O+',
-    'O-',
-    'NÃO SABE/NÃO INFORMADO',
+    'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'NÃO SABE/NÃO INFORMADO',
   ];
   final List<String> _estados = [
-    'AC',
-    'AL',
-    'AP',
-    'AM',
-    'BA',
-    'CE',
-    'DF',
-    'ES',
-    'GO',
-    'MA',
-    'MT',
-    'MS',
-    'MG',
-    'PA',
-    'PB',
-    'PR',
-    'PE',
-    'PI',
-    'RJ',
-    'RN',
-    'RS',
-    'RO',
-    'RR',
-    'SC',
-    'SP',
-    'SE',
-    'TO',
+    'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS',
+    'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC',
+    'SP', 'SE', 'TO',
   ];
   final List<String> _sexos = ['MASCULINO', 'FEMININO'];
 
   @override
   void initState() {
     super.initState();
+
+    // =========================================================================
+    // POPUP RÁPIDO PARA DATA INVÁLIDA
+    // =========================================================================
+    _dataNascimentoFocus.addListener(() {
+      if (!_dataNascimentoFocus.hasFocus && _dataNascimentoCtrl.text.isNotEmpty) {
+        final erro = _validarData(_dataNascimentoCtrl.text);
+        if (erro != null && erro != 'Obrigatório') {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(Icons.event_busy_rounded, color: Colors.red.shade600),
+                  const SizedBox(width: 8),
+                  Text('Data Inválida', style: TextStyle(color: Colors.red.shade600, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Text('Atenção: $erro.\n\nPor favor, corrija a data de nascimento para continuar o cadastro.'),
+              actions: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red.shade600, 
+                    foregroundColor: Colors.white
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    // Força o cursor a voltar para o campo da data
+                    _dataNascimentoFocus.requestFocus(); 
+                  },
+                  child: const Text('Corrigir Data', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    });
+
     if (widget.alunoParaEditar != null) {
       final aluno = widget.alunoParaEditar!;
 
@@ -283,6 +293,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
 
   @override
   void dispose() {
+    _dataNascimentoFocus.dispose();
     _nomeAlunoCtrl.dispose();
     _raCtrl.dispose();
     _telefoneAlunoCtrl.dispose();
@@ -320,6 +331,98 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
       p.telCtrl.dispose();
     }
     super.dispose();
+  }
+
+  String? _validarData(String? v) {
+    if (v == null || v.isEmpty) return 'Obrigatório';
+    if (v.length < 10) return 'A data está incompleta';
+
+    final partes = v.split('/');
+    final dia = int.tryParse(partes[0]) ?? 0;
+    final mes = int.tryParse(partes[1]) ?? 0;
+    final ano = int.tryParse(partes[2]) ?? 0;
+
+    if (dia < 1 || dia > 31) return 'O dia digitado é inválido';
+    if (mes < 1 || mes > 12) return 'O mês digitado é inválido';
+    if (ano < 1900 || ano > DateTime.now().year + 1) return 'O ano digitado é inválido';
+
+    try {
+      final dataTeste = DateTime(ano, mes, dia);
+      if (dataTeste.year != ano || dataTeste.month != mes || dataTeste.day != dia) {
+        return 'Essa data não existe no calendário (Verifique anos bissextos ou meses de 30 dias)';
+      }
+    } catch (_) {
+      return 'Formato de data inválido';
+    }
+    return null;
+  }
+
+  void _verificarCpfResponsavel(String cpf, int respIndex) {
+    if (cpf.length < 14) return; 
+
+    final listaAlunos = ref.read(alunosStreamProvider).value ?? [];
+
+    for (var aluno in listaAlunos) {
+      final responsaveis = aluno['responsaveis'] as List? ?? [];
+      for (var resp in responsaveis) {
+        if (resp['cpf'] == cpf) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: Row(
+                children: [
+                  Icon(Icons.person_search_rounded, color: Theme.of(context).primaryColor),
+                  const SizedBox(width: 8),
+                  const Text('Responsável Localizado'),
+                ],
+              ),
+              content: RichText(
+                text: TextSpan(
+                  style: const TextStyle(color: Colors.black87, fontSize: 16),
+                  children: [
+                    const TextSpan(text: 'O CPF '),
+                    TextSpan(text: cpf, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const TextSpan(text: ' já está cadastrado no sistema em nome de:\n\n'),
+                    TextSpan(text: resp['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blue)),
+                    const TextSpan(text: '\n\nDeseja preencher os dados deste responsável automaticamente nesta ficha?'),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Não', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      if (respIndex == 1) {
+                        _resp1NomeCtrl.text = resp['nome'] ?? '';
+                        _resp1TelCtrl.text = resp['telefone'] ?? '';
+                        _resp1EmailCtrl.text = resp['email'] ?? '';
+                      } else {
+                        _resp2NomeCtrl.text = resp['nome'] ?? '';
+                        _resp2TelCtrl.text = resp['telefone'] ?? '';
+                        _resp2EmailCtrl.text = resp['email'] ?? '';
+                      }
+                    });
+                  },
+                  icon: const Icon(Icons.download_rounded),
+                  label: const Text('Sim, preencher'),
+                ),
+              ],
+            ),
+          );
+          return; 
+        }
+      }
+    }
   }
 
   Widget _buildDropdownComBusca({
@@ -387,8 +490,9 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
         WebUiSettings(context: context),
       ],
     );
-    if (croppedFile != null && mounted)
+    if (croppedFile != null && mounted) {
       setState(() => _fotoSelecionada = XFile(croppedFile.path));
+    }
   }
 
   void _abrirOpcoesFoto() {
@@ -538,16 +642,14 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } else {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Não foi possível abrir o arquivo.')),
         );
+      }
     }
   }
 
-  // =========================================================================
-  // IMPORTAR RESPONSÁVEIS DE UM IRMÃO
-  // =========================================================================
   void _perguntarImportarResponsaveis(Map<String, dynamic> irmao) {
     showDialog(
       context: context,
@@ -590,7 +692,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
 
   void _preencherResponsaveisDoIrmao(Map<String, dynamic> irmao) {
     setState(() {
-      // Importa os responsáveis
       final resp = irmao['responsaveis'] as List? ?? [];
       if (resp.isNotEmpty) {
         _resp1NomeCtrl.text = resp[0]['nome'] ?? '';
@@ -605,7 +706,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
         _resp2EmailCtrl.text = resp[1]['email'] ?? '';
       }
 
-      // Importa o Endereço (já que moram juntos)
       if (irmao['endereco'] != null) {
         _ruaCtrl.text = irmao['endereco']['rua'] ?? '';
         _numeroCtrl.text = irmao['endereco']['numero'] ?? '';
@@ -623,9 +723,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
     );
   }
 
-  // =========================================================================
-  // MODAL DE SUCESSO
-  // =========================================================================
   void _mostrarModalSucesso(
     String nome,
     String matricula,
@@ -1013,8 +1110,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                           .toLowerCase();
                       if (extensao != 'png' &&
                           extensao != 'jpg' &&
-                          extensao != 'jpeg')
-                        extensao = 'png';
+                          extensao != 'jpeg') extensao = 'png';
                       urlFinalFoto = await ref
                           .read(alunoServiceProvider)
                           .fazerUploadFoto(
@@ -1176,14 +1272,47 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                           : DateTime.now().toIso8601String(),
                     };
 
-                    // SALVA O ALUNO NO BANCO
                     await ref
                         .read(alunoServiceProvider)
                         .salvarAluno(dadosAluno);
 
                     // ==========================================================
-                    // CRIAÇÃO AUTOMÁTICA DO LOGIN DO ALUNO COM TRAVA DE SEGURANÇA
+                    // ATUALIZAÇÃO AUTOMÁTICA (VÍNCULO BIDIRECIONAL DE IRMÃOS)
                     // ==========================================================
+                    if (_irmaosSelecionados.isNotEmpty) {
+                      final listaAlunos = ref.read(alunosStreamProvider).value ?? [];
+                      for (var irmao in _irmaosSelecionados) {
+                        final alunoIrmao = listaAlunos.firstWhere(
+                          (a) => a['matricula'] == irmao['matricula'],
+                          orElse: () => <String, dynamic>{},
+                        );
+
+                        if (alunoIrmao.isNotEmpty) {
+                          List irmaosRawIrmao = List.from(alunoIrmao['irmaosVinculadosRaw'] ?? []);
+                          List irmaosStrIrmao = List.from(alunoIrmao['irmaosVinculados'] ?? []);
+
+                          // Verifica se o aluno novo já está na ficha do irmão antigo
+                          bool jaVinculado = irmaosRawIrmao.any((i) => i['matricula'] == matriculaParaSalvar);
+
+                          if (!jaVinculado) {
+                            irmaosRawIrmao.add({
+                              'nome': _nomeAlunoCtrl.text.trim(),
+                              'matricula': matriculaParaSalvar,
+                            });
+                            irmaosStrIrmao.add('${_nomeAlunoCtrl.text.trim()} ($matriculaParaSalvar)'.toUpperCase());
+
+                            final dadosAlunoIrmao = Map<String, dynamic>.from(alunoIrmao);
+                            dadosAlunoIrmao['temIrmao'] = true;
+                            dadosAlunoIrmao['irmaosVinculadosRaw'] = irmaosRawIrmao;
+                            dadosAlunoIrmao['irmaosVinculados'] = irmaosStrIrmao;
+
+                            // Atualiza silenciosamente a ficha do irmão no banco!
+                            await ref.read(alunoServiceProvider).salvarAluno(dadosAlunoIrmao);
+                          }
+                        }
+                      }
+                    }
+
                     FirebaseApp? appSecundario;
                     try {
                       if (!isEdicao) {
@@ -1197,18 +1326,17 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                             options: Firebase.app().options,
                           );
 
-                          // O e-mail fake que permite login usando apenas a matrícula
                           String emailFicticioAluno =
                               '$matriculaParaSalvar@aluno.com';
 
                           try {
                             UserCredential userCred =
                                 await FirebaseAuth.instanceFor(
-                                  app: appSecundario,
-                                ).createUserWithEmailAndPassword(
-                                  email: emailFicticioAluno,
-                                  password: '123456',
-                                );
+                              app: appSecundario,
+                            ).createUserWithEmailAndPassword(
+                              email: emailFicticioAluno,
+                              password: '123456',
+                            );
 
                             final String uidAluno = userCred.user!.uid;
 
@@ -1245,7 +1373,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
 
                             await batch.commit();
                           } on FirebaseAuthException catch (authEx) {
-                            // SE O E-MAIL JÁ EXISTIR NO AUTH, IGNORA SILENCIOSAMENTE E CONTINUA
                             if (authEx.code == 'email-already-in-use') {
                               debugPrint(
                                 'O login para $emailFicticioAluno já estava criado.',
@@ -1267,7 +1394,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     ).pop(); // Fecha o Loading
                     Navigator.pop(context); // Fecha o Modal de Revisão
 
-                    // MOSTRA O NOVO MODAL DE SUCESSO
                     _mostrarModalSucesso(
                       _nomeAlunoCtrl.text,
                       matriculaParaSalvar,
@@ -1401,9 +1527,9 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                               InkWell(
                                 onTap:
                                     (_fotoSelecionada == null &&
-                                        _fotoUrlExistente == null)
-                                    ? _escolherFoto
-                                    : _abrirOpcoesFoto,
+                                            _fotoUrlExistente == null)
+                                        ? _escolherFoto
+                                        : _abrirOpcoesFoto,
                                 borderRadius: BorderRadius.circular(12),
                                 child: Container(
                                   width: 120,
@@ -1417,48 +1543,48 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                   ),
                                   child:
                                       (_fotoSelecionada == null &&
-                                          _fotoUrlExistente == null)
-                                      ? Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.add_a_photo,
-                                              color: Colors.grey.shade400,
-                                              size: 40,
-                                            ),
-                                            const SizedBox(height: 8),
-                                            const Text(
-                                              'Foto 3x4',
-                                              style: TextStyle(
-                                                color: Colors.grey,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                          ],
-                                        )
-                                      : ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            12,
-                                          ),
-                                          child: _fotoSelecionada != null
-                                              ? (kIsWeb
-                                                    ? Image.network(
-                                                        _fotoSelecionada!.path,
-                                                        fit: BoxFit.cover,
-                                                      )
-                                                    : Image.file(
-                                                        File(
-                                                          _fotoSelecionada!
-                                                              .path,
-                                                        ),
-                                                        fit: BoxFit.cover,
-                                                      ))
-                                              : Image.network(
-                                                  _fotoUrlExistente!,
-                                                  fit: BoxFit.cover,
+                                              _fotoUrlExistente == null)
+                                          ? Column(
+                                              mainAxisAlignment:
+                                                  MainAxisAlignment.center,
+                                              children: [
+                                                Icon(
+                                                  Icons.add_a_photo,
+                                                  color: Colors.grey.shade400,
+                                                  size: 40,
                                                 ),
-                                        ),
+                                                const SizedBox(height: 8),
+                                                const Text(
+                                                  'Foto 3x4',
+                                                  style: TextStyle(
+                                                    color: Colors.grey,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          : ClipRRect(
+                                              borderRadius: BorderRadius.circular(
+                                                12,
+                                              ),
+                                              child: _fotoSelecionada != null
+                                                  ? (kIsWeb
+                                                      ? Image.network(
+                                                          _fotoSelecionada!.path,
+                                                          fit: BoxFit.cover,
+                                                        )
+                                                      : Image.file(
+                                                          File(
+                                                            _fotoSelecionada!
+                                                                .path,
+                                                          ),
+                                                          fit: BoxFit.cover,
+                                                        ))
+                                                  : Image.network(
+                                                      _fotoUrlExistente!,
+                                                      fit: BoxFit.cover,
+                                                    ),
+                                            ),
                                 ),
                               ),
                               const SizedBox(width: 24),
@@ -1506,6 +1632,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                           flex: 2,
                                           child: TextFormField(
                                             controller: _dataNascimentoCtrl,
+                                            focusNode: _dataNascimentoFocus,
                                             textInputAction:
                                                 TextInputAction.next,
                                             inputFormatters: [
@@ -1517,9 +1644,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                               hintText: 'DD/MM/AAAA',
                                               border: OutlineInputBorder(),
                                             ),
-                                            validator: (v) => v!.isEmpty
-                                                ? 'Obrigatório'
-                                                : null,
+                                            validator: (v) => _validarData(v),
                                           ),
                                         ),
                                         const SizedBox(width: 16),
@@ -1573,8 +1698,8 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                             ),
                                             validator: (v) =>
                                                 (v != null &&
-                                                    v.isNotEmpty &&
-                                                    !v.contains('@'))
+                                                        v.isNotEmpty &&
+                                                        !v.contains('@'))
                                                 ? 'E-mail inválido'
                                                 : null,
                                           ),
@@ -1718,7 +1843,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                               ),
                                             );
 
-                                            // PERGUNTA SE QUER IMPORTAR OS RESPONSÁVEIS
                                             if (aluno['responsaveis'] != null &&
                                                 (aluno['responsaveis'] as List)
                                                     .isNotEmpty) {
@@ -1771,11 +1895,11 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                                         leading: CircleAvatar(
                                                           backgroundImage:
                                                               a['fotoUrl'] !=
-                                                                  null
-                                                              ? NetworkImage(
-                                                                  a['fotoUrl'],
-                                                                )
-                                                              : null,
+                                                                      null
+                                                                  ? NetworkImage(
+                                                                      a['fotoUrl'],
+                                                                    )
+                                                                  : null,
                                                         ),
                                                         title: Text(
                                                           a['nome'] ?? '',
@@ -1826,15 +1950,37 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                 ],
                               ),
                             ),
-                          const SizedBox(height: 24),
-                          const Text(
-                            'Endereço',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.location_on_rounded,
+                                color: corPrimaria,
+                              ),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Endereço',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 16),
+                          const Divider(height: 32),
                           Row(
                             children: [
                               Expanded(
@@ -1953,9 +2099,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                           ),
                           const SizedBox(height: 16),
 
-                          // ==========================================================
-                          // CAMPOS DO RESPONSÁVEL PRINCIPAL (AGORA SÃO OBRIGATÓRIOS)
-                          // ==========================================================
                           TextFormField(
                             controller: _resp1NomeCtrl,
                             textInputAction: TextInputAction.next,
@@ -1977,6 +2120,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                   controller: _resp1CpfCtrl,
                                   textInputAction: TextInputAction.next,
                                   inputFormatters: [_cpfMask, _upperCase],
+                                  onChanged: (v) => _verificarCpfResponsavel(v, 1),
                                   decoration: const InputDecoration(
                                     labelText: 'CPF *',
                                     hintText: 'xxx.xxx.xxx-xx',
@@ -2021,8 +2165,8 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                   ),
                                   validator: (v) =>
                                       (v != null &&
-                                          v.isNotEmpty &&
-                                          !v.contains('@'))
+                                              v.isNotEmpty &&
+                                              !v.contains('@'))
                                       ? 'E-mail inválido'
                                       : null,
                                 ),
@@ -2057,6 +2201,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                   controller: _resp2CpfCtrl,
                                   textInputAction: TextInputAction.next,
                                   inputFormatters: [_cpfMask, _upperCase],
+                                  onChanged: (v) => _verificarCpfResponsavel(v, 2),
                                   decoration: const InputDecoration(
                                     labelText: 'CPF',
                                     hintText: 'xxx.xxx.xxx-xx',

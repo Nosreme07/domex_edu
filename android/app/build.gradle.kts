@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.example.domex_edu"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
