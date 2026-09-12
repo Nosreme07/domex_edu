@@ -18,15 +18,12 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.domex_edu"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
-    }
+    applicationId "com.suaempresa.domex_edu"
+    minSdkVersion 24  // <-- MUDE PARA 24
+    targetSdkVersion flutter.targetSdkVersion
+    versionCode flutterVersionCode.toInteger()
+    versionName flutterVersionName
+}
 
     buildTypes {
         release {

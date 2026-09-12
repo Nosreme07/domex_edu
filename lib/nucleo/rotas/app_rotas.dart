@@ -41,8 +41,8 @@ import '../../modulos/super_admin/apresentacao/telas/super_admin_usuarios_tela.d
 // ============================================================================
 // IMPORTS: PAINEL DO PROFESSOR
 // ============================================================================
-import '../../modulos/professor/layout/professor_layout.dart';
-import '../../modulos/professor/apresentacao/telas/professor_dashboard_tela.dart';
+import '../../modulos/academico/layout/professor_layout.dart';
+import '../../modulos/academico/apresentacao/telas/professor_dashboard_tela.dart';
 
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
