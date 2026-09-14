@@ -17,13 +17,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    defaultConfig {
-    applicationId "com.suaempresa.domex_edu"
-    minSdkVersion 24  // <-- MUDE PARA 24
-    targetSdkVersion flutter.targetSdkVersion
-    versionCode flutterVersionCode.toInteger()
-    versionName flutterVersionName
-}
+defaultConfig {
+        applicationId = "com.example.domex_edu"
+        minSdk = 24
+        targetSdk = flutter.targetSdkVersion
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+    }
 
     buildTypes {
         release {

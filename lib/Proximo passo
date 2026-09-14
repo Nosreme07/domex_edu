@@ -5,7 +5,6 @@
 *ALUNOS*
 *RESPONSÁVEIS*
 *PROFESSORES*
-- tentar 
 *SECRETARIA*
 - colocar campo para anexar arquivos.
 
@@ -13,25 +12,20 @@
 - Em editar turma 
 *USUARIOS*
 - Verificar o status dos professores
-- overflowed para telas menores
+
+
 
 -----------------------------------------------------------
 ***VISÃO GERAL***
 - Colocar dentro do visão geral um aviso que vem do calendário
 evento semanal e o que tem no diário.
 
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-*** VISÃO DO PROVESSOR ***
 
-- Colocar as cores escolhida pela escola no sistema.
 
-**PAINEL INICIAL**
-
-**MINHAS TURMAS**
-
-**MEU PERFIL**
-
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+-----------------------------------------------------------
+*** GESTÃO DO ALUNO ***
+- 
+-----------------------------------------------------------
 
 **GESTÃO MASTER**
 
@@ -41,7 +35,10 @@ evento semanal e o que tem no diário.
 - Analisar caso de enviar em massa com push para os pais e alunos.
 - Permitir que professores acrescentem atividades no calendário escolar.
 - 
-
+-----------------------------------------------------------
+*** AMBIENTE DO PROFESSOR ***
+- verificar os avisos enviados para o aluno e para o seu responsável.
+- 
 
 -----------------------------------------------------------
 
