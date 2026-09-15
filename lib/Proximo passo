@@ -36,9 +36,15 @@ evento semanal e o que tem no diário.
 - Permitir que professores acrescentem atividades no calendário escolar.
 - 
 -----------------------------------------------------------
+** LOGIN **
+- Deixar o login sempre logado, só deslogar quando o usuário sair.
+
+-----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
 - verificar os avisos enviados para o aluno e para o seu responsável.
 - 
+**ABA AVISOS**
+- Verificar os avisos enviados recente para nomear o nome do aluno
 
 -----------------------------------------------------------
 
