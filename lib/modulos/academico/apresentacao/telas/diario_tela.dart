@@ -33,6 +33,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   bool _fazendoUploadAnexo = false; 
   bool _isDiaAvaliacao = false; 
   
+  // Média da Escola (Padrão 6.0)
+  double _mediaEscola = 6.0;
+  
   final Map<String, Map<String, String>> _frequenciaPorData = {};
   final Map<String, String> _statusAulaPorData = {};
 
@@ -44,6 +47,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   final TextEditingController _mensagemAvisoCtrl = TextEditingController();
   bool _enviandoAviso = false;
   late String _bimestreAtivo;
+  
+  int _limiteAvisosTurma = 5;
 
   String get _dataDisplay => "${_dataSelecionada.day.toString().padLeft(2, '0')}/${_dataSelecionada.month.toString().padLeft(2, '0')}/${_dataSelecionada.year}";
   String get _dataBanco => "${_dataSelecionada.year}-${_dataSelecionada.month.toString().padLeft(2, '0')}-${_dataSelecionada.day.toString().padLeft(2, '0')}";
@@ -52,9 +57,15 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   String _calcularBimestre(DateTime data) {
     int mes = data.month;
-    if (mes >= 2 && mes <= 4) return '1º Bimestre';
-    if (mes >= 5 && mes <= 6) return '2º Bimestre';
-    if (mes >= 7 && mes <= 9) return '3º Bimestre';
+    if (mes >= 2 && mes <= 4) {
+      return '1º Bimestre';
+    }
+    if (mes >= 5 && mes <= 6) {
+      return '2º Bimestre';
+    }
+    if (mes >= 7 && mes <= 9) {
+      return '3º Bimestre';
+    }
     return '4º Bimestre';
   }
 
@@ -76,7 +87,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   // ==========================================================================
   Future<void> _carregarDiarioDoBanco() async {
     final user = ref.read(authProvider).value;
-    if (user == null) return;
+    if (user == null) {
+      return;
+    }
     setState(() => _carregandoDiario = true);
     try {
       final doc = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('diarios').doc(_dataBanco).get();
@@ -106,7 +119,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   Future<void> _salvarAlteracaoNoBanco(Map<String, dynamic> dados) async {
     final user = ref.read(authProvider).value;
-    if (user == null) return;
+    if (user == null) {
+      return;
+    }
     await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('diarios').doc(_dataBanco).set(dados, SetOptions(merge: true));
   }
 
@@ -151,7 +166,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   void _encerrarAula() {
     setState(() => _statusAulaPorData[_dataBanco] = 'FINALIZADA');
     _salvarAlteracaoNoBanco({'status': 'FINALIZADA'});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aula do $_dataDisplay encerrada!'), backgroundColor: Colors.green));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aula encerrada!'), backgroundColor: Colors.green));
   }
 
   void _reabrirAula() {
@@ -166,7 +181,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   }
 
   void _marcarStatusAluno(String matricula, String status) {
-    if (_statusAulaHoje != 'EM_ANDAMENTO') return;
+    if (_statusAulaHoje != 'EM_ANDAMENTO') {
+      return;
+    }
     setState(() {
       if (!_frequenciaPorData.containsKey(_dataBanco)) {
         _frequenciaPorData[_dataBanco] = {};
@@ -225,14 +242,19 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     try {
       final picker = ImagePicker();
       final XFile? foto = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
-      if (foto == null) return; 
+      if (foto == null) {
+        return; 
+      }
 
       setModalState(() => _fazendoUploadAnexo = true);
       setState(() => _fazendoUploadAnexo = true);
 
       final user = ref.read(authProvider).value;
+      if (user == null) {
+        return;
+      }
       final nomeArquivo = 'anexo_aula_$_dataBanco-${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final refStorage = FirebaseStorage.instance.ref('tenants/${user!.id}/turmas/${widget.turmaId}/diarios/$nomeArquivo');
+      final refStorage = FirebaseStorage.instance.ref('tenants/${user.id}/turmas/${widget.turmaId}/diarios/$nomeArquivo');
 
       await refStorage.putFile(File(foto.path));
       final url = await refStorage.getDownloadURL();
@@ -240,11 +262,16 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
       setModalState(() { _anexoAulaUrl = url; _fazendoUploadAnexo = false; });
       setState(() { _anexoAulaUrl = url; _fazendoUploadAnexo = false; });
       await _salvarAlteracaoNoBanco({'anexoUrl': url});
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto anexada!'), backgroundColor: Colors.green));
+      
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto anexada!'), backgroundColor: Colors.green));
+      }
     } catch (e) {
       setModalState(() => _fazendoUploadAnexo = false);
       setState(() => _fazendoUploadAnexo = false);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+      }
     }
   }
 
@@ -255,10 +282,58 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   }
 
   // ==========================================================================
-  // ESTATÍSTICAS E POPUP ALUNO (RAIO-X)
+  // CONFIGURAÇÃO DA MÉDIA ESCOLAR
   // ==========================================================================
-  
-  // Exibe a lista COMPLETA de frequência do mês unificada
+  void _abrirConfigMediaEscola(Color corPrimaria) {
+    final ctrl = TextEditingController(text: _mediaEscola.toStringAsFixed(1));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.settings_rounded, color: corPrimaria),
+            const SizedBox(width: 8),
+            const Text('Média da Escola', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Defina a nota média para aprovação. O sistema fará os cálculos baseados neste valor.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ctrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true, fillColor: Colors.grey.shade50,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            onPressed: () {
+              setState(() {
+                _mediaEscola = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 6.0;
+              });
+              Navigator.pop(ctx);
+            },
+            child: const Text('Salvar'),
+          )
+        ],
+      )
+    );
+  }
+
+  // ==========================================================================
+  // ESTATÍSTICAS, SUBSTITUIÇÃO DE NOTAS E POPUP ALUNO (RAIO-X)
+  // ==========================================================================
   void _mostrarDetalhesFrequencia(String nomeAluno, List<Map<String, String>> frequenciaMes, Color corPrimaria) {
     showDialog(
       context: context,
@@ -322,6 +397,113 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
+  void _mostrarHistoricoNotas(String nomeAluno, List notas, Color corPrimaria) {
+    double totalPontos = 0.0;
+    double notasAlcancadas = 0.0;
+    
+    for (var n in notas) {
+      if (n['validaParaMedia'] == true) {
+        totalPontos += (n['maxima'] as num).toDouble();
+        notasAlcancadas += (n['nota'] as num).toDouble();
+      }
+    }
+    double aproveitamento = totalPontos > 0 ? (notasAlcancadas / totalPontos) * 10 : 0.0;
+    bool alunoAprovado = aproveitamento >= _mediaEscola;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Histórico de Notas', style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold)),
+            Text(nomeAluno, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+          ],
+        ),
+        content: notas.isEmpty
+            ? const Text('Nenhuma nota lançada para este aluno.')
+            : SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: alunoAprovado ? Colors.green.shade50 : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: alunoAprovado ? Colors.green.shade200 : Colors.red.shade200)
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Column(
+                            children: [
+                              Text('Média Alcançada', style: TextStyle(fontSize: 10, color: alunoAprovado ? Colors.green.shade800 : Colors.red.shade800)),
+                              Text(aproveitamento.toStringAsFixed(1), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: alunoAprovado ? Colors.green.shade800 : Colors.red.shade800)),
+                            ],
+                          ),
+                          Container(width: 1, height: 30, color: alunoAprovado ? Colors.green.shade200 : Colors.red.shade200),
+                          Column(
+                            children: [
+                              Text('Soma dos Pontos', style: TextStyle(fontSize: 10, color: alunoAprovado ? Colors.green.shade800 : Colors.red.shade800)),
+                              Text('${notasAlcancadas.toStringAsFixed(1)} / ${totalPontos.toStringAsFixed(1)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: alunoAprovado ? Colors.green.shade800 : Colors.red.shade800)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: notas.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final n = notas[index];
+                          final double valorNota = (n['nota'] as num).toDouble();
+                          final double valorMax = (n['maxima'] as num).toDouble();
+                          
+                          bool isValida = n['validaParaMedia'] == true;
+                          bool isRecuperacao = n['isRecuperacao'] == true;
+
+                          String subTexto = n['bimestre'];
+                          if (!isValida && !isRecuperacao) {
+                            subTexto += ' • (Substituída)';
+                          }
+                          if (!isValida && isRecuperacao) {
+                            subTexto += ' • (Descartada)';
+                          }
+                          if (isValida && isRecuperacao) {
+                            subTexto += ' • (Nota Substituta)';
+                          }
+
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: CircleAvatar(
+                              backgroundColor: isValida ? Colors.green.shade50 : Colors.grey.shade200, 
+                              child: Icon(isValida ? Icons.check_rounded : Icons.block_rounded, color: isValida ? Colors.green : Colors.grey)
+                            ),
+                            title: Text(n['nome'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, decoration: isValida ? TextDecoration.none : TextDecoration.lineThrough, color: isValida ? Colors.black : Colors.grey)),
+                            subtitle: Text(subTexto, style: TextStyle(color: isValida && isRecuperacao ? Colors.purple.shade700 : Colors.grey.shade600, fontSize: 12, fontWeight: isValida && isRecuperacao ? FontWeight.bold : FontWeight.normal)),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), 
+                              decoration: BoxDecoration(color: isValida ? Colors.green.shade600 : Colors.grey.shade400, borderRadius: BorderRadius.circular(8)), 
+                              child: Text('${valorNota.toStringAsFixed(1)} / ${valorMax.toStringAsFixed(1)}', style: TextStyle(color: isValida ? Colors.white : Colors.white70, fontWeight: FontWeight.bold, fontSize: 13, decoration: isValida ? TextDecoration.none : TextDecoration.lineThrough))
+                            ),
+                          );
+                        }
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar'))],
+      ),
+    );
+  }
+
   void _abrirDialogMensagemDireta(Map<String, dynamic> aluno, Color corPrimaria) {
     final ctrlTexto = TextEditingController();
     bool enviando = false;
@@ -354,7 +536,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
               onPressed: enviando ? null : () async {
-                if (ctrlTexto.text.trim().isEmpty) return;
+                if (ctrlTexto.text.trim().isEmpty) {
+                  return;
+                }
                 setDialogState(() => enviando = true);
                 try {
                   final user = ref.read(authProvider).value;
@@ -370,13 +554,21 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           'dataEnvio': FieldValue.serverTimestamp(),
                           'remetenteId': user.id,
                         });
-                    if (ctx.mounted) Navigator.pop(ctx);
-                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado com sucesso!'), backgroundColor: Colors.green));
+                    if (ctx.mounted) {
+                      Navigator.pop(ctx);
+                    }
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado com sucesso!'), backgroundColor: Colors.green));
+                    }
                   }
                 } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                  }
                 } finally {
-                  if (ctx.mounted) setDialogState(() => enviando = false);
+                  if (ctx.mounted) {
+                    setDialogState(() => enviando = false);
+                  }
                 }
               },
               child: enviando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Enviar'),
@@ -389,7 +581,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   void _abrirHistoricoCompletoAvisos(String alunoIdSeguro, String nomeAluno, Color corPrimaria) {
     final user = ref.read(authProvider).value;
-    if (user == null) return;
+    if (user == null) {
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -426,11 +620,30 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                         .where('alunoId', isEqualTo: alunoIdSeguro)
                         .snapshots(),
                 builder: (context, snapAvisos) {
-                  if (snapAvisos.connectionState == ConnectionState.waiting && !snapAvisos.hasData) return const Center(child: CircularProgressIndicator());
+                  if (snapAvisos.connectionState == ConnectionState.waiting && !snapAvisos.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
                   var docs = snapAvisos.data?.docs.toList() ?? [];
-                  if (docs.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum aviso no histórico.', style: TextStyle(color: Colors.grey.shade500))]));
+                  if (docs.isEmpty) {
+                    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum aviso no histórico.', style: TextStyle(color: Colors.grey.shade500))]));
+                  }
                   
-                  docs.sort((a, b) => ((b.data() as Map)['dataEnvio'] as Timestamp?)?.compareTo((a.data() as Map)['dataEnvio'] as Timestamp? ?? Timestamp.now()) ?? 0);
+                  docs.sort((a, b) {
+                    final dataA = a.data() as Map<String, dynamic>;
+                    final dataB = b.data() as Map<String, dynamic>;
+                    final timeA = dataA['dataEnvio'];
+                    final timeB = dataB['dataEnvio'];
+                    if (timeA == null && timeB == null) {
+                      return 0;
+                    }
+                    if (timeA == null) {
+                      return 1;
+                    }
+                    if (timeB == null) {
+                      return -1;
+                    }
+                    return (timeB as dynamic).compareTo(timeA as dynamic);
+                  });
 
                   return ListView.separated(
                     controller: scrollController,
@@ -438,6 +651,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     separatorBuilder: (context, index) => const SizedBox(height: 12), 
                     itemBuilder: (context, index) {
                       final a = docs[index].data() as Map<String, dynamic>;
+                      final dataEnvio = a['dataEnvio'];
+                      final textoData = dataEnvio != null ? DateFormat('dd/MM/yyyy HH:mm').format((dataEnvio as dynamic).toDate()) : '';
+                      
                       return Card(
                         elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)),
                         child: Padding(
@@ -453,7 +669,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                     Text('Mensagem Direta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: corPrimaria)),
                                   ],
                                 ), 
-                                Text(a['dataEnvio'] is Timestamp ? DateFormat('dd/MM/yyyy HH:mm').format((a['dataEnvio'] as Timestamp).toDate()) : '', style: const TextStyle(fontSize: 11, color: Colors.grey))
+                                Text(textoData, style: const TextStyle(fontSize: 11, color: Colors.grey))
                               ]),
                               const Divider(height: 16), 
                               Text(a['mensagem'] ?? '', style: const TextStyle(fontSize: 14, color: Colors.black87)),
@@ -474,7 +690,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   Future<Map<String, dynamic>> _buscarEstatisticasAluno(Map<String, dynamic> aluno) async {
     final user = ref.read(authProvider).value;
-    if (user == null) return {};
+    if (user == null) {
+      return {};
+    }
 
     final matricula = (aluno['matricula'] ?? '').toString();
     final alunoIdSeguro = (aluno['id'] ?? aluno['matricula'] ?? aluno['nome']).toString();
@@ -484,7 +702,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     String prefixoMes = "${_dataSelecionada.year}-${_dataSelecionada.month.toString().padLeft(2, '0')}";
 
     try {
-      // 1. DADOS DE FREQUÊNCIA UNIFICADOS
       List<Map<String, dynamic>> freqRaw = [];
       final diariosSnap = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('diarios').get();
       for (var doc in diariosSnap.docs) {
@@ -496,26 +713,81 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         }
       }
       
-      freqRaw.sort((a,b) => b['docId'].compareTo(a['docId'])); // Mais recentes primeiro
+      freqRaw.sort((a,b) => b['docId'].compareTo(a['docId'])); 
       
       frequenciaMes = freqRaw.map((e) {
           final p = e['docId'].split('-');
           return { 'data': "${p[2]}/${p[1]}/${p[0]}", 'status': e['status'] as String };
       }).toList();
 
-      // 2. DADOS DE NOTAS
       final avaliacoesSnap = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').get();
       final avaliacoes = avaliacoesSnap.docs;
-      avaliacoes.sort((a, b) => (b.data()['dataCriacao'] as Timestamp?)?.compareTo(a.data()['dataCriacao'] as Timestamp? ?? Timestamp.now()) ?? 0);
+      
+      avaliacoes.sort((a, b) {
+        final dataA = a.data();
+        final dataB = b.data();
+        final timeA = dataA['dataCriacao'];
+        final timeB = dataB['dataCriacao'];
+        if (timeA == null && timeB == null) {
+          return 0;
+        }
+        if (timeA == null) {
+          return 1;
+        }
+        if (timeB == null) {
+          return -1;
+        }
+        return (timeB as dynamic).compareTo(timeA as dynamic);
+      });
+
+      Map<String, List<Map<String, dynamic>>> agrupadoPorBimestre = {};
 
       for (var doc in avaliacoes) {
         final data = doc.data();
         final notas = Map<String, dynamic>.from(data['notas'] ?? {});
         if (notas.containsKey(matricula)) {
-          notasList.add({'nome': data['nome'] ?? 'Avaliação', 'bimestre': data['bimestre'] ?? '', 'nota': notas[matricula], 'maxima': data['pontuacaoMaxima'] ?? 10.0});
+          final item = {
+            'nome': data['nome'] ?? 'Avaliação', 
+            'bimestre': data['bimestre'] ?? '', 
+            'nota': notas[matricula], 
+            'maxima': data['pontuacaoMaxima'] ?? 10.0,
+            'isRecuperacao': data['isRecuperacao'] ?? false,
+            'validaParaMedia': true,
+          };
+          agrupadoPorBimestre.putIfAbsent(item['bimestre'], () => []).add(item);
         }
       }
-    } catch (e) { debugPrint('Erro stat: $e'); }
+
+      for (var bim in agrupadoPorBimestre.keys) {
+        var notasBimestre = agrupadoPorBimestre[bim]!;
+        var recuperacoes = notasBimestre.where((n) => n['isRecuperacao'] == true).toList();
+        var normais = notasBimestre.where((n) => n['isRecuperacao'] != true).toList();
+
+        for (var rec in recuperacoes) {
+          if (normais.isEmpty) {
+            continue;
+          }
+          
+          normais.sort((a, b) => ((a['nota'] / a['maxima']).compareTo(b['nota'] / b['maxima'])));
+          var piorNormal = normais.first;
+
+          double aproveitamentoRec = rec['nota'] / rec['maxima'];
+          double aproveitamentoPiorNormal = piorNormal['nota'] / piorNormal['maxima'];
+
+          if (aproveitamentoRec > aproveitamentoPiorNormal) {
+            piorNormal['validaParaMedia'] = false; 
+          } else {
+            rec['validaParaMedia'] = false; 
+          }
+        }
+        notasList.addAll(notasBimestre);
+      }
+
+      notasList.sort((a, b) => a['bimestre'].compareTo(b['bimestre']));
+
+    } catch (e) {
+      debugPrint('Erro stat: $e');
+    }
 
     return { 'frequenciaMes': frequenciaMes, 'notas': notasList, 'alunoIdSeguro': alunoIdSeguro };
   }
@@ -533,7 +805,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         builder: (sheetContext, scrollController) => FutureBuilder<Map<String, dynamic>>(
           future: _buscarEstatisticasAluno(aluno),
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
             final stats = snapshot.data ?? {};
             
             final List<Map<String, String>> frequenciaMes = stats['frequenciaMes'] ?? [];
@@ -554,7 +828,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               children: [
                 Center(child: Container(margin: const EdgeInsets.only(top: 12, bottom: 8), width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10)))),
                 
-                // CABEÇALHO DO ALUNO COM BOTÃO DE MENSAGEM
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   child: Row(
@@ -565,22 +838,20 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                         Text(nomeAluno, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18), maxLines: 2),
                         Text('Matrícula: $matricula', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
                       ])),
-                      if (aluno['id'] != null)
-                        Container(
-                          decoration: BoxDecoration(color: Colors.blue.shade50, shape: BoxShape.circle),
-                          child: IconButton(
-                            icon: Icon(Icons.chat_rounded, color: Colors.blue.shade700),
-                            tooltip: 'Enviar Mensagem',
-                            onPressed: () => _abrirDialogMensagemDireta(aluno, corPrimaria),
-                          ),
-                        )
+                      Container(
+                        decoration: BoxDecoration(color: Colors.blue.shade50, shape: BoxShape.circle),
+                        child: IconButton(
+                          icon: Icon(Icons.chat_rounded, color: Colors.blue.shade700),
+                          tooltip: 'Enviar Mensagem',
+                          onPressed: () => _abrirDialogMensagemDireta(aluno, corPrimaria),
+                        ),
+                      )
                     ],
                   ),
                 ),
                 
                 const Divider(),
                 
-                // BOTÃO UNIFICADO DE FREQUÊNCIA DO MÊS
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: InkWell(
@@ -614,27 +885,22 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                   ),
                 ),
                 
-                // HISTÓRICO DE NOTAS
-                Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8), color: Colors.grey.shade50, child: const Text('Histórico de Notas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54))),
-                if (notas.isEmpty) Padding(padding: const EdgeInsets.all(24), child: Center(child: Column(children: [Icon(Icons.assignment_outlined, size: 40, color: Colors.grey.shade300), const SizedBox(height: 8), Text('Nenhuma nota.', style: TextStyle(color: Colors.grey.shade500))]))),
-                if (notas.isNotEmpty) ListView.separated(
-                  shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), padding: const EdgeInsets.all(16), itemCount: notas.length, 
-                  separatorBuilder: (context, index) => const Divider(height: 1), 
-                  itemBuilder: (context, index) {
-                    final n = notas[index];
-                    final double valorNota = (n['nota'] as num).toDouble();
-                    final double valorMax = (n['maxima'] as num).toDouble();
-                    final bool notaBoa = valorMax > 0 && (valorNota / valorMax) >= 0.6;
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                      leading: CircleAvatar(backgroundColor: notaBoa ? Colors.green.shade50 : Colors.red.shade50, child: Icon(notaBoa ? Icons.check_rounded : Icons.close_rounded, color: notaBoa ? Colors.green : Colors.red)),
-                      title: Text(n['nome'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), subtitle: Text(n['bimestre'], style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                      trailing: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), decoration: BoxDecoration(color: notaBoa ? Colors.green.shade600 : Colors.red.shade600, borderRadius: BorderRadius.circular(8)), child: Text('${valorNota.toStringAsFixed(1)} / ${valorMax.toStringAsFixed(1)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
-                    );
-                  }
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      side: BorderSide(color: Colors.grey.shade300)
+                    ),
+                    onPressed: () => _mostrarHistoricoNotas(nomeAluno, notas, corPrimaria),
+                    icon: Icon(Icons.grading_rounded, color: corPrimaria),
+                    label: Text('Ver Histórico de Notas', style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold)),
+                  ),
                 ),
+
+                const SizedBox(height: 16),
                 
-                // AVISOS ENVIADOS DIRETAMENTE (REALTIME STREAM COM OPÇÃO 1)
                 Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8), color: Colors.grey.shade50, child: const Text('Últimos Avisos Enviados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54))),
                 if (user != null && alunoIdSeguro.isNotEmpty)
                   StreamBuilder<QuerySnapshot>(
@@ -642,12 +908,31 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                             .where('alunoId', isEqualTo: alunoIdSeguro)
                             .snapshots(),
                     builder: (context, snapAvisos) {
-                      if (snapAvisos.connectionState == ConnectionState.waiting && !snapAvisos.hasData) return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+                      if (snapAvisos.connectionState == ConnectionState.waiting && !snapAvisos.hasData) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator()));
+                      }
                       var docs = snapAvisos.data?.docs.toList() ?? [];
-                      if (docs.isEmpty) return Padding(padding: const EdgeInsets.all(24), child: Center(child: Column(children: [Icon(Icons.speaker_notes_off_outlined, size: 40, color: Colors.grey.shade300), const SizedBox(height: 8), Text('Nenhuma mensagem direta.', style: TextStyle(color: Colors.grey.shade500))])));
+                      if (docs.isEmpty) {
+                        return Padding(padding: const EdgeInsets.all(24), child: Center(child: Column(children: [Icon(Icons.speaker_notes_off_outlined, size: 40, color: Colors.grey.shade300), const SizedBox(height: 8), Text('Nenhuma mensagem direta.', style: TextStyle(color: Colors.grey.shade500))])));
+                      }
                       
-                      docs.sort((a, b) => ((b.data() as Map)['dataEnvio'] as Timestamp?)?.compareTo((a.data() as Map)['dataEnvio'] as Timestamp? ?? Timestamp.now()) ?? 0);
-                      var avisosRecentes = docs.take(3).toList(); // Limita a 3 no resumo
+                      docs.sort((a, b) {
+                        final dataA = a.data() as Map<String, dynamic>;
+                        final dataB = b.data() as Map<String, dynamic>;
+                        final timeA = dataA['dataEnvio'];
+                        final timeB = dataB['dataEnvio'];
+                        if (timeA == null && timeB == null) {
+                          return 0;
+                        }
+                        if (timeA == null) {
+                          return 1;
+                        }
+                        if (timeB == null) {
+                          return -1;
+                        }
+                        return (timeB as dynamic).compareTo(timeA as dynamic);
+                      });
+                      var avisosRecentes = docs.take(3).toList(); 
 
                       return Column(
                         children: [
@@ -656,6 +941,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                             separatorBuilder: (context, index) => const SizedBox(height: 8), 
                             itemBuilder: (context, index) {
                               final a = avisosRecentes[index].data() as Map<String, dynamic>;
+                              final dataEnvio = a['dataEnvio'];
+                              final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
                               return Card(
                                 elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade200)),
                                 child: Padding(
@@ -663,7 +950,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Mensagem Direta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: corPrimaria)), Text(a['dataEnvio'] is Timestamp ? DateFormat('dd/MM HH:mm').format((a['dataEnvio'] as Timestamp).toDate()) : '', style: const TextStyle(fontSize: 10, color: Colors.grey))]),
+                                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Mensagem Direta', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: corPrimaria)), Text(textoData, style: const TextStyle(fontSize: 10, color: Colors.grey))]),
                                       const SizedBox(height: 6), Text(a['mensagem'] ?? '', style: const TextStyle(fontSize: 13)),
                                     ],
                                   ),
@@ -671,7 +958,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                               );
                             }
                           ),
-                          // BOTÃO VER TODO O HISTÓRICO (OPÇÃO 1)
                           if (docs.length > 3)
                             TextButton.icon(
                               onPressed: () => _abrirHistoricoCompletoAvisos(alunoIdSeguro, nomeAluno, corPrimaria), 
@@ -695,22 +981,57 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   // ==========================================================================
   // MODAIS E LÓGICA DE AVALIAÇÕES GERAIS DA TURMA
   // ==========================================================================
-  void _abrirModalNovaAvaliacao(Color corPrimaria, List<Map<String, dynamic>> alunosTurma) {
-    final ctrlNome = TextEditingController();
-    final ctrlPontos = TextEditingController(text: '10.0');
+  
+  void _excluirAvaliacao(String id) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Excluir Avaliação'),
+          ],
+        ),
+        content: const Text('Tem certeza que deseja excluir esta avaliação e TODAS as notas lançadas nela?\n\nEssa ação não poderá ser desfeita.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.black54))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              final user = ref.read(authProvider).value;
+              if (user != null) {
+                await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(id).delete();
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                }
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação excluída com sucesso!'), backgroundColor: Colors.red));
+                }
+              }
+            },
+            child: const Text('Sim, Excluir'),
+          )
+        ]
+      )
+    );
+  }
+
+  void _abrirModalEditarAvaliacao(Map<String, dynamic> avaliacao, String avaliacaoId, Color corPrimaria) {
+    final ctrlNome = TextEditingController(text: avaliacao['nome']);
+    final ctrlPontos = TextEditingController(text: avaliacao['pontuacaoMaxima'].toString());
     bool salvando = false;
-    final bimestreAlvo = _abaAtiva == 1 ? _bimestreAtivo : _calcularBimestre(_dataSelecionada);
 
     showDialog(
       context: context, barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(children: [Icon(Icons.add_task_rounded, color: corPrimaria), const SizedBox(width: 8), const Text('Nova Avaliação', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
+          title: Row(children: [Icon(Icons.edit_rounded, color: corPrimaria), const SizedBox(width: 8), const Text('Editar Avaliação', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
           content: Column(
             mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Vinculada ao: $bimestreAlvo', style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.bold)), const SizedBox(height: 12),
               TextField(controller: ctrlNome, decoration: InputDecoration(labelText: 'Nome da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), const SizedBox(height: 16),
               TextField(controller: ctrlPontos, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Pontuação Máxima', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)),
             ],
@@ -720,15 +1041,148 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
               onPressed: salvando ? null : () async {
-                if (ctrlNome.text.trim().isEmpty) return;
+                if (ctrlNome.text.trim().isEmpty) {
+                  return;
+                }
+                setModalState(() => salvando = true);
+                final user = ref.read(authProvider).value;
+                if (user != null) {
+                  await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({
+                    'nome': ctrlNome.text.trim(),
+                    'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0,
+                  });
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                  }
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação atualizada!'), backgroundColor: Colors.green));
+                  }
+                }
+              },
+              child: salvando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Salvar'),
+            )
+          ],
+        )
+      ),
+    );
+  }
+
+  void _abrirModalNovaAvaliacao(Color corPrimaria, List<Map<String, dynamic>> alunosTurma) {
+    final ctrlNome = TextEditingController();
+    final ctrlPontos = TextEditingController(text: '10.0');
+    bool salvando = false;
+    
+    bool isSegundaChamada = false;
+    bool isRecuperacao = false;
+    List<String> alunosSelecionados = [];
+
+    final bimestreAlvo = _abaAtiva == 1 ? _bimestreAtivo : _calcularBimestre(_dataSelecionada);
+
+    showDialog(
+      context: context, barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(children: [Icon(Icons.add_task_rounded, color: corPrimaria), const SizedBox(width: 8), const Text('Nova Avaliação', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Vinculada ao: $bimestreAlvo', style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.bold)), const SizedBox(height: 12),
+                  TextField(controller: ctrlNome, decoration: InputDecoration(labelText: 'Nome da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), const SizedBox(height: 16),
+                  TextField(controller: ctrlPontos, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Pontuação Máxima', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)),
+                  
+                  const Divider(height: 32),
+                  
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('É uma prova de Recuperação?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    subtitle: const Text('Substitui automaticamente a menor nota do bimestre.', style: TextStyle(fontSize: 11)),
+                    value: isRecuperacao,
+                    activeColor: Colors.purple,
+                    onChanged: (val) {
+                      setModalState(() {
+                        isRecuperacao = val;
+                      });
+                    },
+                  ),
+                  
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('É uma prova de 2ª Chamada?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    subtitle: const Text('Apenas os alunos selecionados receberão nota.', style: TextStyle(fontSize: 11)),
+                    value: isSegundaChamada,
+                    activeColor: Colors.blue,
+                    onChanged: (val) {
+                      setModalState(() {
+                        isSegundaChamada = val;
+                      });
+                    },
+                  ),
+
+                  if (isSegundaChamada)
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: alunosTurma.map((a) {
+                          final mat = (a['matricula'] ?? '').toString();
+                          return CheckboxListTile(
+                            dense: true,
+                            title: Text(a['nome'] ?? ''),
+                            value: alunosSelecionados.contains(mat),
+                            onChanged: (bool? checked) {
+                              setModalState(() {
+                                if (checked == true) {
+                                  alunosSelecionados.add(mat);
+                                } else {
+                                  alunosSelecionados.remove(mat);
+                                }
+                              });
+                            }
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: salvando ? null : () => Navigator.pop(ctx), child: const Text('Cancelar')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+              onPressed: salvando ? null : () async {
+                if (ctrlNome.text.trim().isEmpty) {
+                  return;
+                }
                 setModalState(() => salvando = true);
                 final user = ref.read(authProvider).value;
                 if (user != null) {
                   List<String> ausentes = alunosTurma.where((a) => _obterStatusAluno((a['matricula'] ?? '').toString()) == 'A').map((a) => (a['matricula'] ?? '').toString()).toList();
-                  final novaAvaliacao = {'nome': ctrlNome.text.trim(), 'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0, 'bimestre': bimestreAlvo, 'dataAvaliacao': _dataBanco, 'dataCriacao': FieldValue.serverTimestamp(), 'matriculasAusentes': ausentes, 'notas': {}};
+                  
+                  final novaAvaliacao = {
+                    'nome': ctrlNome.text.trim(), 
+                    'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0, 
+                    'bimestre': bimestreAlvo, 
+                    'dataAvaliacao': _dataBanco, 
+                    'dataCriacao': FieldValue.serverTimestamp(), 
+                    'matriculasAusentes': ausentes, 
+                    'notas': {},
+                    'isSegundaChamada': isSegundaChamada,
+                    'alunosPermitidos': isSegundaChamada ? alunosSelecionados : [],
+                    'isRecuperacao': isRecuperacao,
+                  };
+
                   final docRef = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').add(novaAvaliacao);
                   if (ctx.mounted) {
                     Navigator.pop(ctx); 
+                  }
+                  if (context.mounted) {
                     setState(() { _abaAtiva = 1; _bimestreAtivo = bimestreAlvo; });
                     _abrirModalLancarNotas(novaAvaliacao, docRef.id, alunosTurma, corPrimaria);
                   }
@@ -742,86 +1196,144 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
-  void _abrirModalLancarNotas(Map<String, dynamic> avaliacao, String avaliacaoId, List<Map<String, dynamic>> alunosTurma, Color corPrimaria) {
+  void _abrirModalLancarNotas(Map<String, dynamic> avaliacao, String avaliacaoId, List<Map<String, dynamic>> alunosTurmaOriginal, Color corPrimaria) {
     final Map<String, TextEditingController> controladores = {};
     final notasAtuais = Map<String, dynamic>.from(avaliacao['notas'] ?? {});
     final pontuacaoMaxima = (avaliacao['pontuacaoMaxima'] ?? 10.0) as double;
     final List ausentes = avaliacao['matriculasAusentes'] ?? [];
+    
+    final bool isSegundaChamada = avaliacao['isSegundaChamada'] ?? false;
+    final List permitidos = avaliacao['alunosPermitidos'] ?? [];
 
-    for (var aluno in alunosTurma) {
+    List<Map<String, dynamic>> alunosParaAvaliar = alunosTurmaOriginal;
+    if (isSegundaChamada) {
+      alunosParaAvaliar = alunosTurmaOriginal.where((a) => permitidos.contains((a['matricula'] ?? '').toString())).toList();
+    }
+
+    for (var aluno in alunosParaAvaliar) {
       final matricula = (aluno['matricula'] ?? '').toString();
       controladores[matricula] = TextEditingController(text: notasAtuais[matricula] != null ? notasAtuais[matricula].toString() : '');
     }
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white, shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: DraggableScrollableSheet(
-          initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
-          builder: (_, scrollController) => Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.edit_note_rounded, color: corPrimaria)),
-                    const SizedBox(width: 16),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(avaliacao['nome'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text('Max: $pontuacaoMaxima pts', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))])),
-                    IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView.separated(
-                  controller: scrollController, padding: const EdgeInsets.all(16), itemCount: alunosTurma.length, 
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final aluno = alunosTurma[index];
-                    final matricula = (aluno['matricula'] ?? '').toString();
-                    final faltou = ausentes.contains(matricula); 
-                    return Card(
-                      elevation: 0, color: faltou ? Colors.red.shade50.withAlpha(100) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: faltou ? Colors.red.shade200 : Colors.grey.shade200)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(
-                          children: [
-                            CircleAvatar(radius: 18, backgroundColor: corPrimaria.withAlpha(30), backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null, child: aluno['fotoUrl'] == null ? Icon(Icons.person, color: corPrimaria, size: 20) : null), const SizedBox(width: 12),
-                            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(aluno['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), if (faltou) Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: const Text('Faltou neste dia', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))])),
-                            const SizedBox(width: 12),
-                            SizedBox(width: 80, child: TextField(controller: controladores[matricula], keyboardType: const TextInputType.numberWithOptions(decimal: true), textAlign: TextAlign.center, decoration: InputDecoration(hintText: '-', contentPadding: const EdgeInsets.symmetric(vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), filled: true, fillColor: Colors.white))),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 10, offset: const Offset(0, -5))]),
-                child: SafeArea(
-                  child: SizedBox(
-                    width: double.infinity, height: 50,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                      onPressed: () async {
-                        final user = ref.read(authProvider).value;
-                        if (user == null) return;
-                        final Map<String, double> notasFinais = {};
-                        controladores.forEach((mat, ctrl) { if (ctrl.text.trim().isNotEmpty) notasFinais[mat] = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0.0; });
-                        await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({'notas': notasFinais});
-                        if (ctx.mounted) Navigator.pop(ctx);
-                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notas salvas com sucesso!'), backgroundColor: Colors.green));
-                      },
-                      icon: const Icon(Icons.save_rounded), label: const Text('SALVAR NOTAS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          double soma = 0.0;
+          int qtdValidas = 0;
+          controladores.forEach((mat, ctrl) {
+            if (ctrl.text.trim().isNotEmpty) {
+              soma += double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0.0;
+              qtdValidas++;
+            }
+          });
+          double mediaDaTurma = qtdValidas > 0 ? soma / qtdValidas : 0.0;
+          double mediaEsperada = (pontuacaoMaxima / 10.0) * _mediaEscola;
+          bool turmaBem = mediaDaTurma >= mediaEsperada;
+
+          return Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+            child: DraggableScrollableSheet(
+              initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+              builder: (_, scrollController) => Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Row(
+                      children: [
+                        Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.edit_note_rounded, color: corPrimaria)),
+                        const SizedBox(width: 16),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(avaliacao['nome'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text('Max: $pontuacaoMaxima pts | Média Escolar: ${_mediaEscola.toStringAsFixed(1)}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
+                        IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+                      ],
                     ),
                   ),
-                ),
-              )
-            ],
-          ),
-        ),
+                  
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    color: turmaBem ? Colors.green.shade50 : Colors.red.shade50,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Média atual da Turma:', style: TextStyle(fontWeight: FontWeight.bold, color: turmaBem ? Colors.green.shade800 : Colors.red.shade800)),
+                        Text('${mediaDaTurma.toStringAsFixed(1)} / $pontuacaoMaxima', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: turmaBem ? Colors.green.shade800 : Colors.red.shade800)),
+                      ],
+                    ),
+                  ),
+
+                  const Divider(height: 1),
+                  Expanded(
+                    child: ListView.separated(
+                      controller: scrollController, padding: const EdgeInsets.all(16), itemCount: alunosParaAvaliar.length, 
+                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final aluno = alunosParaAvaliar[index];
+                        final matricula = (aluno['matricula'] ?? '').toString();
+                        final faltou = ausentes.contains(matricula); 
+                        return Card(
+                          elevation: 0, color: faltou ? Colors.red.shade50.withAlpha(100) : Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: faltou ? Colors.red.shade200 : Colors.grey.shade200)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Row(
+                              children: [
+                                CircleAvatar(radius: 18, backgroundColor: corPrimaria.withAlpha(30), backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null, child: aluno['fotoUrl'] == null ? Icon(Icons.person, color: corPrimaria, size: 20) : null), const SizedBox(width: 12),
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(aluno['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), if (faltou) Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: const Text('Faltou neste dia', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))])),
+                                const SizedBox(width: 12),
+                                SizedBox(
+                                  width: 80, 
+                                  child: TextField(
+                                    controller: controladores[matricula], 
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true), 
+                                    textAlign: TextAlign.center, 
+                                    decoration: InputDecoration(hintText: '-', contentPadding: const EdgeInsets.symmetric(vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), filled: true, fillColor: Colors.white),
+                                    onChanged: (val) {
+                                      setModalState(() {});
+                                    },
+                                  )
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 10, offset: const Offset(0, -5))]),
+                    child: SafeArea(
+                      child: SizedBox(
+                        width: double.infinity, height: 50,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                          onPressed: () async {
+                            final user = ref.read(authProvider).value;
+                            if (user == null) {
+                              return;
+                            }
+                            final Map<String, double> notasFinais = {};
+                            controladores.forEach((mat, ctrl) { if (ctrl.text.trim().isNotEmpty) notasFinais[mat] = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0.0; });
+                            
+                            final notasParaSalvar = Map<String, dynamic>.from(notasAtuais);
+                            notasFinais.forEach((k, v) { notasParaSalvar[k] = v; });
+
+                            await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({'notas': notasParaSalvar});
+                            if (ctx.mounted) {
+                              Navigator.pop(ctx);
+                            }
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notas salvas com sucesso!'), backgroundColor: Colors.green));
+                            }
+                          },
+                          icon: const Icon(Icons.save_rounded), label: const Text('SALVAR NOTAS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ),
+                      ),
+                    ),
+                  )
+                ],
+              ),
+            ),
+          );
+        }
       ),
     );
   }
@@ -852,7 +1364,13 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-              onPressed: () { setState(() => _conteudoAulaAtual = ctrl.text.trim()); _salvarAlteracaoNoBanco({'conteudo': _conteudoAulaAtual}); Navigator.pop(ctx); },
+              onPressed: () async { 
+                setState(() => _conteudoAulaAtual = ctrl.text.trim()); 
+                await _salvarAlteracaoNoBanco({'conteudo': _conteudoAulaAtual}); 
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                } 
+              },
               icon: const Icon(Icons.save_rounded, size: 18), label: const Text('Salvar Diário', style: TextStyle(fontWeight: FontWeight.bold)),
             )
           ],
@@ -862,22 +1380,44 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   }
 
   void _mostrarFotoAmpliada(String? fotoUrl) {
-    if (fotoUrl == null) return;
+    if (fotoUrl == null) {
+      return;
+    }
     showDialog(context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, child: Stack(alignment: Alignment.topRight, children: [ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(fotoUrl, fit: BoxFit.contain)), Padding(padding: const EdgeInsets.all(8.0), child: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white), onPressed: () => Navigator.pop(context), style: IconButton.styleFrom(backgroundColor: Colors.black54)))])));
   }
 
   Future<void> _enviarAvisoFirebase() async {
-    if (_tipoAviso != 'TURMA' && _alunoAvisoSelecionado == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um aluno.'), backgroundColor: Colors.red)); return; }
-    if (_mensagemAvisoCtrl.text.trim().isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A mensagem não pode estar vazia.'), backgroundColor: Colors.red)); return; }
+    if (_tipoAviso != 'TURMA' && _alunoAvisoSelecionado == null) { 
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um aluno.'), backgroundColor: Colors.red)); 
+      return; 
+    }
+    if (_mensagemAvisoCtrl.text.trim().isEmpty) { 
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A mensagem não pode estar vazia.'), backgroundColor: Colors.red)); 
+      return; 
+    }
     setState(() => _enviandoAviso = true);
     try {
       final user = ref.read(authProvider).value;
       if (user != null) {
         await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avisos').add({'tipoDestinatario': _tipoAviso, 'alunoId': _tipoAviso == 'TURMA' ? null : _alunoAvisoSelecionado, 'mensagem': _mensagemAvisoCtrl.text.trim(), 'dataEnvio': FieldValue.serverTimestamp(), 'remetenteId': user.id});
-        if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado!'), backgroundColor: Colors.green)); _mensagemAvisoCtrl.clear(); setState(() { _alunoAvisoSelecionado = null; _tipoAviso = 'TURMA'; }); }
+        if (context.mounted) { 
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado!'), backgroundColor: Colors.green)); 
+          _mensagemAvisoCtrl.clear(); 
+          setState(() { 
+            _alunoAvisoSelecionado = null; 
+            _tipoAviso = 'TURMA'; 
+          }); 
+        }
       }
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); } 
-    finally { if (mounted) setState(() => _enviandoAviso = false); }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); 
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _enviandoAviso = false);
+      }
+    }
   }
 
   // ==========================================================================
@@ -955,7 +1495,42 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             style: SegmentedButton.styleFrom(selectedBackgroundColor: corPrimaria.withAlpha(40), selectedForegroundColor: corPrimaria),
           ),
         ),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: SizedBox(width: double.infinity, child: OutlinedButton.icon(style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: BorderSide(color: corPrimaria, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: () => _abrirModalNovaAvaliacao(corPrimaria, alunosTurma), icon: Icon(Icons.add_rounded, color: corPrimaria), label: Text('Criar Nova Avaliação', style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold))))),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16), 
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: BorderSide(color: corPrimaria, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
+                  onPressed: () => _abrirModalNovaAvaliacao(corPrimaria, alunosTurma), 
+                  icon: Icon(Icons.add_rounded, color: corPrimaria), 
+                  label: Text('Criar Nova Avaliação', style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold))
+                )
+              ),
+              const SizedBox(width: 12),
+              InkWell(
+                onTap: () => _abrirConfigMediaEscola(corPrimaria),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300, width: 2),
+                    borderRadius: BorderRadius.circular(12)
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('Média', style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
+                      Text(_mediaEscola.toStringAsFixed(1), style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: corPrimaria)),
+                    ],
+                  ),
+                ),
+              )
+            ]
+          )
+        ),
+
         const SizedBox(height: 16),
         Expanded(
           child: user == null ? const Center(child: CircularProgressIndicator()) : StreamBuilder<QuerySnapshot>(
@@ -964,7 +1539,24 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return const Center(child: CircularProgressIndicator());
               var docs = snapshot.data?.docs.toList() ?? [];
               if (docs.isEmpty) return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.assignment_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhuma avaliação', style: TextStyle(fontSize: 16, color: Colors.grey.shade600))]));
-              docs.sort((a, b) => (b.data() as Map)['dataCriacao']?.compareTo((a.data() as Map)['dataCriacao']) ?? 0);
+              
+              docs.sort((a, b) {
+                final dataA = a.data() as Map<String, dynamic>;
+                final dataB = b.data() as Map<String, dynamic>;
+                final timeA = dataA['dataCriacao'];
+                final timeB = dataB['dataCriacao'];
+                if (timeA == null && timeB == null) {
+                  return 0;
+                }
+                if (timeA == null) {
+                  return 1;
+                }
+                if (timeB == null) {
+                  return -1;
+                }
+                return (timeB as dynamic).compareTo(timeA as dynamic);
+              });
+
               return ListView.separated(
                 padding: const EdgeInsets.all(16).copyWith(bottom: 100), itemCount: docs.length, 
                 separatorBuilder: (context, index) => const SizedBox(height: 12),
@@ -972,9 +1564,63 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                   final avaliacao = docs[index].data() as Map<String, dynamic>;
                   final id = docs[index].id;
                   final notasMap = Map<String, dynamic>.from(avaliacao['notas'] ?? {});
-                  return InkWell(
-                    onTap: () => _abrirModalLancarNotas(avaliacao, id, alunosTurma, corPrimaria), borderRadius: BorderRadius.circular(12),
-                    child: Card(elevation: 1, margin: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)), child: Padding(padding: const EdgeInsets.all(16), child: Row(children: [Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.edit_document, color: corPrimaria)), const SizedBox(width: 16), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(avaliacao['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), const SizedBox(height: 4), Text('Max: ${avaliacao['pontuacaoMaxima']} pts', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))])), Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: notasMap.length == alunosTurma.length ? Colors.green.shade50 : Colors.orange.shade50, borderRadius: BorderRadius.circular(8)), child: Text('${notasMap.length} / ${alunosTurma.length}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: notasMap.length == alunosTurma.length ? Colors.green.shade700 : Colors.orange.shade700))), const SizedBox(height: 4), const Text('Lançadas', style: TextStyle(fontSize: 10, color: Colors.grey))])]))),
+                  
+                  int totalEsperado = avaliacao['isSegundaChamada'] == true 
+                       ? (avaliacao['alunosPermitidos'] as List).length 
+                       : alunosTurma.length;
+
+                  return Card(
+                    elevation: 1, margin: EdgeInsets.zero, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)), 
+                    child: InkWell(
+                      onTap: () => _abrirModalLancarNotas(avaliacao, id, alunosTurma, corPrimaria), 
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16), 
+                        child: Row(
+                          children: [
+                            Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.edit_document, color: corPrimaria)), 
+                            const SizedBox(width: 16), 
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start, 
+                                children: [
+                                  Text(avaliacao['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
+                                  if (avaliacao['isSegundaChamada'] == true) 
+                                    Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(4)), child: Text('2ª Chamada', style: TextStyle(fontSize: 10, color: Colors.blue.shade800))),
+                                  if (avaliacao['isRecuperacao'] == true) 
+                                    Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(4)), child: Text('Recuperação', style: TextStyle(fontSize: 10, color: Colors.purple.shade800))),
+                                  const SizedBox(height: 4), 
+                                  Text('Max: ${avaliacao['pontuacaoMaxima']} pts', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))
+                                ]
+                              )
+                            ), 
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end, 
+                              children: [
+                                Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: notasMap.length == totalEsperado ? Colors.green.shade50 : Colors.orange.shade50, borderRadius: BorderRadius.circular(8)), child: Text('${notasMap.length} / $totalEsperado', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: notasMap.length == totalEsperado ? Colors.green.shade700 : Colors.orange.shade700))), 
+                                const SizedBox(height: 4), 
+                                const Text('Lançadas', style: TextStyle(fontSize: 10, color: Colors.grey))
+                              ]
+                            ),
+                            PopupMenuButton<String>(
+                              icon: const Icon(Icons.more_vert, color: Colors.grey),
+                              onSelected: (val) {
+                                if (val == 'editar') {
+                                  _abrirModalEditarAvaliacao(avaliacao, id, corPrimaria);
+                                }
+                                if (val == 'excluir') {
+                                  _excluirAvaliacao(id);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(value: 'editar', child: Row(children: [Icon(Icons.edit_rounded, size: 18), SizedBox(width: 8), Text('Editar')])),
+                                const PopupMenuItem(value: 'excluir', child: Row(children: [Icon(Icons.delete_rounded, size: 18, color: Colors.red), SizedBox(width: 8), Text('Excluir', style: TextStyle(color: Colors.red))])),
+                              ],
+                            )
+                          ]
+                        )
+                      )
+                    )
                   );
                 },
               );
@@ -1008,7 +1654,26 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                       final Map<String, String> alunosUnicos = {};
                       for (var a in alunos) { alunosUnicos[(a['id'] ?? a['matricula'] ?? a['nome']).toString()] = (a['nome'] ?? '').toString(); }
                       final valSeguro = alunosUnicos.containsKey(_alunoAvisoSelecionado) ? _alunoAvisoSelecionado : null;
-                      return DropdownButtonFormField<String>(decoration: InputDecoration(labelText: 'Selecione o Aluno', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))), value: valSeguro, items: alunosUnicos.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(), onChanged: (val) => setState(() => _alunoAvisoSelecionado = val));
+                      
+                      return InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Selecione o Aluno', 
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4)
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: valSeguro, 
+                            isExpanded: true,
+                            items: alunosUnicos.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(), 
+                            onChanged: (val) {
+                              setState(() {
+                                _alunoAvisoSelecionado = val;
+                              });
+                            }
+                          ),
+                        ),
+                      );
                     }),
                   ],
                   const SizedBox(height: 16), TextField(controller: _mensagemAvisoCtrl, maxLines: 4, decoration: InputDecoration(labelText: 'Mensagem do Aviso', alignLabelWithHint: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), const SizedBox(height: 24),
@@ -1017,21 +1682,115 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               ),
             ),
           ),
-          const SizedBox(height: 24), const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('Avisos Enviados Recentemente', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87))), const SizedBox(height: 12),
+          const SizedBox(height: 24), 
+          const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('Avisos Enviados Recentemente', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87))), 
+          const SizedBox(height: 12),
+          
           if (user != null) StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avisos').orderBy('dataEnvio', descending: true).limit(10).snapshots(),
+            stream: FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avisos').orderBy('dataEnvio', descending: true).limit(_limiteAvisosTurma).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
               final docs = snapshot.data?.docs ?? [];
               if (docs.isEmpty) return Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(12)), child: const Center(child: Text('Nenhum aviso enviado.', style: TextStyle(color: Colors.grey))));
-              return ListView.separated(
-                shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: docs.length, 
-                separatorBuilder: (context, index) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final data = docs[index].data() as Map<String, dynamic>;
-                  String dest = data['tipoDestinatario'] == 'TURMA' ? 'Toda a Turma' : (data['tipoDestinatario'] == 'ALUNO' ? 'Aluno: ' : 'Resp: ') + (alunos.firstWhere((a) => a['id'] == data['alunoId'], orElse: () => {'nome': ''})['nome'] ?? '');
-                  return Card(elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(data['tipoDestinatario'] == 'TURMA' ? Icons.groups : Icons.person, size: 16, color: corPrimaria), const SizedBox(width: 8), Expanded(child: Text(dest, style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria))), Text(data['dataEnvio'] != null ? DateFormat('dd/MM HH:mm').format((data['dataEnvio'] as Timestamp).toDate()) : '', style: TextStyle(color: Colors.grey.shade500, fontSize: 12))]), const Divider(height: 16), Text(data['mensagem'] ?? '', style: const TextStyle(fontSize: 14))])));
-                },
+              
+              docs.sort((a, b) {
+                final dataA = a.data() as Map<String, dynamic>;
+                final dataB = b.data() as Map<String, dynamic>;
+                final timeA = dataA['dataEnvio'];
+                final timeB = dataB['dataEnvio'];
+                if (timeA == null && timeB == null) {
+                  return 0;
+                }
+                if (timeA == null) {
+                  return 1;
+                }
+                if (timeB == null) {
+                  return -1;
+                }
+                return (timeB as dynamic).compareTo(timeA as dynamic);
+              });
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListView.separated(
+                    shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: docs.length, 
+                    separatorBuilder: (context, index) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final data = docs[index].data() as Map<String, dynamic>;
+                      
+                      final alvoId = data['alunoId'];
+                      String prefixoDestino = '';
+                      String nomeDestino = '';
+                      
+                      if (data['tipoDestinatario'] == 'TURMA') {
+                        prefixoDestino = 'Para: ';
+                        nomeDestino = 'Toda a Turma';
+                      } else {
+                        final alunoAlvo = alunos.firstWhere((a) {
+                          final idPossivel = (a['id'] ?? a['matricula'] ?? a['nome']).toString();
+                          return idPossivel == alvoId;
+                        }, orElse: () => {'nome': 'Aluno Desconhecido'});
+                        
+                        final nome = alunoAlvo['nome'] ?? 'Desconhecido';
+                        prefixoDestino = data['tipoDestinatario'] == 'ALUNO' ? 'Para Aluno: ' : 'Para Resp: ';
+                        nomeDestino = nome;
+                      }
+
+                      final dataEnvio = data['dataEnvio'];
+                      final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
+
+                      return Card(
+                        elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)), 
+                        child: Padding(
+                          padding: const EdgeInsets.all(16), 
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start, 
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(data['tipoDestinatario'] == 'TURMA' ? Icons.groups : Icons.person, size: 16, color: corPrimaria), 
+                                  const SizedBox(width: 8), 
+                                  Expanded(
+                                    child: Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: prefixoDestino,
+                                            style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria),
+                                          ),
+                                          TextSpan(
+                                            text: nomeDestino,
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ), 
+                                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 12))
+                                ]
+                              ), 
+                              const Divider(height: 16), 
+                              Text(data['mensagem'] ?? '', style: const TextStyle(fontSize: 14))
+                            ]
+                          )
+                        )
+                      );
+                    },
+                  ),
+                  if (docs.length >= _limiteAvisosTurma) ...[
+                    const SizedBox(height: 16),
+                    TextButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _limiteAvisosTurma += 10;
+                        });
+                      },
+                      icon: const Icon(Icons.expand_more_rounded),
+                      label: const Text('Carregar histórico de avisos', style: TextStyle(fontWeight: FontWeight.bold)),
+                    )
+                  ]
+                ],
               );
             },
           ),
@@ -1052,7 +1811,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     String tituloAppBar = 'Diário de Classe';
     if (estadoTurmas.hasValue) {
       final tMap = estadoTurmas.value!.where((t) => t['id'] == widget.turmaId).toList();
-      if (tMap.isNotEmpty) tituloAppBar = tMap.first['nome'] ?? 'Diário de Classe';
+      if (tMap.isNotEmpty) {
+        tituloAppBar = tMap.first['nome'] ?? 'Diário de Classe';
+      }
     }
 
     return Scaffold(
@@ -1063,7 +1824,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)), error: (e, s) => Center(child: Text('Erro: $e')),
         data: (turmas) {
           final turmaMap = turmas.where((t) => t['id'] == widget.turmaId).toList();
-          if (turmaMap.isEmpty) return const Center(child: Text('Turma não encontrada.'));
+          if (turmaMap.isEmpty) {
+            return const Center(child: Text('Turma não encontrada.'));
+          }
           final turma = turmaMap.first;
 
           return estadoAlunos.when(
@@ -1075,14 +1838,20 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               int presentes = 0, faltas = 0;
               for (var a in alunosDaTurma) {
                 final st = _obterStatusAluno((a['matricula'] ?? '').toString());
-                if (st == 'P') presentes++; else if (st == 'A' || st == 'J') faltas++;
+                if (st == 'P') {
+                  presentes++;
+                } else if (st == 'A' || st == 'J') {
+                  faltas++;
+                }
               }
               final total = alunosDaTurma.length;
               final percP = total == 0 ? 0 : (presentes / total) * 100;
               final percA = total == 0 ? 0 : (faltas / total) * 100;
 
               List<Map<String, dynamic>> alunosListagem = List.from(alunosDaTurma);
-              if (_termoPesquisa.isNotEmpty) alunosListagem = alunosListagem.where((a) => (a['nome'] ?? '').toString().toUpperCase().contains(_termoPesquisa.toUpperCase())).toList();
+              if (_termoPesquisa.isNotEmpty) {
+                alunosListagem = alunosListagem.where((a) => (a['nome'] ?? '').toString().toUpperCase().contains(_termoPesquisa.toUpperCase())).toList();
+              }
 
               return Column(
                 children: [

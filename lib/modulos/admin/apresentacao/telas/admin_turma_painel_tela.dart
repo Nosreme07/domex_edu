@@ -1004,11 +1004,11 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                                                 ElevatedButton(
                                                   style:
                                                       ElevatedButton.styleFrom(
-                                                        backgroundColor:
-                                                            Colors.red,
-                                                        foregroundColor:
-                                                            Colors.white,
-                                                      ),
+                                                    backgroundColor:
+                                                        Colors.red,
+                                                    foregroundColor:
+                                                        Colors.white,
+                                                  ),
                                                   onPressed: () async {
                                                     final alunoRemover =
                                                         Map<
@@ -1019,14 +1019,14 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                                                     if (isExtra) {
                                                       final extrasIds =
                                                           List<String>.from(
-                                                            alunoRemover['turmasExtrasIds'] ??
-                                                                [],
-                                                          );
+                                                        alunoRemover['turmasExtrasIds'] ??
+                                                            [],
+                                                      );
                                                       final extrasNomes =
                                                           List<String>.from(
-                                                            alunoRemover['turmasExtrasNomes'] ??
-                                                                [],
-                                                          );
+                                                        alunoRemover['turmasExtrasNomes'] ??
+                                                            [],
+                                                      );
                                                       extrasIds.remove(idTurma);
                                                       extrasNomes.remove(
                                                         turmaNomeOficial,
@@ -1124,8 +1124,7 @@ class _ModalGerenciadorCorpoDocenteState
   void _vincularProfessor() async {
     if (_disciplinaSelecionada == null ||
         _disciplinaSelecionada!.trim().isEmpty ||
-        _professorSelecionado == null)
-      return;
+        _professorSelecionado == null) return;
 
     final novoVinculo = {
       '_keyId': DateTime.now().microsecondsSinceEpoch.toString(),
@@ -1864,7 +1863,15 @@ class _ModalGerenciadorHorariosState
     widget.aoAtualizar(turmaCompleta);
   }
 
-  void _abrirModalEdicaoAula({Map<String, dynamic>? horarioEdicao}) {
+  // ==========================================================================
+  // ATUALIZAÇÃO NO MODAL DE EDIÇÃO PARA PREENCHER OS DADOS AUTOMATICAMENTE
+  // ==========================================================================
+  void _abrirModalEdicaoAula({
+    Map<String, dynamic>? horarioEdicao,
+    String? diaPreSelecionado,
+    String? horarioPreSelecionado,
+    VoidCallback? onSaved,
+  }) {
     final profsVinculados =
         widget.turma['professoresVinculados'] as List? ?? [];
 
@@ -1875,14 +1882,26 @@ class _ModalGerenciadorHorariosState
           a['disciplina'].toString().compareTo(b['disciplina'].toString()),
     );
 
-    String diaSelecionado = horarioEdicao?['dia'] ?? 'SEGUNDA';
+    String diaSelecionado = horarioEdicao?['dia'] ?? diaPreSelecionado ?? 'SEGUNDA';
     String disciplinaSelecionada =
         horarioEdicao?['disciplina'] ?? opcoesSelect.first['disciplina'];
 
-    final inicioCtrl = TextEditingController(
-      text: horarioEdicao?['inicio'] ?? '',
-    );
-    final fimCtrl = TextEditingController(text: horarioEdicao?['fim'] ?? '');
+    String inicialI = '';
+    String inicialF = '';
+    
+    if (horarioEdicao != null) {
+      inicialI = horarioEdicao['inicio'] ?? '';
+      inicialF = horarioEdicao['fim'] ?? '';
+    } else if (horarioPreSelecionado != null) {
+      final p = horarioPreSelecionado.split(' - ');
+      if (p.length == 2) {
+        inicialI = p[0];
+        inicialF = p[1];
+      }
+    }
+
+    final inicioCtrl = TextEditingController(text: inicialI);
+    final fimCtrl = TextEditingController(text: inicialF);
 
     final maskInicio = MaskTextInputFormatter(
       mask: '##:##',
@@ -1900,9 +1919,9 @@ class _ModalGerenciadorHorariosState
     showDialog(
       context: context,
       builder: (ctxAula) => AlertDialog(
-        title: const Text(
-          'Cadastrar Aula ou Intervalo',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          horarioEdicao == null ? 'Cadastrar Aula ou Intervalo' : 'Editar Aula ou Intervalo',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         content: SizedBox(
           width: 450,
@@ -2085,6 +2104,9 @@ class _ModalGerenciadorHorariosState
                 return;
               }
               Navigator.pop(ctxAula);
+              if (onSaved != null) {
+                onSaved();
+              }
             },
             child: const Text(
               'Salvar na Grade',
@@ -2105,147 +2127,268 @@ class _ModalGerenciadorHorariosState
   }
 
   // ==========================================================================
-  // FUNÇÃO DE VISUALIZAR GRADE SEMANAL (TABELA)
+  // FUNÇÃO DE VISUALIZAR GRADE SEMANAL INTERATIVA (TABELA)
   // ==========================================================================
   void _abrirVisualizacaoSemanal() {
-    Set<String> hUnicos = {};
-    for (var h in _horariosLocal) {
-      hUnicos.add('${h['inicio']} - ${h['fim']}');
-    }
-    List<String> linhasTempo = hUnicos.toList()..sort();
-
-    List<String> diasUteis = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA'];
-    if (_horariosLocal.any((h) => h['dia'] == 'SÁBADO')) {
-      diasUteis.add('SÁBADO');
-    }
-    if (_horariosLocal.any((h) => h['dia'] == 'DOMINGO')) {
-      diasUteis.add('DOMINGO');
-    }
-
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.grid_view_rounded, color: Colors.deepPurple),
-            const SizedBox(width: 8),
-            Text(
-              'Grade Semanal - ${widget.turma['nome']}',
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 1000,
-          child: SingleChildScrollView(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                headingRowColor: MaterialStateProperty.all(Colors.blue.shade50),
-                border: TableBorder.all(
-                  color: Colors.grey.shade300,
-                  width: 0.5,
-                ),
-                columns: [
-                  const DataColumn(
-                    label: Text(
-                      'HORÁRIO',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setGridState) {
+          
+          Set<String> hUnicos = {};
+          for (var h in _horariosLocal) {
+            hUnicos.add('${h['inicio']} - ${h['fim']}');
+          }
+          List<String> linhasTempo = hUnicos.toList()..sort();
+
+          List<String> diasUteis = [
+            'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'
+          ];
+
+          return Dialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            insetPadding: const EdgeInsets.all(16), 
+            child: Container(
+              width: MediaQuery.of(context).size.width * 0.95, 
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.grid_view_rounded, color: Colors.deepPurple),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Grade Semanal - ${widget.turma['nome']}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.deepPurple,
+                              fontSize: 18,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          ElevatedButton.icon(
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue.shade50,
+                              foregroundColor: Colors.blue.shade800,
+                              elevation: 0,
+                            ),
+                            onPressed: () {
+                              _abrirModalEdicaoAula(
+                                onSaved: () => setGridState(() {}),
+                              );
+                            }, 
+                            icon: const Icon(Icons.add, size: 18), 
+                            label: const Text('Nova Aula')
+                          ),
+                          const SizedBox(width: 16),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      )
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: Scrollbar(
+                      thumbVisibility: true, 
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.vertical,
+                          child: DataTable(
+                            dataRowMinHeight: 50,
+                            dataRowMaxHeight: 85, 
+                            headingRowColor: MaterialStateProperty.all(Colors.blue.shade50),
+                            border: TableBorder.all(
+                              color: Colors.grey.shade300,
+                              width: 0.5,
+                            ),
+                            columns: [
+                              const DataColumn(
+                                label: Text(
+                                  'HORÁRIO',
+                                  style: TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                              ...diasUteis.map(
+                                (d) => DataColumn(
+                                  label: Text(
+                                    d,
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
+                            ],
+                            rows: linhasTempo.map((tempo) {
+                              return DataRow(
+                                cells: [
+                                  DataCell(
+                                    Text(
+                                      tempo,
+                                      style: const TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  ...diasUteis.map((dia) {
+                                    
+                                    Map<String, dynamic>? aulaEncontrada;
+                                    try {
+                                      aulaEncontrada = _horariosLocal.firstWhere(
+                                        (h) => h['dia'] == dia && '${h['inicio']} - ${h['fim']}' == tempo,
+                                      );
+                                    } catch (_) {
+                                      aulaEncontrada = null;
+                                    }
+
+                                    if (aulaEncontrada != null) {
+                                      final isIntervalo = aulaEncontrada['disciplina'] == 'INTERVALO';
+                                      
+                                      return DataCell(
+                                        Ink(
+                                          width: 140, 
+                                          decoration: BoxDecoration(
+                                            color: isIntervalo
+                                                ? Colors.grey.shade200
+                                                : _getBgTileColor(aulaEncontrada['disciplina']),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(4),
+                                            onTap: () {
+                                              showDialog(
+                                                context: context,
+                                                builder: (ctxAcao) => AlertDialog(
+                                                  title: Text(aulaEncontrada!['disciplina']),
+                                                  content: const Text('O que deseja fazer com este horário?'),
+                                                  actions: [
+                                                    TextButton.icon(
+                                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                                      label: const Text('Excluir', style: TextStyle(color: Colors.red)),
+                                                      onPressed: () {
+                                                        Navigator.pop(ctxAcao);
+                                                        _removerHorario(aulaEncontrada!['id']);
+                                                        setGridState(() {});
+                                                      }
+                                                    ),
+                                                    TextButton.icon(
+                                                      icon: const Icon(Icons.edit, color: Colors.blue),
+                                                      label: const Text('Editar', style: TextStyle(color: Colors.blue)),
+                                                      onPressed: () {
+                                                        Navigator.pop(ctxAcao);
+                                                        _abrirModalEdicaoAula(
+                                                          horarioEdicao: aulaEncontrada,
+                                                          onSaved: () => setGridState(() {}),
+                                                        );
+                                                      }
+                                                    )
+                                                  ]
+                                                )
+                                              );
+                                            },
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    aulaEncontrada['disciplina'],
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 12,
+                                                      color: isIntervalo
+                                                          ? Colors.black54
+                                                          : _getTextColor(aulaEncontrada['disciplina']),
+                                                    ),
+                                                  ),
+                                                  if (!isIntervalo)
+                                                    Text(
+                                                      aulaEncontrada['professorNome'],
+                                                      maxLines: 2,
+                                                      overflow: TextOverflow.ellipsis, 
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        color: _getTextColor(
+                                                          aulaEncontrada['disciplina'],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    } else {
+                                      // Célula Vazia (Botão Adicionar)
+                                      return DataCell(
+                                        Ink(
+                                          width: 140, 
+                                          decoration: BoxDecoration(
+                                            color: Colors.blue.shade50.withOpacity(0.5),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: Colors.blue.shade100, style: BorderStyle.solid)
+                                          ),
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(4),
+                                            onTap: () {
+                                              _abrirModalEdicaoAula(
+                                                diaPreSelecionado: dia,
+                                                horarioPreSelecionado: tempo,
+                                                onSaved: () => setGridState(() {}),
+                                              );
+                                            },
+                                            child: const Center(
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.add, size: 14, color: Colors.blue),
+                                                  SizedBox(width: 4),
+                                                  Text('Adicionar', style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold))
+                                                ]
+                                              )
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  }),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  ...diasUteis.map(
-                    (d) => DataColumn(
-                      label: Text(
-                        d,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text(
+                        'Fechar Visão',
+                        style: TextStyle(color: Colors.grey),
                       ),
                     ),
                   ),
                 ],
-                rows: linhasTempo.map((tempo) {
-                  return DataRow(
-                    cells: [
-                      DataCell(
-                        Text(
-                          tempo,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      ...diasUteis.map((dia) {
-                        try {
-                          final aula = _horariosLocal.firstWhere(
-                            (h) =>
-                                h['dia'] == dia &&
-                                '${h['inicio']} - ${h['fim']}' == tempo,
-                          );
-                          final isIntervalo = aula['disciplina'] == 'INTERVALO';
-                          return DataCell(
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isIntervalo
-                                    ? Colors.grey.shade200
-                                    : _getBgTileColor(aula['disciplina']),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    aula['disciplina'],
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 12,
-                                      color: isIntervalo
-                                          ? Colors.black54
-                                          : _getTextColor(aula['disciplina']),
-                                    ),
-                                  ),
-                                  if (!isIntervalo)
-                                    Text(
-                                      aula['professorNome'],
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: _getTextColor(
-                                          aula['disciplina'],
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                        } catch (e) {
-                          return const DataCell(
-                            Text('---', style: TextStyle(color: Colors.grey)),
-                          );
-                        }
-                      }),
-                    ],
-                  );
-                }).toList(),
               ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text(
-              'Fechar Visão',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-        ],
+          );
+        }
       ),
     );
   }
@@ -2253,7 +2396,7 @@ class _ModalGerenciadorHorariosState
   // ==========================================================================
   // FUNÇÃO DE GERAR PDF DA GRADE SEMANAL
   // ==========================================================================
-  Future<void> _gerarEImprimirHorarioPdf() async {
+  Future<void> _gerarEImprimirHorarioPdf(Color corPrimaria) async {
     final doc = pw.Document();
 
     Set<String> hUnicos = {};
@@ -2262,63 +2405,101 @@ class _ModalGerenciadorHorariosState
     }
     List<String> linhasTempo = hUnicos.toList()..sort();
 
-    List<String> diasUteis = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA'];
-    if (_horariosLocal.any((h) => h['dia'] == 'SÁBADO')) {
-      diasUteis.add('SÁBADO');
-    }
-    if (_horariosLocal.any((h) => h['dia'] == 'DOMINGO')) {
-      diasUteis.add('DOMINGO');
-    }
+    // Filtra apenas os dias que possuem alguma aula cadastrada (para dar ainda mais espaço)
+    final diasDaSemanaCompletos = [
+      'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'
+    ];
+    List<String> diasAtivos = diasDaSemanaCompletos.where((dia) {
+      return _horariosLocal.any((h) => h['dia'] == dia);
+    }).toList();
+
+    final pdfCorPrimaria = PdfColor.fromInt(corPrimaria.value);
+    final turno = widget.turma['turno'] ?? '';
 
     doc.addPage(
       pw.Page(
-        pageFormat:
-            PdfPageFormat.a4.landscape, // Deitado para caber a semana toda
-        margin: const pw.EdgeInsets.all(30),
+        pageFormat: PdfPageFormat.a4.landscape, 
+        margin: const pw.EdgeInsets.all(20), // Diminui a margem para caber mais tabela
         build: (pw.Context context) {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text(
-                'QUADRO DE HORÁRIOS - ${widget.turma['nome']} (${widget.turma['anoLetivo']})',
+                'QUADRO DE HORÁRIOS - ${widget.turma['nome']} (${widget.turma['anoLetivo']})' + (turno.isNotEmpty ? ' - $turno' : ''),
                 style: pw.TextStyle(
-                  fontSize: 18,
+                  fontSize: 14,
                   fontWeight: pw.FontWeight.bold,
-                  color: PdfColors.blue800,
+                  color: pdfCorPrimaria,
                 ),
               ),
-              pw.SizedBox(height: 16),
+              pw.SizedBox(height: 12),
               pw.TableHelper.fromTextArray(
                 context: context,
-                headerDecoration: const pw.BoxDecoration(
-                  color: PdfColors.blue100,
+                headerDecoration: pw.BoxDecoration(
+                  color: pdfCorPrimaria,
                 ),
-                headerHeight: 30,
-                cellHeight: 40,
-                cellAlignments: {
-                  0: pw.Alignment.center,
-                  for (int i = 1; i <= diasUteis.length; i++)
-                    i: pw.Alignment.center,
+                headerStyle: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 8, // Cabeçalho menor para não ter quebra de linha
+                ),
+                cellPadding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 2), // Padding menor
+                cellAlignment: pw.Alignment.center,
+                columnWidths: {
+                  0: const pw.FlexColumnWidth(0.8), // Coluna de horário mais fina
+                  for (int i = 1; i <= diasAtivos.length; i++)
+                    i: const pw.FlexColumnWidth(2),
                 },
-                headers: ['HORÁRIO', ...diasUteis],
+                headers: ['HORÁRIO', ...diasAtivos],
                 data: linhasTempo.map((tempo) {
-                  List<String> row = [tempo];
-                  for (String dia in diasUteis) {
+                  // Quebra de linha no horário: 07:00 \n 07:50
+                  final partesTempo = tempo.split(' - ');
+                  final tempoFormatado = partesTempo.join('\n');
+
+                  List<dynamic> row = [
+                    pw.Text(
+                      tempoFormatado, 
+                      style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold), 
+                      textAlign: pw.TextAlign.center
+                    )
+                  ];
+                  
+                  for (String dia in diasAtivos) {
                     try {
                       final aula = _horariosLocal.firstWhere(
-                        (h) =>
-                            h['dia'] == dia &&
-                            '${h['inicio']} - ${h['fim']}' == tempo,
+                        (h) => h['dia'] == dia && '${h['inicio']} - ${h['fim']}' == tempo,
                       );
                       if (aula['disciplina'] == 'INTERVALO') {
-                        row.add('INTERVALO');
+                        row.add(
+                          pw.Text(
+                            'INTERVALO', 
+                            style: pw.TextStyle(fontSize: 7, color: PdfColors.grey600, fontWeight: pw.FontWeight.bold)
+                          )
+                        );
                       } else {
                         row.add(
-                          '${aula['disciplina']}\n${aula['professorNome']}',
+                          pw.Column(
+                            mainAxisSize: pw.MainAxisSize.min,
+                            mainAxisAlignment: pw.MainAxisAlignment.center,
+                            crossAxisAlignment: pw.CrossAxisAlignment.center,
+                            children: [
+                              pw.Text(
+                                aula['disciplina'], 
+                                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold), // Maior e Negrito
+                                textAlign: pw.TextAlign.center,
+                              ),
+                              pw.SizedBox(height: 2),
+                              pw.Text(
+                                aula['professorNome'], 
+                                style: const pw.TextStyle(fontSize: 6), // Menor, como pediu
+                                textAlign: pw.TextAlign.center,
+                              ),
+                            ]
+                          )
                         );
                       }
                     } catch (e) {
-                      row.add('---');
+                      row.add(pw.Text('---', style: const pw.TextStyle(color: PdfColors.grey)));
                     }
                   }
                   return row;
@@ -2348,9 +2529,9 @@ class _ModalGerenciadorHorariosState
 
   @override
   Widget build(BuildContext context) {
-    // Escuta a lista de professores para vincular a foto em tempo real no quadro
     final estadoProfessores = ref.watch(professoresStreamProvider);
     final listaProfessores = estadoProfessores.value ?? [];
+    final corPrimaria = Theme.of(context).primaryColor;
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -2381,189 +2562,223 @@ class _ModalGerenciadorHorariosState
       content: SizedBox(
         width: 650,
         height: 500,
-        child: _horariosLocal.isEmpty
-            ? const Center(
-                child: Text(
-                  'Nenhum horário cadastrado ainda.',
-                  style: TextStyle(color: Colors.grey),
+        child: ListView.builder(
+          itemCount: _diasDaSemana.length,
+          itemBuilder: (context, index) {
+            final dia = _diasDaSemana[index];
+            final aulasDoDia = _horariosLocal
+                .where((h) => h['dia'] == dia)
+                .toList();
+            
+            aulasDoDia.sort(
+              (a, b) => (a['inicio'] ?? '').compareTo(b['inicio'] ?? ''),
+            );
+
+            if (aulasDoDia.isEmpty) {
+              return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: Colors.grey.shade300),
                 ),
-              )
-            : ListView.builder(
-                itemCount: _diasDaSemana.length,
-                itemBuilder: (context, index) {
-                  final dia = _diasDaSemana[index];
-                  final aulasDoDia = _horariosLocal
-                      .where((h) => h['dia'] == dia)
-                      .toList();
-                  aulasDoDia.sort(
-                    (a, b) => (a['inicio'] ?? '').compareTo(b['inicio'] ?? ''),
-                  );
-
-                  if (aulasDoDia.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      side: BorderSide(color: Colors.grey.shade300),
+                elevation: 0,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(12),
+                        ),
+                      ),
+                      child: Text(
+                        dia,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.orange,
+                        ),
+                      ),
                     ),
-                    elevation: 0,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text(
+                        'Livre / Nenhuma aula cadastrada',
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+              );
+            }
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
+              elevation: 0,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      dia,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange,
+                      ),
+                    ),
+                  ),
+                  ...aulasDoDia.map((aula) {
+                    bool isIntervalo = aula['disciplina'] == 'INTERVALO';
+
+                    String? fotoProfessor;
+                    if (!isIntervalo) {
+                      final profEncontrado = listaProfessores.firstWhere(
+                        (p) =>
+                            (aula['professorId'] != null &&
+                                p['id'] == aula['professorId']) ||
+                            (p['nome'] ?? '')
+                                    .toString()
+                                    .trim()
+                                    .toUpperCase() ==
+                                (aula['professorNome'] ?? '')
+                                    .toString()
+                                    .trim()
+                                    .toUpperCase(),
+                        orElse: () => {},
+                      );
+                      if (profEncontrado.isNotEmpty) {
+                        fotoProfessor = profEncontrado['fotoUrl'];
+                      }
+                    }
+
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 2),
+                      decoration: BoxDecoration(
+                        color: _getBgTileColor(aula['disciplina']),
+                        border: Border(
+                          bottom: BorderSide(color: Colors.grey.shade200),
+                        ),
+                      ),
+                      child: ListTile(
+                        leading: Container(
+                          padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade100,
-                            borderRadius: const BorderRadius.vertical(
-                              top: Radius.circular(12),
-                            ),
+                            color: _getBgTagColor(aula['disciplina']),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            dia,
-                            style: const TextStyle(
+                            '${aula['inicio']} - ${aula['fim']}',
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Colors.orange,
+                              color: _getTextColor(aula['disciplina']),
+                              fontSize: 12,
                             ),
                           ),
                         ),
-                        ...aulasDoDia.map((aula) {
-                          bool isIntervalo = aula['disciplina'] == 'INTERVALO';
-
-                          // Busca a foto do professor vinculado a essa aula
-                          String? fotoProfessor;
-                          if (!isIntervalo) {
-                            final profEncontrado = listaProfessores.firstWhere(
-                              (p) =>
-                                  (aula['professorId'] != null &&
-                                      p['id'] == aula['professorId']) ||
-                                  (p['nome'] ?? '')
-                                          .toString()
-                                          .trim()
-                                          .toUpperCase() ==
-                                      (aula['professorNome'] ?? '')
-                                          .toString()
-                                          .trim()
-                                          .toUpperCase(),
-                              orElse: () => {},
-                            );
-                            if (profEncontrado.isNotEmpty) {
-                              fotoProfessor = profEncontrado['fotoUrl'];
-                            }
-                          }
-
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 2),
-                            decoration: BoxDecoration(
-                              color: _getBgTileColor(aula['disciplina']),
-                              border: Border(
-                                bottom: BorderSide(color: Colors.grey.shade200),
+                        title: Row(
+                          children: [
+                            Text(
+                              aula['disciplina'],
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: _getTextColor(aula['disciplina']),
                               ),
                             ),
-                            child: ListTile(
-                              leading: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: _getBgTagColor(aula['disciplina']),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  '${aula['inicio']} - ${aula['fim']}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: _getTextColor(aula['disciplina']),
-                                    fontSize: 12,
-                                  ),
+                            if (!isIntervalo) ...[
+                              const SizedBox(width: 8),
+                              InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: fotoProfessor != null
+                                    ? () => _mostrarFotoAmpliada(
+                                        context,
+                                        fotoProfessor!,
+                                      )
+                                    : null,
+                                child: CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: Colors.white,
+                                  backgroundImage: fotoProfessor != null
+                                      ? NetworkImage(fotoProfessor)
+                                      : null,
+                                  child: fotoProfessor == null
+                                      ? Icon(
+                                          Icons.person,
+                                          size: 14,
+                                          color: _getTextColor(
+                                            aula['disciplina'],
+                                          ),
+                                        )
+                                      : null,
                                 ),
                               ),
-                              title: Row(
-                                children: [
-                                  Text(
+                            ],
+                          ],
+                        ),
+                        subtitle: isIntervalo
+                            ? null
+                            : Text(
+                                'Prof. ${aula['professorNome']}',
+                                style: TextStyle(
+                                  color: _getTextColor(
                                     aula['disciplina'],
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: _getTextColor(aula['disciplina']),
-                                    ),
-                                  ),
-                                  // FOTO DO PROFESSOR AO LADO DA MATÉRIA
-                                  if (!isIntervalo) ...[
-                                    const SizedBox(width: 8),
-                                    InkWell(
-                                      borderRadius: BorderRadius.circular(14),
-                                      onTap: fotoProfessor != null
-                                          ? () => _mostrarFotoAmpliada(
-                                              context,
-                                              fotoProfessor!,
-                                            )
-                                          : null,
-                                      child: CircleAvatar(
-                                        radius: 14,
-                                        backgroundColor: Colors.white,
-                                        backgroundImage: fotoProfessor != null
-                                            ? NetworkImage(fotoProfessor)
-                                            : null,
-                                        child: fotoProfessor == null
-                                            ? Icon(
-                                                Icons.person,
-                                                size: 14,
-                                                color: _getTextColor(
-                                                  aula['disciplina'],
-                                                ),
-                                              )
-                                            : null,
-                                      ),
-                                    ),
-                                  ],
-                                ],
+                                  ).withOpacity(0.7),
+                                ),
                               ),
-                              subtitle: isIntervalo
-                                  ? null
-                                  : Text(
-                                      'Prof. ${aula['professorNome']}',
-                                      style: TextStyle(
-                                        color: _getTextColor(
-                                          aula['disciplina'],
-                                        ).withOpacity(0.7),
-                                      ),
-                                    ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.edit,
-                                      color: Colors.blue,
-                                      size: 20,
-                                    ),
-                                    onPressed: () => _abrirModalEdicaoAula(
-                                      horarioEdicao: aula,
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.delete,
-                                      color: Colors.red,
-                                      size: 20,
-                                    ),
-                                    onPressed: () =>
-                                        _removerHorario(aula['id']),
-                                  ),
-                                ],
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(
+                                Icons.edit,
+                                color: Colors.blue,
+                                size: 20,
+                              ),
+                              onPressed: () => _abrirModalEdicaoAula(
+                                horarioEdicao: aula,
                               ),
                             ),
-                          );
-                        }),
-                      ],
-                    ),
-                  );
-                },
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete,
+                                color: Colors.red,
+                                size: 20,
+                              ),
+                              onPressed: () =>
+                                  _removerHorario(aula['id']),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
               ),
+            );
+          },
+        ),
       ),
       actionsPadding: const EdgeInsets.all(24),
       actions: [
@@ -2577,7 +2792,7 @@ class _ModalGerenciadorHorariosState
             ),
           ),
           TextButton.icon(
-            onPressed: _gerarEImprimirHorarioPdf,
+            onPressed: () => _gerarEImprimirHorarioPdf(corPrimaria),
             icon: const Icon(Icons.print_rounded, color: Colors.blue),
             label: const Text(
               'Exportar PDF',

@@ -37,8 +37,6 @@ evento semanal e o que tem no diário.
 - 
 -----------------------------------------------------------
 ** LOGIN **
-- Deixar o login sempre logado, só deslogar quando o usuário sair.
-
 -----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
 - verificar os avisos enviados para o aluno e para o seu responsável.

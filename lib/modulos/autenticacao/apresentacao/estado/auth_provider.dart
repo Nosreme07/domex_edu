@@ -8,7 +8,7 @@ class UsuarioSessao {
   final String id;
   final String nome;
   final String email;
-  final String perfil; // 'super_admin', 'admin_escola', 'professor', 'secretaria', 'aluno'
+  final String perfil; 
   final String? nomeEscola;
   final Color corPrimaria;
 
@@ -24,12 +24,39 @@ class UsuarioSessao {
 
 // 2. Controlador de Autenticação
 class AuthController extends AsyncNotifier<UsuarioSessao?> {
+  
+  // ==========================================================
+  // AUTO-LOGIN: Roda automaticamente quando o App abre
+  // ==========================================================
   @override
   Future<UsuarioSessao?> build() async {
+    final usuarioFirebase = FirebaseAuth.instance.currentUser;
+
+    if (usuarioFirebase != null && usuarioFirebase.email != null) {
+      try {
+        // Verifica se é o Master
+        final List<String> emailsMaster = ['emerson.fernandesantos@gmail.com', 'suporte@jpsmicromaq.com.br'];
+        if (emailsMaster.contains(usuarioFirebase.email)) {
+          return UsuarioSessao(
+            id: 'MASTER-01',
+            nome: 'Emerson Fernandes',
+            email: usuarioFirebase.email!,
+            perfil: 'super_admin',
+            corPrimaria: Colors.deepPurple.shade900,
+          );
+        }
+
+        // Reconstrói a sessão buscando os dados no banco
+        return await _buscarDadosNoFirestore(usuarioFirebase.email!);
+      } catch (e) {
+        // Se der erro (ex: foi bloqueado ou excluído do banco), limpa o token do celular
+        await FirebaseAuth.instance.signOut();
+        return null;
+      }
+    }
     return null; 
   }
 
-  // Helper para não quebrar o login caso a corHex ou corPrimaria venha zuada do Firebase
   Color _safelyParseColor(Map<String, dynamic> dados) {
     Color fallback = const Color(0xFF2C3E50);
     String? corBruta = dados['corHex'] ?? dados['corPrimaria'];
@@ -45,20 +72,91 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
     }
   }
 
+  // ==========================================================
+  // FUNÇÃO REUTILIZÁVEL: Busca o perfil no banco
+  // ==========================================================
+  Future<UsuarioSessao> _buscarDadosNoFirestore(String email) async {
+    // A) Verifica se é o Dono da Escola (Admin / Tenant)
+    final snapshotEscola = await FirebaseFirestore.instance
+        .collection('tenants')
+        .where('email', isEqualTo: email)
+        .get();
+
+    if (snapshotEscola.docs.isNotEmpty) {
+      final dadosEscola = snapshotEscola.docs.first.data();
+      
+      if (dadosEscola['status'] == 'Bloqueado') {
+        throw Exception('O acesso desta escola está bloqueado. Contate o suporte da Domex.');
+      }
+
+      return UsuarioSessao(
+        id: dadosEscola['id'] ?? snapshotEscola.docs.first.id,
+        nome: 'Administração',
+        email: email,
+        perfil: 'admin_escola',
+        nomeEscola: dadosEscola['nomeEscola'] ?? dadosEscola['nome'],
+        corPrimaria: _safelyParseColor(dadosEscola), 
+      );
+    }
+
+    // B) Verifica se é um Usuário de Acesso (Professor, Secretaria, Aluno)
+    final snapshotUsuario = await FirebaseFirestore.instance
+        .collection('usuarios')
+        .where('email', isEqualTo: email)
+        .get();
+
+    if (snapshotUsuario.docs.isNotEmpty) {
+      final dadosUsuario = snapshotUsuario.docs.first.data();
+
+      if (dadosUsuario['status'] == 'Bloqueado') {
+        throw Exception('Seu acesso está bloqueado. Procure a administração.');
+      }
+
+      String perfilAtribuido = dadosUsuario['perfil'] ?? 'aluno';
+      if (dadosUsuario['role'] == 'SUPER_ADMIN') {
+        perfilAtribuido = 'super_admin';
+      }
+
+      final escolaId = dadosUsuario['escolaId'] ?? dadosUsuario['tenantId'];
+      Color corDaEscola = const Color(0xFF2C3E50);
+      String nomeEscola = 'SaaS Domex';
+
+      if (perfilAtribuido == 'super_admin') {
+        corDaEscola = Colors.deepPurple.shade900;
+      } else if (escolaId != null) {
+         final docEscola = await FirebaseFirestore.instance.collection('tenants').doc(escolaId).get();
+         if (docEscola.exists && docEscola.data() != null) {
+           final dadosE = docEscola.data()!;
+           nomeEscola = dadosE['nomeEscola'] ?? dadosE['nome'] ?? 'Escola';
+           corDaEscola = _safelyParseColor(dadosE);
+         } else {
+           throw Exception('Não foi possível localizar o cadastro da sua instituição de ensino.');
+         }
+      }
+
+      return UsuarioSessao(
+        id: escolaId ?? dadosUsuario['uid'] ?? snapshotUsuario.docs.first.id,
+        nome: dadosUsuario['nome'] ?? 'Usuário',
+        email: email,
+        perfil: perfilAtribuido, 
+        nomeEscola: nomeEscola,
+        corPrimaria: corDaEscola,
+      );
+    }
+
+    throw Exception('Sua conta foi autenticada, mas seu perfil não foi encontrado no sistema.');
+  }
+
+  // ==========================================================
+  // LOGIN MANUAL (Digitando e-mail e senha)
+  // ==========================================================
   Future<void> fazerLogin(String email, String senha) async {
     state = const AsyncLoading();
 
     state = await AsyncValue.guard(() async {
       
-      // ==========================================================
-      // 1. VERIFICAÇÃO DE ACESSO MASTER (BACKDOOR HARDCODED)
-      // Mantido para garantir que você não perca seu acesso antigo
-      // ==========================================================
-      final List<String> emailsMaster = [
-        'emerson.fernandesantos@gmail.com',
-        'suporte@jpsmicromaq.com.br', 
-      ];
-
+      // 1. Acesso Master (Backdoor)
+      final List<String> emailsMaster = ['emerson.fernandesantos@gmail.com', 'suporte@jpsmicromaq.com.br'];
       if (emailsMaster.contains(email) && senha == '123456') {
         return UsuarioSessao(
           id: 'MASTER-01',
@@ -69,9 +167,7 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         );
       } 
 
-      // ==========================================================
-      // 2. AUTENTICAÇÃO REAL NO FIREBASE AUTH (A PORTARIA)
-      // ==========================================================
+      // 2. Autentica no Firebase Auth
       try {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: email,
@@ -87,96 +183,22 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         }
       }
 
-      // ==========================================================
-      // 3. IDENTIFICAÇÃO DE PERFIL NO BANCO DE DADOS (Firestore)
-      // ==========================================================
-      
-      // A) Verifica se é o Dono da Escola (Admin / Tenant)
-      final snapshotEscola = await FirebaseFirestore.instance
-          .collection('tenants')
-          .where('email', isEqualTo: email)
-          .get();
-
-      if (snapshotEscola.docs.isNotEmpty) {
-        final dadosEscola = snapshotEscola.docs.first.data();
-        
-        if (dadosEscola['status'] == 'Bloqueado') {
-          await FirebaseAuth.instance.signOut();
-          throw Exception('O acesso desta escola está bloqueado. Contate o suporte da Domex.');
-        }
-
-        return UsuarioSessao(
-          id: dadosEscola['id'] ?? snapshotEscola.docs.first.id,
-          nome: 'Administração',
-          email: email,
-          perfil: 'admin_escola',
-          nomeEscola: dadosEscola['nomeEscola'] ?? dadosEscola['nome'],
-          corPrimaria: _safelyParseColor(dadosEscola), 
-        );
+      // 3. Busca no banco e monta a sessão usando a função reutilizável
+      try {
+        return await _buscarDadosNoFirestore(email);
+      } catch (e) {
+        await FirebaseAuth.instance.signOut();
+        rethrow;
       }
-
-      // B) Verifica se é um Usuário de Acesso (Professor, Secretaria, Aluno)
-      final snapshotUsuario = await FirebaseFirestore.instance
-          .collection('usuarios')
-          .where('email', isEqualTo: email)
-          .get();
-
-      if (snapshotUsuario.docs.isNotEmpty) {
-        final dadosUsuario = snapshotUsuario.docs.first.data();
-
-        if (dadosUsuario['status'] == 'Bloqueado') {
-          await FirebaseAuth.instance.signOut();
-          throw Exception('Seu acesso está bloqueado. Procure a administração.');
-        }
-
-        String perfilAtribuido = dadosUsuario['perfil'] ?? 'aluno';
-        if (dadosUsuario['role'] == 'SUPER_ADMIN') {
-          perfilAtribuido = 'super_admin';
-        }
-
-        // Configura as cores e nomes baseado na escola onde ele trabalha
-        final escolaId = dadosUsuario['escolaId'] ?? dadosUsuario['tenantId'];
-        Color corDaEscola = const Color(0xFF2C3E50);
-        String nomeEscola = 'SaaS Domex';
-
-        if (perfilAtribuido == 'super_admin') {
-          corDaEscola = Colors.deepPurple.shade900;
-        } else if (escolaId != null) {
-           final docEscola = await FirebaseFirestore.instance.collection('tenants').doc(escolaId).get();
-           if (docEscola.exists && docEscola.data() != null) {
-             final dadosE = docEscola.data()!;
-             nomeEscola = dadosE['nomeEscola'] ?? dadosE['nome'] ?? 'Escola';
-             corDaEscola = _safelyParseColor(dadosE);
-           } else {
-             await FirebaseAuth.instance.signOut();
-             throw Exception('Não foi possível localizar o cadastro da sua instituição de ensino.');
-           }
-        }
-
-        return UsuarioSessao(
-          // ==============================================================
-          // A MÁGICA ACONTECE AQUI:
-          // Agora forçamos o sistema a usar o 'escolaId' na sessão. 
-          // Todos os provedores de dados vão baixar os dados corretos!
-          // ==============================================================
-          id: escolaId ?? dadosUsuario['uid'] ?? snapshotUsuario.docs.first.id,
-          nome: dadosUsuario['nome'] ?? 'Usuário',
-          email: email,
-          perfil: perfilAtribuido, 
-          nomeEscola: nomeEscola,
-          corPrimaria: corDaEscola,
-        );
-      }
-
-      // C) Passou pela portaria do Auth, mas a ficha sumiu do banco de dados Firestore
-      await FirebaseAuth.instance.signOut();
-      throw Exception('Sua conta foi autenticada, mas seu perfil não foi encontrado no sistema.');
     });
   }
 
+  // ==========================================================
+  // LOGOUT
+  // ==========================================================
   Future<void> fazerLogout() async {
-    await FirebaseAuth.instance.signOut(); // Desloga do Firebase também
-    state = const AsyncData(null);
+    await FirebaseAuth.instance.signOut(); // Desloga do Firebase Auth e remove a sessão do celular
+    state = const AsyncData(null); // Avisa o app que não tem mais ninguém logado
   }
 }
 
