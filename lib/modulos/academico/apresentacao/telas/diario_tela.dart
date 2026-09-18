@@ -9,6 +9,40 @@ import 'package:intl/intl.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../../../admin/apresentacao/estado/turma_provider.dart';
 import '../../../admin/apresentacao/estado/aluno_provider.dart';
+import '../../../admin/apresentacao/estado/professor_provider.dart';
+
+// ============================================================================
+// FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA 
+// ============================================================================
+void _mostrarFotoAmpliadaGlobal(BuildContext context, String? url) {
+  if (url == null || url.isEmpty) return;
+  showDialog(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          InteractiveViewer(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(url, fit: BoxFit.contain),
+            ),
+          ),
+          Positioned(
+            top: 16,
+            right: 16,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 32),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 class DiarioTela extends ConsumerStatefulWidget {
   final String turmaId;
@@ -263,15 +297,13 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
       setState(() { _anexoAulaUrl = url; _fazendoUploadAnexo = false; });
       await _salvarAlteracaoNoBanco({'anexoUrl': url});
       
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto anexada!'), backgroundColor: Colors.green));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto anexada!'), backgroundColor: Colors.green));
     } catch (e) {
       setModalState(() => _fazendoUploadAnexo = false);
       setState(() => _fazendoUploadAnexo = false);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -542,7 +574,28 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 setDialogState(() => enviando = true);
                 try {
                   final user = ref.read(authProvider).value;
+                  final professores = ref.read(professoresStreamProvider).value ?? [];
+                  
                   if (user != null) {
+                    
+                    // INTELIGÊNCIA DE NOMES
+                    String remetenteNome = 'Usuário Desconhecido';
+                    String remetenteId = user.id;
+
+                    final p = professores.firstWhere((prof) {
+                      final pid = prof['id']?.toString().trim();
+                      final uid = prof['uid']?.toString().trim();
+                      final authUid = prof['authUid']?.toString().trim();
+                      return (pid == user.id && pid != null) || 
+                             (uid == user.id && uid != null) || 
+                             (authUid == user.id && authUid != null);
+                    }, orElse: () => {});
+
+                    if (p.isNotEmpty) {
+                      remetenteNome = 'Professor(a) - ${p['nome']}';
+                      if (p['id'] != null) remetenteId = p['id'].toString();
+                    }
+
                     await FirebaseFirestore.instance
                         .collection('tenants').doc(user.id)
                         .collection('turmas').doc(widget.turmaId)
@@ -552,19 +605,18 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           'alunoId': alunoIdSeguro,
                           'mensagem': ctrlTexto.text.trim(),
                           'dataEnvio': FieldValue.serverTimestamp(),
-                          'remetenteId': user.id,
+                          'remetenteId': remetenteId,
+                          'remetenteNome': remetenteNome,
                         });
-                    if (ctx.mounted) {
-                      Navigator.pop(ctx);
-                    }
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado com sucesso!'), backgroundColor: Colors.green));
-                    }
+                    
+                    if (!ctx.mounted) return;
+                    Navigator.pop(ctx);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado com sucesso!'), backgroundColor: Colors.green));
                   }
                 } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
-                  }
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
                 } finally {
                   if (ctx.mounted) {
                     setDialogState(() => enviando = false);
@@ -795,7 +847,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   void _abrirPopupResumoAluno(Map<String, dynamic> aluno, Color corPrimaria) {
     final matricula = (aluno['matricula'] ?? '').toString();
     final nomeAluno = aluno['nome'] ?? 'Sem nome';
-    final user = ref.read(authProvider).value;
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.white,
@@ -822,6 +873,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
             final List notas = stats['notas'] ?? [];
             final String alunoIdSeguro = stats['alunoIdSeguro'] ?? '';
+            final user = ref.read(authProvider).value;
 
             return ListView(
               controller: scrollController, padding: EdgeInsets.zero,
@@ -1003,12 +1055,10 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               final user = ref.read(authProvider).value;
               if (user != null) {
                 await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(id).delete();
-                if (ctx.mounted) {
-                  Navigator.pop(ctx);
-                }
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação excluída com sucesso!'), backgroundColor: Colors.red));
-                }
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação excluída com sucesso!'), backgroundColor: Colors.red));
               }
             },
             child: const Text('Sim, Excluir'),
@@ -1051,12 +1101,10 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     'nome': ctrlNome.text.trim(),
                     'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0,
                   });
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                  }
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação atualizada!'), backgroundColor: Colors.green));
-                  }
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx);
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação atualizada!'), backgroundColor: Colors.green));
                 }
               },
               child: salvando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Salvar'),
@@ -1101,7 +1149,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     title: const Text('É uma prova de Recuperação?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     subtitle: const Text('Substitui automaticamente a menor nota do bimestre.', style: TextStyle(fontSize: 11)),
                     value: isRecuperacao,
-                    activeColor: Colors.purple,
+                    activeThumbColor: Colors.purple,
                     onChanged: (val) {
                       setModalState(() {
                         isRecuperacao = val;
@@ -1114,7 +1162,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     title: const Text('É uma prova de 2ª Chamada?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     subtitle: const Text('Apenas os alunos selecionados receberão nota.', style: TextStyle(fontSize: 11)),
                     value: isSegundaChamada,
-                    activeColor: Colors.blue,
+                    activeThumbColor: Colors.blue,
                     onChanged: (val) {
                       setModalState(() {
                         isSegundaChamada = val;
@@ -1179,13 +1227,11 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                   };
 
                   final docRef = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').add(novaAvaliacao);
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx); 
-                  }
-                  if (context.mounted) {
-                    setState(() { _abaAtiva = 1; _bimestreAtivo = bimestreAlvo; });
-                    _abrirModalLancarNotas(novaAvaliacao, docRef.id, alunosTurma, corPrimaria);
-                  }
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx); 
+                  if (!mounted) return;
+                  setState(() { _abaAtiva = 1; _bimestreAtivo = bimestreAlvo; });
+                  _abrirModalLancarNotas(novaAvaliacao, docRef.id, alunosTurma, corPrimaria);
                 }
               },
               child: salvando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Criar e Lançar', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -1317,12 +1363,10 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                             notasFinais.forEach((k, v) { notasParaSalvar[k] = v; });
 
                             await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({'notas': notasParaSalvar});
-                            if (ctx.mounted) {
-                              Navigator.pop(ctx);
-                            }
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notas salvas com sucesso!'), backgroundColor: Colors.green));
-                            }
+                            if (!ctx.mounted) return;
+                            Navigator.pop(ctx);
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notas salvas com sucesso!'), backgroundColor: Colors.green));
                           },
                           icon: const Icon(Icons.save_rounded), label: const Text('SALVAR NOTAS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         ),
@@ -1367,9 +1411,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               onPressed: () async { 
                 setState(() => _conteudoAulaAtual = ctrl.text.trim()); 
                 await _salvarAlteracaoNoBanco({'conteudo': _conteudoAulaAtual}); 
-                if (ctx.mounted) {
-                  Navigator.pop(ctx);
-                } 
+                if (!ctx.mounted) return;
+                Navigator.pop(ctx);
               },
               icon: const Icon(Icons.save_rounded, size: 18), label: const Text('Salvar Diário', style: TextStyle(fontWeight: FontWeight.bold)),
             )
@@ -1379,13 +1422,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
-  void _mostrarFotoAmpliada(String? fotoUrl) {
-    if (fotoUrl == null) {
-      return;
-    }
-    showDialog(context: context, builder: (_) => Dialog(backgroundColor: Colors.transparent, child: Stack(alignment: Alignment.topRight, children: [ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(fotoUrl, fit: BoxFit.contain)), Padding(padding: const EdgeInsets.all(8.0), child: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.white), onPressed: () => Navigator.pop(context), style: IconButton.styleFrom(backgroundColor: Colors.black54)))])));
-  }
-
+  // INTELIGÊNCIA REFATORADA AQUI: ENVIAR AVISO DO PROFESSOR CORRETAMENTE
   Future<void> _enviarAvisoFirebase() async {
     if (_tipoAviso != 'TURMA' && _alunoAvisoSelecionado == null) { 
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um aluno.'), backgroundColor: Colors.red)); 
@@ -1395,11 +1432,46 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A mensagem não pode estar vazia.'), backgroundColor: Colors.red)); 
       return; 
     }
+    
     setState(() => _enviandoAviso = true);
     try {
       final user = ref.read(authProvider).value;
       if (user != null) {
-        await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avisos').add({'tipoDestinatario': _tipoAviso, 'alunoId': _tipoAviso == 'TURMA' ? null : _alunoAvisoSelecionado, 'mensagem': _mensagemAvisoCtrl.text.trim(), 'dataEnvio': FieldValue.serverTimestamp(), 'remetenteId': user.id});
+        
+        // NOVO: Puxando o nome e o ID VERDADEIRO do professor que está logado
+        String remetenteNome = 'Usuário Desconhecido';
+        String remetenteId = user.id;
+
+        final listaProfs = ref.read(professoresStreamProvider).value ?? [];
+        final profData = listaProfs.firstWhere((p) {
+          final pid = p['id']?.toString().trim();
+          final uid = p['uid']?.toString().trim();
+          final authUid = p['authUid']?.toString().trim();
+          // O Cérebro verifica quem está logado comparando todas as chaves possíveis
+          return (pid == user.id && pid != null) || 
+                 (uid == user.id && uid != null) || 
+                 (authUid == user.id && authUid != null);
+        }, orElse: () => {});
+
+        if (profData.isNotEmpty) {
+          remetenteNome = 'Professor(a) - ${profData['nome']}';
+          // Garante que enviamos o ID de Professor (Ex: PROF-05) e não da conta base!
+          remetenteId = (profData['id'] ?? user.id).toString(); 
+        }
+
+        await FirebaseFirestore.instance
+            .collection('tenants').doc(user.id)
+            .collection('turmas').doc(widget.turmaId)
+            .collection('avisos')
+            .add({
+              'tipoDestinatario': _tipoAviso, 
+              'alunoId': _tipoAviso == 'TURMA' ? null : _alunoAvisoSelecionado, 
+              'mensagem': _mensagemAvisoCtrl.text.trim(), 
+              'dataEnvio': FieldValue.serverTimestamp(), 
+              'remetenteId': remetenteId, // Agora salva o ID certo do prof
+              'remetenteNome': remetenteNome, // E já deixa o nome pronto!
+            });
+            
         if (context.mounted) { 
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado!'), backgroundColor: Colors.green)); 
           _mensagemAvisoCtrl.clear(); 
@@ -1455,7 +1527,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(onTap: () => _mostrarFotoAmpliada(aluno['fotoUrl']), child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Container(width: 54, height: 72, color: corPrimaria.withAlpha(30), child: aluno['fotoUrl'] != null ? Image.network(aluno['fotoUrl'], fit: BoxFit.cover) : Icon(Icons.person, color: corPrimaria, size: 28)))),
+                GestureDetector(onTap: () => _mostrarFotoAmpliadaGlobal(context, aluno['fotoUrl']), child: ClipRRect(borderRadius: BorderRadius.circular(6), child: Container(width: 54, height: 72, color: corPrimaria.withAlpha(30), child: aluno['fotoUrl'] != null ? Image.network(aluno['fotoUrl'], fit: BoxFit.cover) : Icon(Icons.person, color: corPrimaria, size: 28)))),
                 const SizedBox(width: 16),
                 Expanded(child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1893,7 +1965,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           children: [
                             InkWell(
                               onTap: _statusAulaHoje == 'FINALIZADA' ? null : _alternarDiaAvaliacao, borderRadius: BorderRadius.circular(12),
-                              child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: Row(children: [Icon(Icons.assignment_late_rounded, color: _isDiaAvaliacao ? Colors.orange.shade700 : Colors.grey.shade400, size: 20), const SizedBox(width: 12), Expanded(child: Text('Marcar hoje como Dia de Avaliação', style: TextStyle(fontWeight: FontWeight.bold, color: _isDiaAvaliacao ? Colors.orange.shade900 : Colors.grey.shade700, fontSize: 13))), Switch(value: _isDiaAvaliacao, onChanged: _statusAulaHoje == 'FINALIZADA' ? null : (val) => _alternarDiaAvaliacao(), activeTrackColor: Colors.orange.shade300, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap)])),
+                              child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: Row(children: [Icon(Icons.assignment_late_rounded, color: _isDiaAvaliacao ? Colors.orange.shade700 : Colors.grey.shade400, size: 20), const SizedBox(width: 12), Expanded(child: Text('Marcar hoje como Dia de Avaliação', style: TextStyle(fontWeight: FontWeight.bold, color: _isDiaAvaliacao ? Colors.orange.shade900 : Colors.grey.shade700, fontSize: 13))), Switch(value: _isDiaAvaliacao, onChanged: _statusAulaHoje == 'FINALIZADA' ? null : (val) => _alternarDiaAvaliacao(), activeThumbColor: Colors.orange.shade300, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap)])),
                             ),
                             if (_isDiaAvaliacao && _statusAulaHoje != 'FINALIZADA') Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: SizedBox(width: double.infinity, height: 40, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0), onPressed: () => _abrirModalNovaAvaliacao(corPrimaria, alunosDaTurma), icon: const Icon(Icons.add_task_rounded, size: 16), label: const Text('Criar Prova/Atividade Agora', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))))),
                           ],

@@ -16,10 +16,8 @@ import '../estado/professor_provider.dart';
 import '../estado/secretaria_provider.dart';
 import '../estado/turma_provider.dart';
 
-import 'admin_usuarios_form_tela.dart';
-
 // ============================================================================
-// FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA (Compartilhada entre todas as abas)
+// FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA
 // ============================================================================
 void _mostrarFotoAmpliada(BuildContext context, String url) {
   showDialog(
@@ -63,6 +61,9 @@ class Debouncer {
   }
 }
 
+// ============================================================================
+// TELA PRINCIPAL DE CADASTROS (TAB BAR)
+// ============================================================================
 class AdminCadastrosTela extends ConsumerStatefulWidget {
   final int abaInicial;
   const AdminCadastrosTela({super.key, this.abaInicial = 0});
@@ -97,20 +98,11 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             tabAlignment: TabAlignment.start,
             tabs: const [
               Tab(icon: Icon(Icons.school_rounded), text: 'Alunos'),
-              Tab(
-                icon: Icon(Icons.family_restroom_rounded),
-                text: 'Responsáveis',
-              ),
-              Tab(
-                icon: Icon(Icons.assignment_ind_rounded),
-                text: 'Professores',
-              ),
+              Tab(icon: Icon(Icons.family_restroom_rounded), text: 'Responsáveis'),
+              Tab(icon: Icon(Icons.assignment_ind_rounded), text: 'Professores'),
               Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretaria'),
               Tab(icon: Icon(Icons.meeting_room_rounded), text: 'Turmas'),
-              Tab(
-                icon: Icon(Icons.admin_panel_settings_rounded),
-                text: 'Usuários',
-              ),
+              Tab(icon: Icon(Icons.admin_panel_settings_rounded), text: 'Usuários'),
             ],
           ),
         ),
@@ -121,7 +113,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             _GestaoProfessoresAba(),
             _GestaoSecretariaAba(),
             _GestaoTurmasAba(),
-            AdminUsuariosFormTela(),
+            Center(child: Text('Aba de Usuários em Construção', style: TextStyle(color: Colors.grey))),
           ],
         ),
       ),
@@ -130,7 +122,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
 }
 
 // ============================================================================
-// 1. COMPONENTE DA ABA DE ALUNOS
+// 1. ABA DE ALUNOS
 // ============================================================================
 class _GestaoAlunosAba extends ConsumerStatefulWidget {
   const _GestaoAlunosAba();
@@ -138,8 +130,7 @@ class _GestaoAlunosAba extends ConsumerStatefulWidget {
   ConsumerState<_GestaoAlunosAba> createState() => _GestaoAlunosAbaState();
 }
 
-class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
-    with AutomaticKeepAliveClientMixin {
+class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -159,10 +150,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
               SizedBox(width: 8),
               Text(
                 'Atenção: Excluir Matrícula',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -172,40 +160,29 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Cancelar',
-                style: TextStyle(color: Colors.grey),
-              ),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
               onPressed: () async {
                 try {
-                  await ref
-                      .read(alunoServiceProvider)
-                      .excluirAluno(aluno['matricula']);
-                  if (!context.mounted) return;
+                  await ref.read(alunoServiceProvider).excluirAluno(aluno['matricula']);
+                  if (!context.mounted) {
+                    return;
+                  }
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text(
-                        'Matrícula excluída permanentemente.',
-                        style: TextStyle(color: Colors.white),
-                      ),
+                      content: Text('Matrícula excluída permanentemente.', style: TextStyle(color: Colors.white)),
                       backgroundColor: Colors.red,
                     ),
                   );
                 } catch (e) {
-                  if (context.mounted)
+                  if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro ao excluir: $e'),
-                        backgroundColor: Colors.red,
-                      ),
+                      SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red),
                     );
+                  }
                 }
               },
               child: const Text('Sim, Excluir Aluno'),
@@ -221,20 +198,12 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(
             children: [
               Icon(Icons.folder_shared_rounded, color: Colors.deepPurple),
               SizedBox(width: 8),
-              Text(
-                'Documentos Anexados',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepPurple,
-                ),
-              ),
+              Text('Documentos Anexados', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
             ],
           ),
           content: SizedBox(
@@ -254,33 +223,21 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                   ),
                   title: Text(
                     anexo['nome'] ?? 'Documento',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                   ),
                   trailing: IconButton(
-                    icon: const Icon(
-                      Icons.open_in_new_rounded,
-                      color: Colors.blue,
-                    ),
+                    icon: const Icon(Icons.open_in_new_rounded, color: Colors.blue),
                     tooltip: 'Visualizar / Baixar',
                     onPressed: () async {
                       final url = anexo['url'];
                       if (url != null && await canLaunchUrl(Uri.parse(url))) {
-                        await launchUrl(
-                          Uri.parse(url),
-                          mode: LaunchMode.externalApplication,
-                        );
+                        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
                       } else {
-                        if (ctx.mounted)
+                        if (ctx.mounted) {
                           ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Arquivo ainda não sincronizado ou inválido.',
-                              ),
-                            ),
+                            const SnackBar(content: Text('Arquivo ainda não sincronizado ou inválido.')),
                           );
+                        }
                       }
                     },
                   ),
@@ -299,21 +256,13 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
     );
   }
 
-  // ==========================================================================
-  // PDF REVISADO: Cabeçalho Profissional e Ficha Completa
-  // ==========================================================================
   Future<void> _gerarEImprimirPdf(Map<String, dynamic> aluno) async {
     final doc = pw.Document();
-
-    // 1. Carrega os dados da Escola do Firebase
     final usuario = ref.read(authProvider).value;
     Map<String, dynamic> dadosEscola = {};
     if (usuario != null) {
       try {
-        final docEscola = await FirebaseFirestore.instance
-            .collection('tenants')
-            .doc(usuario.id)
-            .get();
+        final docEscola = await FirebaseFirestore.instance.collection('tenants').doc(usuario.id).get();
         if (docEscola.exists && docEscola.data() != null) {
           dadosEscola = docEscola.data()!;
         }
@@ -322,13 +271,9 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
       }
     }
 
-    final nomeEscola =
-        dadosEscola['nomeEscola'] ??
-        dadosEscola['nome'] ??
-        'ESCOLA NÃO CONFIGURADA';
+    final nomeEscola = dadosEscola['nomeEscola'] ?? dadosEscola['nome'] ?? 'ESCOLA NÃO CONFIGURADA';
     final slogan = dadosEscola['slogan'] ?? '';
     final cnpj = dadosEscola['cnpj'] ?? '';
-
     final endEscola = dadosEscola['endereco'] ?? {};
     final logradouroEscola = endEscola['rua'] ?? '';
     final numeroEscola = endEscola['numero'] ?? '';
@@ -338,14 +283,10 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
 
     String enderecoCompletoEscola = '';
     if (logradouroEscola.isNotEmpty) {
-      enderecoCompletoEscola =
-          '$logradouroEscola, Nº $numeroEscola - $bairroEscola, $cidadeEscola/$ufEscola';
+      enderecoCompletoEscola = '$logradouroEscola, Nº $numeroEscola - $bairroEscola, $cidadeEscola/$ufEscola';
     }
 
-    final logoEscolaUrl =
-        dadosEscola['logoUrl'] ?? dadosEscola['fotoUrl'] ?? dadosEscola['logo'];
-
-    // 2. Carrega as Imagens (Aluno e Escola)
+    final logoEscolaUrl = dadosEscola['logoUrl'] ?? dadosEscola['fotoUrl'] ?? dadosEscola['logo'];
     pw.ImageProvider? fotoAluno;
     if (aluno['fotoUrl'] != null) {
       try {
@@ -378,20 +319,8 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
         child: pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(
-              '$label: ',
-              style: pw.TextStyle(
-                fontWeight: pw.FontWeight.bold,
-                fontSize: 9,
-                color: PdfColors.grey800,
-              ),
-            ),
-            pw.Expanded(
-              child: pw.Text(
-                valor.isEmpty ? 'Não informado' : valor,
-                style: const pw.TextStyle(fontSize: 9),
-              ),
-            ),
+            pw.Text('$label: ', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.grey800)),
+            pw.Expanded(child: pw.Text(valor.isEmpty ? 'Não informado' : valor, style: const pw.TextStyle(fontSize: 9))),
           ],
         ),
       );
@@ -408,24 +337,12 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
           crossAxisAlignment: pw.CrossAxisAlignment.stretch,
           children: [
             pw.Container(
-              padding: const pw.EdgeInsets.symmetric(
-                horizontal: 8,
-                vertical: 4,
-              ),
+              padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: const pw.BoxDecoration(
                 color: PdfColors.grey200,
-                borderRadius: pw.BorderRadius.vertical(
-                  top: pw.Radius.circular(4),
-                ),
+                borderRadius: pw.BorderRadius.vertical(top: pw.Radius.circular(4)),
               ),
-              child: pw.Text(
-                titulo,
-                style: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 10,
-                  color: PdfColors.blue800,
-                ),
-              ),
+              child: pw.Text(titulo, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10, color: PdfColors.blue800)),
             ),
             pw.Padding(padding: const pw.EdgeInsets.all(8), child: conteudo),
           ],
@@ -434,21 +351,16 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
     }
 
     final agora = DateTime.now();
-    final dataHora =
-        "${agora.day.toString().padLeft(2, '0')}/${agora.month.toString().padLeft(2, '0')}/${agora.year} às ${agora.hour.toString().padLeft(2, '0')}:${agora.minute.toString().padLeft(2, '0')}";
+    final dataHora = "${agora.day.toString().padLeft(2, '0')}/${agora.month.toString().padLeft(2, '0')}/${agora.year} às ${agora.hour.toString().padLeft(2, '0')}:${agora.minute.toString().padLeft(2, '0')}";
     final responsaveis = aluno['responsaveis'] as List? ?? [];
     final autorizados = aluno['pessoasAutorizadas'] as List? ?? [];
     final emergencia = aluno['emergencia'] as List? ?? [];
     final end = aluno['endereco'] ?? {};
     final med = aluno['fichaMedica'] ?? {};
     final orgao = aluno['orgaoExpedidor']?.toString().trim() ?? '';
-    final rgFormatado =
-        '${aluno['rg'] ?? ''} ${orgao.isNotEmpty ? '($orgao)' : ''}'.trim();
-    final natFormatada =
-        '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}'
-            .trim();
-    final endLogradouro = '${end['rua'] ?? ''}, Nº ${end['numero'] ?? ''}'
-        .trim();
+    final rgFormatado = '${aluno['rg'] ?? ''} ${orgao.isNotEmpty ? '($orgao)' : ''}'.trim();
+    final natFormatada = '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}'.trim();
+    final endLogradouro = '${end['rua'] ?? ''}, Nº ${end['numero'] ?? ''}'.trim();
     final endCidade = '${end['cidade'] ?? ''} - ${end['estado'] ?? ''}'.trim();
 
     String textoIrmaosPdf = 'NÃO';
@@ -472,101 +384,42 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // CABEÇALHO DO PDF (Dinâmico)
               pw.Row(
                 crossAxisAlignment: pw.CrossAxisAlignment.center,
                 children: [
                   if (logoEscolaImg != null)
-                    pw.Image(
-                      logoEscolaImg,
-                      width: 60,
-                      height: 60,
-                      fit: pw.BoxFit.contain,
-                    )
+                    pw.Image(logoEscolaImg, width: 60, height: 60, fit: pw.BoxFit.contain)
                   else
                     pw.Container(
-                      width: 60,
-                      height: 60,
-                      decoration: const pw.BoxDecoration(
-                        color: PdfColors.blue100,
-                        shape: pw.BoxShape.circle,
-                      ),
-                      child: pw.Center(
-                        child: pw.Text(
-                          'LOGO',
-                          style: pw.TextStyle(color: PdfColors.blue800),
-                        ),
-                      ),
+                      width: 60, height: 60,
+                      decoration: const pw.BoxDecoration(color: PdfColors.blue100, shape: pw.BoxShape.circle),
+                      child: pw.Center(child: pw.Text('LOGO', style: pw.TextStyle(color: PdfColors.blue800))),
                     ),
-
                   pw.SizedBox(width: 16),
                   pw.Expanded(
                     child: pw.Column(
                       crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
-                        pw.Text(
-                          nomeEscola.toUpperCase(),
-                          style: pw.TextStyle(
-                            fontSize: 18,
-                            fontWeight: pw.FontWeight.bold,
-                            color: PdfColors.orange700,
-                          ),
-                        ),
-                        if (slogan.isNotEmpty)
-                          pw.Text(
-                            slogan,
-                            style: const pw.TextStyle(
-                              fontSize: 10,
-                              color: PdfColors.grey700,
-                            ),
-                          ),
+                        pw.Text(nomeEscola.toUpperCase(), style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold, color: PdfColors.orange700)),
+                        if (slogan.isNotEmpty) pw.Text(slogan, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
                         pw.SizedBox(height: 4),
-                        if (cnpj.isNotEmpty)
-                          pw.Text(
-                            'CNPJ: $cnpj',
-                            style: const pw.TextStyle(
-                              fontSize: 9,
-                              color: PdfColors.grey700,
-                            ),
-                          ),
-                        if (enderecoCompletoEscola.isNotEmpty)
-                          pw.Text(
-                            'Endereço: $enderecoCompletoEscola',
-                            style: const pw.TextStyle(
-                              fontSize: 9,
-                              color: PdfColors.grey700,
-                            ),
-                          ),
+                        if (cnpj.isNotEmpty) pw.Text('CNPJ: $cnpj', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+                        if (enderecoCompletoEscola.isNotEmpty) pw.Text('Endereço: $enderecoCompletoEscola', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
                       ],
                     ),
                   ),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
-                      pw.Text(
-                        'FICHA CADASTRAL',
-                        style: pw.TextStyle(
-                          fontSize: 14,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.blue800,
-                        ),
-                      ),
-                      pw.Text(
-                        'ALUNO',
-                        style: pw.TextStyle(
-                          fontSize: 14,
-                          color: PdfColors.blue800,
-                        ),
-                      ),
+                      pw.Text('FICHA CADASTRAL', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: PdfColors.blue800)),
+                      pw.Text('ALUNO', style: pw.TextStyle(fontSize: 14, color: PdfColors.blue800)),
                     ],
                   ),
                 ],
               ),
-
               pw.SizedBox(height: 12),
               pw.Divider(thickness: 2, color: PdfColors.orange700),
               pw.SizedBox(height: 12),
-
               pw.Expanded(
                 child: pw.FittedBox(
                   fit: pw.BoxFit.scaleDown,
@@ -582,109 +435,50 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                             crossAxisAlignment: pw.CrossAxisAlignment.start,
                             children: [
                               pw.Container(
-                                width: 80,
-                                height: 100,
-                                decoration: pw.BoxDecoration(
-                                  color: PdfColors.grey200,
-                                  border: pw.Border.all(
-                                    color: PdfColors.grey400,
-                                  ),
-                                ),
+                                width: 80, height: 100,
+                                decoration: pw.BoxDecoration(color: PdfColors.grey200, border: pw.Border.all(color: PdfColors.grey400)),
                                 child: fotoAluno != null
                                     ? pw.Image(fotoAluno, fit: pw.BoxFit.cover)
-                                    : pw.Center(
-                                        child: pw.Text(
-                                          'Sem Foto',
-                                          style: const pw.TextStyle(
-                                            fontSize: 8,
-                                            color: PdfColors.grey600,
-                                          ),
-                                        ),
-                                      ),
+                                    : pw.Center(child: pw.Text('Sem Foto', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600))),
                               ),
                               pw.SizedBox(width: 12),
                               pw.Expanded(
                                 child: pw.Column(
-                                  crossAxisAlignment:
-                                      pw.CrossAxisAlignment.start,
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                                   children: [
                                     pdfLinha('Nome', aluno['nome']),
                                     pw.Row(
                                       children: [
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Matrícula',
-                                            aluno['matricula'],
-                                          ),
-                                        ),
-                                        pw.Expanded(
-                                          child: pdfLinha('R.A.', aluno['ra']),
-                                        ),
+                                        pw.Expanded(child: pdfLinha('Matrícula', aluno['matricula'])),
+                                        pw.Expanded(child: pdfLinha('R.A.', aluno['ra'])),
                                       ],
                                     ),
                                     pw.Row(
                                       children: [
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Nascimento',
-                                            aluno['dataNascimento'],
-                                          ),
-                                        ),
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Sexo',
-                                            aluno['sexo'],
-                                          ),
-                                        ),
+                                        pw.Expanded(child: pdfLinha('Nascimento', aluno['dataNascimento'])),
+                                        pw.Expanded(child: pdfLinha('Sexo', aluno['sexo'])),
                                       ],
                                     ),
                                     pw.Row(
                                       children: [
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Celular',
-                                            aluno['telefone'],
-                                          ),
-                                        ),
-                                        pw.Expanded(
-                                          child: pdfLinha('CPF', aluno['cpf']),
-                                        ),
+                                        pw.Expanded(child: pdfLinha('Celular', aluno['telefone'])),
+                                        pw.Expanded(child: pdfLinha('CPF', aluno['cpf'])),
                                       ],
                                     ),
                                     pw.Row(
                                       children: [
-                                        pw.Expanded(
-                                          child: pdfLinha('RG', rgFormatado),
-                                        ),
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Naturalidade',
-                                            natFormatada,
-                                          ),
-                                        ),
+                                        pw.Expanded(child: pdfLinha('RG', rgFormatado)),
+                                        pw.Expanded(child: pdfLinha('Naturalidade', natFormatada)),
                                       ],
                                     ),
                                     pdfLinha('E-mail', aluno['email']),
                                     pw.SizedBox(height: 4),
-                                    pw.Divider(
-                                      thickness: 0.5,
-                                      color: PdfColors.grey300,
-                                    ),
+                                    pw.Divider(thickness: 0.5, color: PdfColors.grey300),
                                     pw.SizedBox(height: 4),
                                     pw.Row(
                                       children: [
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Turma Principal',
-                                            aluno['turma'],
-                                          ),
-                                        ),
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Irmão(s) na Escola',
-                                            textoIrmaosPdf,
-                                          ),
-                                        ),
+                                        pw.Expanded(child: pdfLinha('Turma Principal', aluno['turma'])),
+                                        pw.Expanded(child: pdfLinha('Irmão(s) na Escola', textoIrmaosPdf)),
                                       ],
                                     ),
                                   ],
@@ -700,32 +494,14 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                             children: [
                               pw.Row(
                                 children: [
-                                  pw.Expanded(
-                                    flex: 3,
-                                    child: pdfLinha(
-                                      'Logradouro',
-                                      endLogradouro,
-                                    ),
-                                  ),
-                                  pw.Expanded(
-                                    flex: 2,
-                                    child: pdfLinha('Bairro', end['bairro']),
-                                  ),
+                                  pw.Expanded(flex: 3, child: pdfLinha('Logradouro', endLogradouro)),
+                                  pw.Expanded(flex: 2, child: pdfLinha('Bairro', end['bairro'])),
                                 ],
                               ),
                               pw.Row(
                                 children: [
-                                  pw.Expanded(
-                                    flex: 3,
-                                    child: pdfLinha('Cidade/UF', endCidade),
-                                  ),
-                                  pw.Expanded(
-                                    flex: 2,
-                                    child: pdfLinha(
-                                      'Referência',
-                                      end['referencia'],
-                                    ),
-                                  ),
+                                  pw.Expanded(flex: 3, child: pdfLinha('Cidade/UF', endCidade)),
+                                  pw.Expanded(flex: 2, child: pdfLinha('Referência', end['referencia'])),
                                 ],
                               ),
                             ],
@@ -738,47 +514,26 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: pdfBloco(
                                 'RESPONSÁVEIS',
                                 pw.Column(
-                                  crossAxisAlignment:
-                                      pw.CrossAxisAlignment.start,
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                                   children: [
                                     if (responsaveis.isNotEmpty)
-                                      ...responsaveis.map(
-                                        (r) => pw.Padding(
-                                          padding: const pw.EdgeInsets.only(
-                                            bottom: 6,
-                                          ),
-                                          child: pw.Column(
-                                            crossAxisAlignment:
-                                                pw.CrossAxisAlignment.start,
-                                            children: [
-                                              pdfLinha('Nome', r['nome']),
-                                              pw.Row(
-                                                children: [
-                                                  pw.Expanded(
-                                                    child: pdfLinha(
-                                                      'CPF',
-                                                      r['cpf'],
-                                                    ),
-                                                  ),
-                                                  pw.Expanded(
-                                                    child: pdfLinha(
-                                                      'Tel',
-                                                      r['telefone'],
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              pdfLinha('E-mail', r['email']),
-                                            ],
-                                          ),
+                                      ...responsaveis.map((r) => pw.Padding(
+                                        padding: const pw.EdgeInsets.only(bottom: 6),
+                                        child: pw.Column(
+                                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                          children: [
+                                            pdfLinha('Nome', r['nome']),
+                                            pw.Row(
+                                              children: [
+                                                pw.Expanded(child: pdfLinha('CPF', r['cpf'])),
+                                                pw.Expanded(child: pdfLinha('Tel', r['telefone'])),
+                                              ],
+                                            ),
+                                            pdfLinha('E-mail', r['email']),
+                                          ],
                                         ),
-                                      ),
-                                    pdfLinha(
-                                      'Autoriza sair sozinho',
-                                      aluno['autorizaSairSo'] == true
-                                          ? 'SIM'
-                                          : 'NÃO',
-                                    ),
+                                      )),
+                                    pdfLinha('Autoriza sair sozinho', aluno['autorizaSairSo'] == true ? 'SIM' : 'NÃO'),
                                   ],
                                 ),
                               ),
@@ -788,21 +543,12 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: pdfBloco(
                                 'AUTORIZADOS A BUSCAR',
                                 pw.Column(
-                                  crossAxisAlignment:
-                                      pw.CrossAxisAlignment.start,
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                                   children: [
                                     if (autorizados.isNotEmpty)
-                                      ...autorizados.map(
-                                        (p) => pdfLinha(
-                                          'Nome',
-                                          '${p['nome']} (Tel: ${p['telefone']})',
-                                        ),
-                                      )
+                                      ...autorizados.map((p) => pdfLinha('Nome', '${p['nome']} (Tel: ${p['telefone']})'))
                                     else
-                                      pdfLinha(
-                                        'Autorizados',
-                                        'Nenhum cadastrado',
-                                      ),
+                                      pdfLinha('Autorizados', 'Nenhum cadastrado'),
                                   ],
                                 ),
                               ),
@@ -816,45 +562,18 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: pdfBloco(
                                 'INFORMAÇÕES MÉDICAS',
                                 pw.Column(
-                                  crossAxisAlignment:
-                                      pw.CrossAxisAlignment.start,
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                                   children: [
                                     pw.Row(
                                       children: [
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Sangue',
-                                            med['tipoSanguineo'],
-                                          ),
-                                        ),
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Problema',
-                                            med['temProblema'] == true
-                                                ? med['problema']
-                                                : 'NÃO',
-                                          ),
-                                        ),
+                                        pw.Expanded(child: pdfLinha('Sangue', med['tipoSanguineo'])),
+                                        pw.Expanded(child: pdfLinha('Problema', med['temProblema'] == true ? med['problema'] : 'NÃO')),
                                       ],
                                     ),
                                     pw.Row(
                                       children: [
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Remédio',
-                                            med['tomaRemedio'] == true
-                                                ? med['remedio']
-                                                : 'NÃO',
-                                          ),
-                                        ),
-                                        pw.Expanded(
-                                          child: pdfLinha(
-                                            'Alergia',
-                                            med['temAlergia'] == true
-                                                ? med['alergia']
-                                                : 'NÃO',
-                                          ),
-                                        ),
+                                        pw.Expanded(child: pdfLinha('Remédio', med['tomaRemedio'] == true ? med['remedio'] : 'NÃO')),
+                                        pw.Expanded(child: pdfLinha('Alergia', med['temAlergia'] == true ? med['alergia'] : 'NÃO')),
                                       ],
                                     ),
                                     pdfLinha('Observações', med['observacoes']),
@@ -867,16 +586,10 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: pdfBloco(
                                 'CONTATOS DE EMERGÊNCIA',
                                 pw.Column(
-                                  crossAxisAlignment:
-                                      pw.CrossAxisAlignment.start,
+                                  crossAxisAlignment: pw.CrossAxisAlignment.start,
                                   children: [
                                     if (emergencia.isNotEmpty)
-                                      ...emergencia.map(
-                                        (e) => pdfLinha(
-                                          'Nome',
-                                          '${e['nome']} (Tel: ${e['telefone']})',
-                                        ),
-                                      )
+                                      ...emergencia.map((e) => pdfLinha('Nome', '${e['nome']} (Tel: ${e['telefone']})'))
                                     else
                                       pdfLinha('Contatos', 'Nenhum cadastrado'),
                                   ],
@@ -894,23 +607,14 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
               pw.Divider(thickness: 1, color: PdfColors.grey400),
               pw.SizedBox(height: 4),
               pw.Center(
-                child: pw.Text(
-                  'Ficha gerada pelo sistema Domex Edu - $dataHora',
-                  style: const pw.TextStyle(
-                    fontSize: 8,
-                    color: PdfColors.grey600,
-                  ),
-                ),
+                child: pw.Text('Ficha gerada pelo sistema Domex Edu - $dataHora', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
               ),
             ],
           );
         },
       ),
     );
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => doc.save(),
-      name: 'Ficha_${aluno['matricula']}.pdf',
-    );
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => doc.save(), name: 'Ficha_${aluno['matricula']}.pdf');
   }
 
   Widget _buildSecao(IconData icone, String titulo, Color cor) {
@@ -920,14 +624,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
         children: [
           Icon(icone, size: 20, color: cor),
           const SizedBox(width: 8),
-          Text(
-            titulo,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: cor,
-            ),
-          ),
+          Text(titulo, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: cor)),
         ],
       ),
     );
@@ -941,10 +638,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
         text: TextSpan(
           style: const TextStyle(color: Colors.black87, fontSize: 14),
           children: [
-            TextSpan(
-              text: '$label: ',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+            TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)),
             TextSpan(text: valor.isEmpty ? 'Não informado' : valor),
           ],
         ),
@@ -960,30 +654,15 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            '$label: ',
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-              color: Colors.black87,
-            ),
-          ),
-          Text(
-            telefone.isEmpty ? 'Não informado' : telefone,
-            style: const TextStyle(fontSize: 14, color: Colors.black87),
-          ),
+          Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+          Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)),
           if (numeroLimpo.length >= 10) ...[
             const SizedBox(width: 8),
             Tooltip(
               message: 'Abrir WhatsApp',
               child: InkWell(
-                onTap: () =>
-                    launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
-                child: Image.asset(
-                  'assets/whatsapp.png',
-                  width: 18,
-                  height: 18,
-                ),
+                onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
+                child: Image.asset('assets/whatsapp.png', width: 18, height: 18),
               ),
             ),
             const SizedBox(width: 12),
@@ -1000,9 +679,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
     );
   }
 
-  // ==========================================================================
-  // FICHA VISUAL DO ALUNO (Com Dropdown de Status Funcional)
-  // ==========================================================================
   void _abrirFichaAluno(BuildContext context, Map<String, dynamic> aluno) {
     final corPrimaria = Theme.of(context).primaryColor;
     final anexos = aluno['anexos'] as List? ?? [];
@@ -1031,34 +707,23 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                 : (statusAtual == 'Inadimplente' ? Colors.red : Colors.orange);
 
             return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               titlePadding: const EdgeInsets.all(0),
               title: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: corPrimaria.withAlpha(13),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: Row(
                   children: [
                     InkWell(
-                      onTap: aluno['fotoUrl'] != null
-                          ? () =>
-                                _mostrarFotoAmpliada(context, aluno['fotoUrl'])
-                          : null,
+                      onTap: aluno['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, aluno['fotoUrl']) : null,
                       child: CircleAvatar(
                         radius: 32,
                         backgroundColor: Colors.white,
-                        backgroundImage: aluno['fotoUrl'] != null
-                            ? NetworkImage(aluno['fotoUrl'])
-                            : null,
-                        child: aluno['fotoUrl'] == null
-                            ? Icon(Icons.person, size: 32, color: corPrimaria)
-                            : null,
+                        backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null,
+                        child: aluno['fotoUrl'] == null ? Icon(Icons.person, size: 32, color: corPrimaria) : null,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -1066,90 +731,37 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            aluno['nome'] ?? 'Aluno',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
+                          Text(aluno['nome'] ?? 'Aluno', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
                           const SizedBox(height: 4),
-                          Text(
-                            'Matrícula: ${aluno['matricula']}',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 14,
-                            ),
-                          ),
+                          Text('Matrícula: ${aluno['matricula']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                         ],
                       ),
                     ),
-
-                    // DROPDOWN DE STATUS
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 0,
-                      ),
-                      decoration: BoxDecoration(
-                        color: corStatus.withAlpha(30),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: corStatus),
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                      decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8), border: Border.all(color: corStatus)),
                       child: DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
-                          value:
-                              [
-                                'Ativo',
-                                'Inativo',
-                                'Transferido',
-                                'Inadimplente',
-                              ].contains(statusAtual)
-                              ? statusAtual
-                              : 'Ativo',
+                          value: ['Ativo', 'Inativo', 'Transferido', 'Inadimplente'].contains(statusAtual) ? statusAtual : 'Ativo',
                           icon: Icon(Icons.arrow_drop_down, color: corStatus),
-                          style: TextStyle(
-                            color: corStatus,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
+                          style: TextStyle(color: corStatus, fontWeight: FontWeight.bold, fontSize: 13),
                           items: const [
-                            DropdownMenuItem(
-                              value: 'Ativo',
-                              child: Text('ATIVO'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Inativo',
-                              child: Text('INATIVO'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Transferido',
-                              child: Text('TRANSFERIDO'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Inadimplente',
-                              child: Text('INADIMPLENTE'),
-                            ),
+                            DropdownMenuItem(value: 'Ativo', child: Text('ATIVO')),
+                            DropdownMenuItem(value: 'Inativo', child: Text('INATIVO')),
+                            DropdownMenuItem(value: 'Transferido', child: Text('TRANSFERIDO')),
+                            DropdownMenuItem(value: 'Inadimplente', child: Text('INADIMPLENTE')),
                           ],
                           onChanged: (novoStatus) async {
                             if (novoStatus != null) {
                               try {
-                                await ref
-                                    .read(alunoServiceProvider)
-                                    .atualizarStatus(
-                                      aluno['matricula'],
-                                      novoStatus,
-                                    );
-                                setStateModal(
-                                  () => aluno['status'] = novoStatus,
-                                );
+                                await ref.read(alunoServiceProvider).atualizarStatus(aluno['matricula'], novoStatus);
+                                setStateModal(() => aluno['status'] = novoStatus);
                               } catch (e) {
-                                if (context.mounted)
+                                if (context.mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Erro ao atualizar: $e'),
-                                    ),
+                                    SnackBar(content: Text('Erro ao atualizar: $e'), backgroundColor: Colors.red),
                                   );
+                                }
                               }
                             }
                           },
@@ -1157,7 +769,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                       ),
                     ),
                     const SizedBox(width: 16),
-
                     if (anexos.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(right: 12.0),
@@ -1166,21 +777,13 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                             backgroundColor: Colors.deepPurple.shade50,
                             foregroundColor: Colors.deepPurple,
                             elevation: 0,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                           ),
                           icon: const Icon(Icons.folder_open_rounded, size: 20),
-                          label: Text(
-                            '${anexos.length} Anexos',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          onPressed: () =>
-                              _mostrarAnexosDialog(context, anexos),
+                          label: Text('${anexos.length} Anexos', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () => _mostrarAnexosDialog(context, anexos),
                         ),
                       ),
-
                     IconButton(
                       icon: const Icon(Icons.close_rounded),
                       onPressed: () => Navigator.pop(context),
@@ -1203,30 +806,14 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildSecao(
-                                    Icons.person_rounded,
-                                    'Dados Pessoais',
-                                    corPrimaria,
-                                  ),
+                                  _buildSecao(Icons.person_rounded, 'Dados Pessoais', corPrimaria),
                                   _buildLinha('R.A.', aluno['ra']),
-                                  _buildLinha(
-                                    'Nascimento',
-                                    aluno['dataNascimento'],
-                                  ),
+                                  _buildLinha('Nascimento', aluno['dataNascimento']),
                                   _buildLinha('Sexo', aluno['sexo']),
-                                  _buildLinhaTelefone(
-                                    'Celular',
-                                    aluno['telefone'],
-                                  ),
+                                  _buildLinhaTelefone('Celular', aluno['telefone']),
                                   _buildLinha('CPF', aluno['cpf']),
-                                  _buildLinha(
-                                    'RG',
-                                    '${aluno['rg'] ?? ''} ${aluno['orgaoExpedidor'] != null && aluno['orgaoExpedidor'].toString().isNotEmpty ? '(${aluno['orgaoExpedidor']})' : ''}',
-                                  ),
-                                  _buildLinha(
-                                    'Naturalidade',
-                                    '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}',
-                                  ),
+                                  _buildLinha('RG', '${aluno['rg'] ?? ''} ${aluno['orgaoExpedidor'] != null && aluno['orgaoExpedidor'].toString().isNotEmpty ? '(${aluno['orgaoExpedidor']})' : ''}'),
+                                  _buildLinha('Naturalidade', '${aluno['naturalidade'] ?? ''} / ${aluno['estadoNaturalidade'] ?? ''}'),
                                   _buildLinha('E-mail', aluno['email']),
                                 ],
                               ),
@@ -1235,11 +822,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildSecao(
-                                    Icons.school_rounded,
-                                    'Acadêmico',
-                                    corPrimaria,
-                                  ),
+                                  _buildSecao(Icons.school_rounded, 'Acadêmico', corPrimaria),
                                   _buildLinha('Turma', aluno['turma']),
                                   _buildLinha('Status', aluno['status']),
                                   _buildLinha('Irmão(s)', textoIrmaosFicha),
@@ -1256,48 +839,25 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildSecao(
-                                    Icons.family_restroom_rounded,
-                                    'Responsáveis e Endereço',
-                                    corPrimaria,
-                                  ),
+                                  _buildSecao(Icons.family_restroom_rounded, 'Responsáveis e Endereço', corPrimaria),
                                   if (aluno['responsaveis'] != null)
-                                    ...(aluno['responsaveis'] as List).map(
-                                      (r) => Padding(
-                                        padding: const EdgeInsets.only(
-                                          bottom: 8.0,
-                                        ),
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            _buildLinha('Nome', r['nome']),
-                                            _buildLinha('CPF', r['cpf']),
-                                            _buildLinhaTelefone(
-                                              'Tel',
-                                              r['telefone'],
-                                            ),
-                                            _buildLinha('E-mail', r['email']),
-                                            const SizedBox(height: 4),
-                                          ],
-                                        ),
+                                    ...(aluno['responsaveis'] as List).map((r) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 8.0),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _buildLinha('Nome', r['nome']),
+                                          _buildLinha('CPF', r['cpf']),
+                                          _buildLinhaTelefone('Tel', r['telefone']),
+                                          _buildLinha('E-mail', r['email']),
+                                          const SizedBox(height: 4),
+                                        ],
                                       ),
-                                    ),
+                                    )),
                                   const SizedBox(height: 8),
-                                  _buildLinha(
-                                    'Endereço',
-                                    '${aluno['endereco']?['rua'] ?? ''}, ${aluno['endereco']?['numero'] ?? ''} - ${aluno['endereco']?['bairro'] ?? ''} - ${aluno['endereco']?['cidade'] ?? ''} / ${aluno['endereco']?['estado'] ?? ''}',
-                                  ),
-                                  _buildLinha(
-                                    'Referência',
-                                    aluno['endereco']?['referencia'],
-                                  ),
-                                  _buildLinha(
-                                    'Autorizado sair sozinho?',
-                                    aluno['autorizaSairSo'] == true
-                                        ? 'SIM'
-                                        : 'NÃO',
-                                  ),
+                                  _buildLinha('Endereço', '${aluno['endereco']?['rua'] ?? ''}, ${aluno['endereco']?['numero'] ?? ''} - ${aluno['endereco']?['bairro'] ?? ''} - ${aluno['endereco']?['cidade'] ?? ''} / ${aluno['endereco']?['estado'] ?? ''}'),
+                                  _buildLinha('Referência', aluno['endereco']?['referencia']),
+                                  _buildLinha('Autorizado sair sozinho?', aluno['autorizaSairSo'] == true ? 'SIM' : 'NÃO'),
                                 ],
                               ),
                             ),
@@ -1305,26 +865,11 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildSecao(
-                                    Icons.badge_rounded,
-                                    'Autorizados a Buscar',
-                                    Colors.deepPurple,
-                                  ),
-                                  if (aluno['pessoasAutorizadas'] != null &&
-                                      (aluno['pessoasAutorizadas'] as List)
-                                          .isNotEmpty)
-                                    ...(aluno['pessoasAutorizadas'] as List)
-                                        .map(
-                                          (p) => _buildLinhaTelefone(
-                                            p['nome'] ?? 'Autorizado',
-                                            p['telefone'],
-                                          ),
-                                        )
+                                  _buildSecao(Icons.badge_rounded, 'Autorizados a Buscar', Colors.deepPurple),
+                                  if (aluno['pessoasAutorizadas'] != null && (aluno['pessoasAutorizadas'] as List).isNotEmpty)
+                                    ...(aluno['pessoasAutorizadas'] as List).map((p) => _buildLinhaTelefone(p['nome'] ?? 'Autorizado', p['telefone']))
                                   else
-                                    const Text(
-                                      'Ninguém cadastrado.',
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
+                                    const Text('Ninguém cadastrado.', style: TextStyle(color: Colors.grey)),
                                 ],
                               ),
                             ),
@@ -1338,37 +883,12 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildSecao(
-                                    Icons.medical_information_rounded,
-                                    'Ficha Médica',
-                                    corPrimaria,
-                                  ),
-                                  _buildLinha(
-                                    'Tipo Sanguíneo',
-                                    aluno['fichaMedica']?['tipoSanguineo'],
-                                  ),
-                                  _buildLinha(
-                                    'Problema de Saúde',
-                                    aluno['fichaMedica']?['temProblema'] == true
-                                        ? 'SIM: ${aluno['fichaMedica']?['problema']}'
-                                        : 'NÃO',
-                                  ),
-                                  _buildLinha(
-                                    'Remédio',
-                                    aluno['fichaMedica']?['tomaRemedio'] == true
-                                        ? 'SIM: ${aluno['fichaMedica']?['remedio']}'
-                                        : 'NÃO',
-                                  ),
-                                  _buildLinha(
-                                    'Alergia',
-                                    aluno['fichaMedica']?['temAlergia'] == true
-                                        ? 'SIM: ${aluno['fichaMedica']?['alergia']}'
-                                        : 'NÃO',
-                                  ),
-                                  _buildLinha(
-                                    'Observações',
-                                    aluno['fichaMedica']?['observacoes'],
-                                  ),
+                                  _buildSecao(Icons.medical_information_rounded, 'Ficha Médica', corPrimaria),
+                                  _buildLinha('Tipo Sanguíneo', aluno['fichaMedica']?['tipoSanguineo']),
+                                  _buildLinha('Problema de Saúde', aluno['fichaMedica']?['temProblema'] == true ? 'SIM: ${aluno['fichaMedica']?['problema']}' : 'NÃO'),
+                                  _buildLinha('Remédio', aluno['fichaMedica']?['tomaRemedio'] == true ? 'SIM: ${aluno['fichaMedica']?['remedio']}' : 'NÃO'),
+                                  _buildLinha('Alergia', aluno['fichaMedica']?['temAlergia'] == true ? 'SIM: ${aluno['fichaMedica']?['alergia']}' : 'NÃO'),
+                                  _buildLinha('Observações', aluno['fichaMedica']?['observacoes']),
                                 ],
                               ),
                             ),
@@ -1376,24 +896,11 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildSecao(
-                                    Icons.emergency_rounded,
-                                    'Contatos de Emergência',
-                                    Colors.red.shade400,
-                                  ),
-                                  if (aluno['emergencia'] != null &&
-                                      (aluno['emergencia'] as List).isNotEmpty)
-                                    ...(aluno['emergencia'] as List).map(
-                                      (e) => _buildLinhaTelefone(
-                                        e['nome'] ?? 'Emergência',
-                                        e['telefone'],
-                                      ),
-                                    )
+                                  _buildSecao(Icons.emergency_rounded, 'Contatos de Emergência', Colors.red.shade400),
+                                  if (aluno['emergencia'] != null && (aluno['emergencia'] as List).isNotEmpty)
+                                    ...(aluno['emergencia'] as List).map((e) => _buildLinhaTelefone(e['nome'] ?? 'Emergência', e['telefone']))
                                   else
-                                    const Text(
-                                      'Nenhum contato cadastrado.',
-                                      style: TextStyle(color: Colors.grey),
-                                    ),
+                                    const Text('Nenhum contato cadastrado.', style: TextStyle(color: Colors.grey)),
                                 ],
                               ),
                             ),
@@ -1409,19 +916,13 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                 TextButton.icon(
                   onPressed: () => _gerarEImprimirPdf(aluno),
                   icon: const Icon(Icons.print_rounded, color: Colors.blue),
-                  label: const Text(
-                    'Exportar PDF / Imprimir',
-                    style: TextStyle(color: Colors.blue),
-                  ),
+                  label: const Text('Exportar PDF / Imprimir', style: TextStyle(color: Colors.blue)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: corPrimaria,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Fechar Ficha'),
@@ -1437,7 +938,6 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
     final estadoAlunos = ref.watch(alunosStreamProvider);
 
     return Padding(
@@ -1452,23 +952,21 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const Spacer(),
-
               estadoAlunos.when(
                 loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
+                error: (e, s) => const SizedBox.shrink(),
                 data: (alunos) {
                   final turmasSet = {'TODAS'};
                   for (var aluno in alunos) {
-                    final t = (aluno['turma'] ?? '')
-                        .toString()
-                        .toUpperCase()
-                        .trim();
-                    if (t.isNotEmpty) turmasSet.add(t);
+                    final t = (aluno['turma'] ?? '').toString().toUpperCase().trim();
+                    if (t.isNotEmpty) {
+                      turmasSet.add(t);
+                    }
                   }
-                  final listaTurmas = turmasSet.toList()
-                    ..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
-                  if (!listaTurmas.contains(_filtroTurma))
+                  final listaTurmas = turmasSet.toList()..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
+                  if (!listaTurmas.contains(_filtroTurma)) {
                     _filtroTurma = 'TODAS';
+                  }
 
                   return Container(
                     constraints: const BoxConstraints(maxWidth: 250),
@@ -1483,38 +981,23 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                       child: DropdownButton<String>(
                         isExpanded: true,
                         value: _filtroTurma,
-                        icon: const Icon(
-                          Icons.filter_alt_rounded,
-                          color: Colors.blue,
-                          size: 20,
-                        ),
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
                         onChanged: (v) {
-                          if (v != null) setState(() => _filtroTurma = v);
+                          if (v != null) {
+                            setState(() => _filtroTurma = v);
+                          }
                         },
-                        items: listaTurmas
-                            .map(
-                              (t) => DropdownMenuItem(
-                                value: t,
-                                child: Text(
-                                  t == 'TODAS' ? 'Todas as Turmas' : t,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.black87),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                        items: listaTurmas.map((t) => DropdownMenuItem(
+                          value: t,
+                          child: Text(t == 'TODAS' ? 'Todas as Turmas' : t, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)),
+                        )).toList(),
                       ),
                     ),
                   );
                 },
               ),
               const SizedBox(width: 16),
-
               Container(
                 constraints: const BoxConstraints(maxWidth: 200),
                 height: 40,
@@ -1528,86 +1011,36 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                   child: DropdownButton<String>(
                     isExpanded: true,
                     value: _filtroStatus,
-                    icon: const Icon(
-                      Icons.filter_alt_rounded,
-                      color: Colors.blue,
-                      size: 20,
-                    ),
-                    style: const TextStyle(
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
-                    ),
+                    icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                    style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
                     onChanged: (v) {
-                      if (v != null) setState(() => _filtroStatus = v);
+                      if (v != null) {
+                        setState(() => _filtroStatus = v);
+                      }
                     },
                     items: const [
-                      DropdownMenuItem(
-                        value: 'TODOS',
-                        child: Text(
-                          'Todos os Status',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.black87),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'ATIVO',
-                        child: Text(
-                          'Apenas Ativos',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.black87),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'INATIVO',
-                        child: Text(
-                          'Apenas Inativos',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.black87),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'INADIMPLENTE',
-                        child: Text(
-                          'Inadimplentes',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.black87),
-                        ),
-                      ),
-                      DropdownMenuItem(
-                        value: 'TRANSFERIDO',
-                        child: Text(
-                          'Transferidos',
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: Colors.black87),
-                        ),
-                      ),
+                      DropdownMenuItem(value: 'TODOS', child: Text('Todos os Status', style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'ATIVO', child: Text('Apenas Ativos', style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'INATIVO', child: Text('Apenas Inativos', style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'INADIMPLENTE', child: Text('Inadimplentes', style: TextStyle(color: Colors.black87))),
+                      DropdownMenuItem(value: 'TRANSFERIDO', child: Text('Transferidos', style: TextStyle(color: Colors.black87))),
                     ],
                   ),
                 ),
               ),
               const SizedBox(width: 16),
-
               SizedBox(
                 width: 250,
                 height: 40,
                 child: TextField(
-                  onChanged: (value) =>
-                      _debouncer.run(() => setState(() => _termoBusca = value)),
+                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
                   decoration: InputDecoration(
                     hintText: 'Pesquisar nome ou matrícula...',
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      size: 20,
-                      color: Colors.grey,
-                    ),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
                     filled: true,
                     fillColor: Colors.grey.shade100,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                   ),
                 ),
               ),
@@ -1623,64 +1056,39 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
           Expanded(
             child: estadoAlunos.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (erro, stack) =>
-                  Center(child: Text('Erro ao carregar alunos: $erro')),
+              error: (e, s) => Center(child: Text('Erro ao carregar alunos: $e')),
               data: (alunos) {
                 final alunosFiltrados = alunos.where((aluno) {
-                  final busca = _termoBusca.toLowerCase();
-                  final nome = aluno['nome'].toString().toLowerCase();
-                  final mat = aluno['matricula'].toString().toLowerCase();
-                  final matchBusca =
-                      nome.contains(busca) || mat.contains(busca);
+                  final busca = _termoBusca.toLowerCase().trim();
+                  final nome = (aluno['nome'] ?? '').toString().toLowerCase();
+                  final mat = (aluno['matricula'] ?? '').toString().toLowerCase();
+                  final matchBusca = busca.isEmpty || nome.contains(busca) || mat.contains(busca);
 
-                  final t = (aluno['turma'] ?? '')
-                      .toString()
-                      .toUpperCase()
-                      .trim();
-                  final matchTurma =
-                      _filtroTurma == 'TODAS' || t == _filtroTurma;
+                  final t = (aluno['turma'] ?? '').toString().toUpperCase().trim();
+                  final matchTurma = _filtroTurma == 'TODAS' || t == _filtroTurma;
 
-                  final status = (aluno['status'] ?? 'Ativo')
-                      .toString()
-                      .toUpperCase();
-                  final matchStatus =
-                      _filtroStatus == 'TODOS' || status == _filtroStatus;
+                  final status = (aluno['status'] ?? 'Ativo').toString().toUpperCase().trim();
+                  final matchStatus = _filtroStatus == 'TODOS' || status == _filtroStatus;
 
                   return matchBusca && matchTurma && matchStatus;
                 }).toList();
 
-                if (alunosFiltrados.isEmpty)
-                  return const Center(
-                    child: Text(
-                      'Nenhum aluno encontrado.',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  );
+                if (alunosFiltrados.isEmpty) {
+                  return const Center(child: Text('Nenhum aluno encontrado.', style: TextStyle(color: Colors.grey)));
+                }
 
-                // ORDENAÇÃO A-Z DOS ALUNOS NA LISTA GERAL
-                alunosFiltrados.sort(
-                  (a, b) => (a['nome'] ?? '')
-                      .toString()
-                      .toUpperCase()
-                      .compareTo((b['nome'] ?? '').toString().toUpperCase()),
-                );
+                alunosFiltrados.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
 
                 return ListView.separated(
                   itemCount: alunosFiltrados.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 12),
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final aluno = alunosFiltrados[index];
                     final statusAluno = aluno['status'] ?? 'Ativo';
-                    final corStatusCard = statusAluno == 'Ativo'
-                        ? Colors.green
-                        : (statusAluno == 'Inadimplente'
-                              ? Colors.red
-                              : Colors.orange);
+                    final corStatusCard = statusAluno == 'Ativo' ? Colors.green : (statusAluno == 'Inadimplente' ? Colors.red : Colors.orange);
 
                     final temIrmao = aluno['temIrmao'] == true;
-                    final irmaoInfo =
-                        aluno['irmaoSelecionado']?.toString().trim() ?? '';
+                    final irmaoInfo = aluno['irmaoSelecionado']?.toString().trim() ?? '';
                     final irmaosList = aluno['irmaosVinculados'] as List? ?? [];
                     String textoIrmao = '';
 
@@ -1699,38 +1107,21 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: BorderSide(
-                          color: statusAluno == 'Inadimplente'
-                              ? Colors.red.shade200
-                              : Colors.grey.shade300,
+                          color: statusAluno == 'Inadimplente' ? Colors.red.shade200 : Colors.grey.shade300,
                         ),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 8.0,
-                          horizontal: 16.0,
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
                         child: Row(
                           children: [
                             InkWell(
-                              onTap: aluno['fotoUrl'] != null
-                                  ? () => _mostrarFotoAmpliada(
-                                      context,
-                                      aluno['fotoUrl'],
-                                    )
-                                  : null,
+                              onTap: aluno['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, aluno['fotoUrl']) : null,
                               borderRadius: BorderRadius.circular(24),
                               child: CircleAvatar(
                                 radius: 24,
                                 backgroundColor: Colors.grey.shade200,
-                                backgroundImage: aluno['fotoUrl'] != null
-                                    ? NetworkImage(aluno['fotoUrl'])
-                                    : null,
-                                child: aluno['fotoUrl'] == null
-                                    ? const Icon(
-                                        Icons.person,
-                                        color: Colors.grey,
-                                      )
-                                    : null,
+                                backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null,
+                                child: aluno['fotoUrl'] == null ? const Icon(Icons.person, color: Colors.grey) : null,
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -1739,41 +1130,20 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    aluno['nome'] ?? 'Sem nome',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
+                                  Text(aluno['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    'Matrícula: ${aluno['matricula']}',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
+                                  Text('Matrícula: ${aluno['matricula']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                                   if (temIrmao) ...[
                                     const SizedBox(height: 4),
                                     Row(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Icon(
-                                          Icons.family_restroom_rounded,
-                                          size: 14,
-                                          color: Colors.purple.shade400,
-                                        ),
+                                        Icon(Icons.family_restroom_rounded, size: 14, color: Colors.purple.shade400),
                                         const SizedBox(width: 4),
                                         Expanded(
                                           child: Text(
                                             textoIrmao,
-                                            style: TextStyle(
-                                              color: Colors.purple.shade600,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.bold,
-                                            ),
+                                            style: TextStyle(color: Colors.purple.shade600, fontSize: 11, fontWeight: FontWeight.bold),
                                             maxLines: 2,
                                             overflow: TextOverflow.ellipsis,
                                           ),
@@ -1786,60 +1156,36 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
                             ),
                             Expanded(
                               flex: 2,
-                              child: Text(
-                                aluno['turma'] ?? 'Sem turma',
-                                style: TextStyle(color: Colors.grey.shade700),
-                              ),
+                              child: Text(aluno['turma'] ?? 'Sem turma', style: TextStyle(color: Colors.grey.shade700)),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
                                 color: corStatusCard.withAlpha(30),
                                 borderRadius: BorderRadius.circular(16),
                               ),
                               child: Text(
                                 statusAluno,
-                                style: TextStyle(
-                                  color: corStatusCard,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
+                                style: TextStyle(color: corStatusCard, fontWeight: FontWeight.bold, fontSize: 12),
                               ),
                             ),
                             const SizedBox(width: 24),
                             Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(
-                                    Icons.visibility_rounded,
-                                    color: Colors.blueGrey,
-                                  ),
-                                  tooltip: 'Visualizar Ficha Completa',
-                                  onPressed: () =>
-                                      _abrirFichaAluno(context, aluno),
+                                  icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
+                                  tooltip: 'Visualizar Ficha',
+                                  onPressed: () => _abrirFichaAluno(context, aluno),
                                 ),
                                 IconButton(
-                                  icon: const Icon(
-                                    Icons.edit_rounded,
-                                    color: Colors.blue,
-                                  ),
+                                  icon: const Icon(Icons.edit_rounded, color: Colors.blue),
                                   tooltip: 'Editar Matrícula',
-                                  onPressed: () => context.push(
-                                    '/admin/cadastros/aluno/novo',
-                                    extra: aluno,
-                                  ),
+                                  onPressed: () => context.push('/admin/cadastros/aluno/novo', extra: aluno),
                                 ),
                                 IconButton(
-                                  icon: const Icon(
-                                    Icons.delete_rounded,
-                                    color: Colors.red,
-                                  ),
+                                  icon: const Icon(Icons.delete_rounded, color: Colors.red),
                                   tooltip: 'Excluir Aluno',
-                                  onPressed: () =>
-                                      _confirmarExclusao(context, aluno),
+                                  onPressed: () => _confirmarExclusao(context, aluno),
                                 ),
                               ],
                             ),
@@ -1859,17 +1205,15 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba>
 }
 
 // ============================================================================
-// 2. COMPONENTE DA ABA DE RESPONSÁVEIS
+// 2. ABA DE RESPONSÁVEIS
 // ============================================================================
 class _GestaoResponsaveisAba extends ConsumerStatefulWidget {
   const _GestaoResponsaveisAba();
   @override
-  ConsumerState<_GestaoResponsaveisAba> createState() =>
-      _GestaoResponsaveisAbaState();
+  ConsumerState<_GestaoResponsaveisAba> createState() => _GestaoResponsaveisAbaState();
 }
 
-class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
-    with AutomaticKeepAliveClientMixin {
+class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -1877,10 +1221,56 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
   final _debouncer = Debouncer(milliseconds: 400);
   bool _sincronizando = false;
 
-  void _abrirFichaAlunoRapida(
-    BuildContext context,
-    Map<String, dynamic> aluno,
-  ) {
+  void _confirmarExclusao(BuildContext context, Map<String, dynamic> resp) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.red),
+              SizedBox(width: 8),
+              Text(
+                'Excluir Responsável',
+                style: TextStyle(color: Colors.red),
+              ),
+            ],
+          ),
+          content: Text('Deseja excluir o registro de ${resp['nome']}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () async {
+                try {
+                  await ref.read(responsavelServiceProvider).excluirResponsavel(resp['id']);
+                  if (!context.mounted) {
+                    return;
+                  }
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Registro excluído.'), backgroundColor: Colors.green),
+                  );
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
+                    );
+                  }
+                }
+              },
+              child: const Text('Excluir', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _abrirFichaAlunoRapida(BuildContext context, Map<String, dynamic> aluno) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1890,10 +1280,7 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Nome: ${aluno['nome']}',
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
+            Text('Nome: ${aluno['nome']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
             const SizedBox(height: 8),
             Text('Matrícula: ${aluno['matricula']}'),
             Text('Turma: ${aluno['turma'] ?? 'Sem turma'}'),
@@ -1914,21 +1301,10 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
     );
   }
 
-  void _abrirFichaResponsavel(
-    BuildContext context,
-    Map<String, dynamic> resp,
-    List<Map<String, dynamic>> todosAlunos,
-  ) {
+  void _abrirFichaResponsavel(BuildContext context, Map<String, dynamic> resp, List<Map<String, dynamic>> todosAlunos) {
     final corPrimaria = Theme.of(context).primaryColor;
-    final alunosVinculadosIds =
-        (resp['alunosVinculadosRaw'] as List?)
-            ?.map((v) => v['matricula'].toString())
-            .toList() ??
-        [];
-
-    final alunosCompletos = todosAlunos
-        .where((a) => alunosVinculadosIds.contains(a['matricula'].toString()))
-        .toList();
+    final alunosVinculadosIds = (resp['alunosVinculadosRaw'] as List?)?.map((v) => v['matricula'].toString()).toList() ?? [];
+    final alunosCompletos = todosAlunos.where((a) => alunosVinculadosIds.contains(a['matricula'].toString())).toList();
 
     Widget buildLinha(String label, dynamic valorRaw) {
       final valor = (valorRaw?.toString() ?? '').trim();
@@ -1938,10 +1314,7 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
           text: TextSpan(
             style: const TextStyle(color: Colors.black87, fontSize: 14),
             children: [
-              TextSpan(
-                text: '$label: ',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
+              TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)),
               TextSpan(text: valor.isEmpty ? 'Não informado' : valor),
             ],
           ),
@@ -1957,30 +1330,15 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
-              '$label: ',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: Colors.black87,
-              ),
-            ),
-            Text(
-              telefone.isEmpty ? 'Não informado' : telefone,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
-            ),
+            Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+            Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)),
             if (numeroLimpo.length >= 10) ...[
               const SizedBox(width: 8),
               Tooltip(
                 message: 'Abrir WhatsApp',
                 child: InkWell(
-                  onTap: () =>
-                      launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
-                  child: Image.asset(
-                    'assets/whatsapp.png',
-                    width: 18,
-                    height: 18,
-                  ),
+                  onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
+                  child: Image.asset('assets/whatsapp.png', width: 18, height: 18),
                 ),
               ),
               const SizedBox(width: 12),
@@ -2006,38 +1364,24 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
             final isBloqueado = statusAtual == 'Bloqueado';
 
             return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               titlePadding: const EdgeInsets.all(0),
               title: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: corPrimaria.withAlpha(13),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: Row(
                   children: [
                     InkWell(
-                      onTap: resp['fotoUrl'] != null
-                          ? () => _mostrarFotoAmpliada(context, resp['fotoUrl'])
-                          : null,
+                      onTap: resp['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, resp['fotoUrl']) : null,
                       borderRadius: BorderRadius.circular(32),
                       child: CircleAvatar(
                         radius: 32,
                         backgroundColor: Colors.white,
-                        backgroundImage: resp['fotoUrl'] != null
-                            ? NetworkImage(resp['fotoUrl'])
-                            : null,
-                        child: resp['fotoUrl'] == null
-                            ? Icon(
-                                Icons.family_restroom,
-                                size: 32,
-                                color: corPrimaria,
-                              )
-                            : null,
+                        backgroundImage: resp['fotoUrl'] != null ? NetworkImage(resp['fotoUrl']) : null,
+                        child: resp['fotoUrl'] == null ? Icon(Icons.family_restroom, size: 32, color: corPrimaria) : null,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -2045,35 +1389,15 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            resp['nome'] ?? 'Responsável',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
+                          Text(resp['nome'] ?? 'Responsável', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
                           const SizedBox(height: 4),
-                          Text(
-                            'ID: ${resp['id']}',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 14,
-                            ),
-                          ),
+                          Text('ID: ${resp['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                         ],
                       ),
                     ),
-
                     Row(
                       children: [
-                        Text(
-                          isBloqueado ? 'BLOQUEADO' : 'ATIVO',
-                          style: TextStyle(
-                            color: isBloqueado ? Colors.red : Colors.green,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
+                        Text(isBloqueado ? 'BLOQUEADO' : 'ATIVO', style: TextStyle(color: isBloqueado ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
                         Switch(
                           value: !isBloqueado,
                           activeThumbColor: Colors.green,
@@ -2081,20 +1405,12 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                           onChanged: (val) async {
                             final novoStatus = val ? 'Ativo' : 'Bloqueado';
                             try {
-                              await ref
-                                  .read(responsavelServiceProvider)
-                                  .atualizarStatus(resp['id'], novoStatus);
-                              setStateModal(() {
-                                resp['status'] = novoStatus;
-                              });
+                              await ref.read(responsavelServiceProvider).atualizarStatus(resp['id'], novoStatus);
+                              setStateModal(() { resp['status'] = novoStatus; });
                             } catch (e) {
-                              if (context.mounted)
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Erro ao atualizar: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao atualizar: $e'), backgroundColor: Colors.red));
+                              }
                             }
                           },
                         ),
@@ -2121,19 +1437,10 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'DADOS PESSOAIS',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple,
-                                  ),
-                                ),
+                                const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                                 const Divider(),
                                 buildLinha('CPF', resp['cpf']),
-                                buildLinha(
-                                  'Nascimento',
-                                  resp['dataNascimento'],
-                                ),
+                                buildLinha('Nascimento', resp['dataNascimento']),
                                 buildLinhaContato('Celular', resp['telefone']),
                                 buildLinha('E-mail', resp['email']),
                               ],
@@ -2144,90 +1451,40 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'VÍNCULO ACADÊMICO',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple,
-                                  ),
-                                ),
+                                const Text('VÍNCULO ACADÊMICO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                                 const Divider(),
                                 if (alunosCompletos.isEmpty)
-                                  const Text(
-                                    'Nenhum aluno encontrado.',
-                                    style: TextStyle(color: Colors.grey),
-                                  )
+                                  const Text('Nenhum aluno encontrado.', style: TextStyle(color: Colors.grey))
                                 else
-                                  ...alunosCompletos.map(
-                                    (aluno) => Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 8.0,
-                                      ),
-                                      child: InkWell(
-                                        onTap: () => _abrirFichaAlunoRapida(
-                                          context,
-                                          aluno,
-                                        ),
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(8),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade50,
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              const Icon(
-                                                Icons.school_rounded,
-                                                size: 18,
-                                                color: Colors.blue,
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  '${aluno['nome']} (${aluno['matricula']})',
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: Colors.blue,
-                                                  ),
-                                                ),
-                                              ),
-                                              const Icon(
-                                                Icons.open_in_new_rounded,
-                                                size: 16,
-                                                color: Colors.blue,
-                                              ),
-                                            ],
-                                          ),
+                                  ...alunosCompletos.map((aluno) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 8.0),
+                                    child: InkWell(
+                                      onTap: () => _abrirFichaAlunoRapida(context, aluno),
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
+                                        child: Row(
+                                          children: [
+                                            const Icon(Icons.school_rounded, size: 18, color: Colors.blue),
+                                            const SizedBox(width: 8),
+                                            Expanded(child: Text('${aluno['nome']} (${aluno['matricula']})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.blue))),
+                                            const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.blue),
+                                          ],
                                         ),
                                       ),
                                     ),
-                                  ),
+                                  )),
                               ],
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 24),
-                      const Text(
-                        'ENDEREÇO',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
+                      const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                       const Divider(),
-                      buildLinha(
-                        'Logradouro',
-                        '${resp['endereco']?['rua'] ?? ''}, Nº ${resp['endereco']?['numero'] ?? ''}',
-                      ),
-                      buildLinha(
-                        'Bairro/Cidade',
-                        '${resp['endereco']?['bairro'] ?? ''} - ${resp['endereco']?['cidade'] ?? ''}',
-                      ),
+                      buildLinha('Logradouro', '${resp['endereco']?['rua'] ?? ''}, Nº ${resp['endereco']?['numero'] ?? ''}'),
+                      buildLinha('Bairro/Cidade', '${resp['endereco']?['bairro'] ?? ''} - ${resp['endereco']?['cidade'] ?? ''}'),
                     ],
                   ),
                 ),
@@ -2235,14 +1492,7 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
               actionsPadding: const EdgeInsets.all(24),
               actions: [
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: corPrimaria,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Fechar Ficha'),
                 ),
@@ -2258,9 +1508,7 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
     setState(() => _sincronizando = true);
     try {
       final alunos = ref.read(alunosStreamProvider).value ?? [];
-      final responsaveisExistentes = List<Map<String, dynamic>>.from(
-        ref.read(responsavelStreamProvider).value ?? [],
-      );
+      final responsaveisExistentes = List<Map<String, dynamic>>.from(ref.read(responsavelStreamProvider).value ?? []);
       final servico = ref.read(responsavelServiceProvider);
 
       int importados = 0;
@@ -2269,7 +1517,9 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
       for (var aluno in alunos) {
         final matriculaAluno = aluno['matricula']?.toString() ?? '';
         final nomeAluno = aluno['nome']?.toString() ?? '';
-        if (matriculaAluno.isEmpty) continue;
+        if (matriculaAluno.isEmpty) {
+          continue;
+        }
 
         final listaResponsaveisFicha = aluno['responsaveis'] as List? ?? [];
         int indexParentesco = 1;
@@ -2278,30 +1528,30 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
           final cpf = (resp['cpf'] ?? '').toString().trim();
           final nome = (resp['nome'] ?? '').toString().trim().toUpperCase();
 
-          if (nome.isEmpty || cpf.isEmpty || cpf.length < 14) continue;
+          if (nome.isEmpty || cpf.isEmpty || cpf.length < 14) {
+            continue;
+          }
 
           int indexExistente = responsaveisExistentes.indexWhere((existente) {
             final cpfExistente = (existente['cpf'] ?? '').toString().trim();
-            final nomeExistente = (existente['nome'] ?? '')
-                .toString()
-                .trim()
-                .toUpperCase();
-            if (cpf.isNotEmpty && cpfExistente == cpf) return true;
-            if (nomeExistente == nome) return true;
+            final nomeExistente = (existente['nome'] ?? '').toString().trim().toUpperCase();
+            if (cpf.isNotEmpty && cpfExistente == cpf) {
+              return true;
+            }
+            if (nomeExistente == nome) {
+              return true;
+            }
             return false;
           });
 
-          final alunoVinculoStr =
-              '${nomeAluno.toUpperCase()} ($matriculaAluno)';
-          final alunoVinculoRaw = {
-            'nome': nomeAluno,
-            'matricula': matriculaAluno,
-          };
+          final alunoVinculoStr = '${nomeAluno.toUpperCase()} ($matriculaAluno)';
+          final alunoVinculoRaw = {'nome': nomeAluno, 'matricula': matriculaAluno};
 
           if (indexExistente == -1) {
             String newId = 'RESP-$matriculaAluno';
-            if (indexParentesco > 1)
+            if (indexParentesco > 1) {
               newId = 'RESP-$matriculaAluno-$indexParentesco';
+            }
 
             final novoResponsavel = {
               'id': newId,
@@ -2320,15 +1570,9 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
             responsaveisExistentes.add(novoResponsavel);
             importados++;
           } else {
-            var responsavelEncontrado = Map<String, dynamic>.from(
-              responsaveisExistentes[indexExistente],
-            );
-            List<String> vinculosAtuais = List<String>.from(
-              responsavelEncontrado['alunosVinculados'] ?? [],
-            );
-            List<dynamic> vinculosRawAtuais = List<dynamic>.from(
-              responsavelEncontrado['alunosVinculadosRaw'] ?? [],
-            );
+            var responsavelEncontrado = Map<String, dynamic>.from(responsaveisExistentes[indexExistente]);
+            List<String> vinculosAtuais = List<String>.from(responsavelEncontrado['alunosVinculados'] ?? []);
+            List<dynamic> vinculosRawAtuais = List<dynamic>.from(responsavelEncontrado['alunosVinculadosRaw'] ?? []);
 
             if (!vinculosAtuais.contains(alunoVinculoStr)) {
               vinculosAtuais.add(alunoVinculoStr);
@@ -2349,41 +1593,28 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
       if (mounted) {
         if (importados > 0 || atualizados > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '$importados novos e $atualizados vínculos de irmãos atualizados!',
-              ),
-              backgroundColor: Colors.green,
-            ),
+            SnackBar(content: Text('$importados novos e $atualizados vínculos de irmãos atualizados!'), backgroundColor: Colors.green),
           );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Todos os responsáveis já estavam 100% sincronizados!',
-              ),
-              backgroundColor: Colors.blue,
-            ),
+            const SnackBar(content: Text('Todos os responsáveis já estavam 100% sincronizados!'), backgroundColor: Colors.blue),
           );
         }
       }
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao importar: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao importar: $e'), backgroundColor: Colors.red));
+      }
     } finally {
-      if (mounted) setState(() => _sincronizando = false);
+      if (mounted) {
+        setState(() => _sincronizando = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
-
     final estadoResponsaveis = ref.watch(responsavelStreamProvider);
     final estadoAlunos = ref.watch(alunosStreamProvider);
     final todosAlunos = estadoAlunos.value ?? [];
@@ -2404,43 +1635,23 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                 width: 250,
                 height: 40,
                 child: TextField(
-                  onChanged: (value) =>
-                      _debouncer.run(() => setState(() => _termoBusca = value)),
+                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
                   decoration: InputDecoration(
                     hintText: 'Pesquisar...',
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      size: 20,
-                      color: Colors.grey,
-                    ),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
                     filled: true,
                     fillColor: Colors.grey.shade100,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                   ),
                 ),
               ),
               const SizedBox(width: 16),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange.shade600,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: _sincronizando
-                    ? null
-                    : _importarResponsaveisDosAlunos,
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade600, foregroundColor: Colors.white),
+                onPressed: _sincronizando ? null : _importarResponsaveisDosAlunos,
                 icon: _sincronizando
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                     : const Icon(Icons.sync_rounded),
                 label: const Text('Puxar dos Alunos'),
               ),
@@ -2454,56 +1665,39 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
               data: (lista) {
                 final filtrados = lista.where((p) {
                   final nome = p['nome']?.toString() ?? '';
-                  if (nome.trim().isEmpty) return false;
+                  if (nome.trim().isEmpty) {
+                    return false;
+                  }
                   return nome.toLowerCase().contains(_termoBusca.toLowerCase());
                 }).toList();
 
-                if (filtrados.isEmpty)
-                  return const Center(
-                    child: Text(
-                      'Nenhum responsável encontrado. Clique em "Puxar dos Alunos".',
-                    ),
-                  );
+                if (filtrados.isEmpty) {
+                  return const Center(child: Text('Nenhum responsável encontrado. Clique em "Puxar dos Alunos".'));
+                }
 
                 return ListView.separated(
                   itemCount: filtrados.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 12),
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final resp = filtrados[index];
                     final inativo = resp['status'] != 'Ativo';
-                    final alunosVinculadosRaw =
-                        resp['alunosVinculadosRaw'] as List? ?? [];
+                    final alunosVinculadosRaw = resp['alunosVinculadosRaw'] as List? ?? [];
 
                     return Card(
                       elevation: 1,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: inativo
-                              ? Colors.red.shade200
-                              : Colors.grey.shade300,
-                        ),
+                        side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 12.0,
-                          horizontal: 16.0,
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
                         child: Row(
                           children: [
                             CircleAvatar(
                               radius: 24,
                               backgroundColor: Colors.grey.shade200,
-                              backgroundImage: resp['fotoUrl'] != null
-                                  ? NetworkImage(resp['fotoUrl'])
-                                  : null,
-                              child: resp['fotoUrl'] == null
-                                  ? const Icon(
-                                      Icons.family_restroom,
-                                      color: Colors.grey,
-                                    )
-                                  : null,
+                              backgroundImage: resp['fotoUrl'] != null ? NetworkImage(resp['fotoUrl']) : null,
+                              child: resp['fotoUrl'] == null ? const Icon(Icons.family_restroom, color: Colors.grey) : null,
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -2511,21 +1705,9 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    resp['nome'] ?? '',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
+                                  Text(resp['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    'ID: ${resp['id']}  |  CPF: ${resp['cpf']}',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
+                                  Text('ID: ${resp['id']}  |  CPF: ${resp['cpf']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                                   if (alunosVinculadosRaw.isNotEmpty) ...[
                                     const SizedBox(height: 4),
                                     Wrap(
@@ -2533,29 +1715,14 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                                       children: alunosVinculadosRaw.map((v) {
                                         return InkWell(
                                           onTap: () {
-                                            final alunoEncontrado = todosAlunos
-                                                .firstWhere(
-                                                  (a) =>
-                                                      a['matricula'] ==
-                                                      v['matricula'],
-                                                  orElse: () => {},
-                                                );
+                                            final alunoEncontrado = todosAlunos.firstWhere((a) => a['matricula'] == v['matricula'], orElse: () => {});
                                             if (alunoEncontrado.isNotEmpty) {
-                                              _abrirFichaAlunoRapida(
-                                                context,
-                                                alunoEncontrado,
-                                              );
+                                              _abrirFichaAlunoRapida(context, alunoEncontrado);
                                             }
                                           },
                                           child: Text(
                                             '${v['nome']} (${v['matricula']})',
-                                            style: TextStyle(
-                                              color: Colors.blue.shade700,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              decoration:
-                                                  TextDecoration.underline,
-                                            ),
+                                            style: TextStyle(color: Colors.blue.shade700, fontSize: 12, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
                                           ),
                                         );
                                       }).toList(),
@@ -2565,39 +1732,28 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: inativo
-                                    ? Colors.red.shade50
-                                    : Colors.green.shade50,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)),
                               child: Text(
                                 resp['status'] ?? 'Ativo',
-                                style: TextStyle(
-                                  color: inativo
-                                      ? Colors.red.shade700
-                                      : Colors.green.shade700,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
+                                style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12),
                               ),
                             ),
                             const SizedBox(width: 24),
                             IconButton(
-                              icon: const Icon(
-                                Icons.visibility_rounded,
-                                color: Colors.blueGrey,
-                              ),
+                              icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
                               tooltip: 'Visualizar Ficha',
-                              onPressed: () => _abrirFichaResponsavel(
-                                context,
-                                resp,
-                                todosAlunos,
-                              ),
+                              onPressed: () => _abrirFichaResponsavel(context, resp, todosAlunos),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_rounded, color: Colors.blue),
+                              tooltip: 'Editar Cadastro',
+                              onPressed: () => context.push('/admin/cadastros/responsavel/novo', extra: resp),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_rounded, color: Colors.red),
+                              tooltip: 'Excluir',
+                              onPressed: () => _confirmarExclusao(context, resp),
                             ),
                           ],
                         ),
@@ -2615,17 +1771,15 @@ class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba>
 }
 
 // ============================================================================
-// 3. COMPONENTE DA ABA DE PROFESSORES
+// 3. ABA DE PROFESSORES
 // ============================================================================
 class _GestaoProfessoresAba extends ConsumerStatefulWidget {
   const _GestaoProfessoresAba();
   @override
-  ConsumerState<_GestaoProfessoresAba> createState() =>
-      _GestaoProfessoresAbaState();
+  ConsumerState<_GestaoProfessoresAba> createState() => _GestaoProfessoresAbaState();
 }
 
-class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
-    with AutomaticKeepAliveClientMixin {
+class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -2633,10 +1787,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
   String _filtroDisciplina = 'TODAS';
   final _debouncer = Debouncer(milliseconds: 400);
 
-  void _confirmarExclusao(
-    BuildContext context,
-    Map<String, dynamic> professor,
-  ) {
+  void _confirmarExclusao(BuildContext context, Map<String, dynamic> professor) {
     showDialog(
       context: context,
       builder: (context) {
@@ -2645,55 +1796,33 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
             children: [
               Icon(Icons.warning_amber_rounded, color: Colors.red),
               SizedBox(width: 8),
-              Text(
-                'Excluir Professor',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text('Excluir Professor', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             ],
           ),
-          content: Text(
-            'Tem certeza que deseja apagar o registro de ${professor['nome']}?\n\nEsta ação não poderá ser desfeita.',
-          ),
+          content: Text('Tem certeza que deseja apagar o registro de ${professor['nome']}?\n\nEsta ação não poderá ser desfeita.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Cancelar',
-                style: TextStyle(color: Colors.grey),
-              ),
+              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
               onPressed: () async {
                 try {
-                  await ref
-                      .read(professorServiceProvider)
-                      .excluirProfessor(professor['id']);
-                  if (!context.mounted) return;
+                  await ref.read(professorServiceProvider).excluirProfessor(professor['id']);
+                  if (!context.mounted) {
+                    return;
+                  }
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Professor excluído.',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      backgroundColor: Colors.red,
-                    ),
+                    const SnackBar(content: Text('Professor excluído.', style: TextStyle(color: Colors.white)), backgroundColor: Colors.red),
                   );
                 } catch (e) {
-                  if (context.mounted)
+                  if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro ao excluir: $e'),
-                        backgroundColor: Colors.red,
-                      ),
+                      SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red),
                     );
+                  }
                 }
               },
               child: const Text('Sim, Excluir'),
@@ -2704,11 +1833,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
     );
   }
 
-  void _abrirFichaProfessor(
-    BuildContext context,
-    Map<String, dynamic> prof,
-    List<Map<String, dynamic>> turmasDoSistema,
-  ) {
+  void _abrirFichaProfessor(BuildContext context, Map<String, dynamic> prof, List<Map<String, dynamic>> turmasDoSistema) {
     final corPrimaria = Theme.of(context).primaryColor;
     final anexos = prof['anexos'] as List? ?? [];
 
@@ -2720,10 +1845,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
           text: TextSpan(
             style: const TextStyle(color: Colors.black87, fontSize: 14),
             children: [
-              TextSpan(
-                text: '$label: ',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
+              TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)),
               TextSpan(text: valor.isEmpty ? 'Não informado' : valor),
             ],
           ),
@@ -2739,30 +1861,15 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
-              '$label: ',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: Colors.black87,
-              ),
-            ),
-            Text(
-              telefone.isEmpty ? 'Não informado' : telefone,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
-            ),
+            Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+            Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)),
             if (numeroLimpo.length >= 10) ...[
               const SizedBox(width: 8),
               Tooltip(
                 message: 'Abrir WhatsApp',
                 child: InkWell(
-                  onTap: () =>
-                      launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
-                  child: Image.asset(
-                    'assets/whatsapp.png',
-                    width: 18,
-                    height: 18,
-                  ),
+                  onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
+                  child: Image.asset('assets/whatsapp.png', width: 18, height: 18),
                 ),
               ),
               const SizedBox(width: 12),
@@ -2793,42 +1900,27 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
         return StatefulBuilder(
           builder: (context, setStateModal) {
             final statusAtual = prof['status'] ?? 'Ativo';
-            final isBloqueado =
-                statusAtual == 'Inativo' || statusAtual == 'Bloqueado';
+            final isBloqueado = statusAtual == 'Inativo' || statusAtual == 'Bloqueado';
 
             return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               titlePadding: const EdgeInsets.all(0),
               title: Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: corPrimaria.withAlpha(13),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                 ),
                 child: Row(
                   children: [
                     InkWell(
-                      onTap: prof['fotoUrl'] != null
-                          ? () => _mostrarFotoAmpliada(context, prof['fotoUrl'])
-                          : null,
+                      onTap: prof['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, prof['fotoUrl']) : null,
                       borderRadius: BorderRadius.circular(32),
                       child: CircleAvatar(
                         radius: 32,
                         backgroundColor: Colors.white,
-                        backgroundImage: prof['fotoUrl'] != null
-                            ? NetworkImage(prof['fotoUrl'])
-                            : null,
-                        child: prof['fotoUrl'] == null
-                            ? Icon(
-                                Icons.assignment_ind_rounded,
-                                size: 32,
-                                color: corPrimaria,
-                              )
-                            : null,
+                        backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null,
+                        child: prof['fotoUrl'] == null ? Icon(Icons.assignment_ind_rounded, size: 32, color: corPrimaria) : null,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -2836,34 +1928,15 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            prof['nome'] ?? 'Professor',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
+                          Text(prof['nome'] ?? 'Professor', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
                           const SizedBox(height: 4),
-                          Text(
-                            'ID: ${prof['id']}',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 14,
-                            ),
-                          ),
+                          Text('ID: ${prof['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                         ],
                       ),
                     ),
                     Row(
                       children: [
-                        Text(
-                          isBloqueado ? 'INATIVO' : 'ATIVO',
-                          style: TextStyle(
-                            color: isBloqueado ? Colors.red : Colors.green,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
+                        Text(isBloqueado ? 'INATIVO' : 'ATIVO', style: TextStyle(color: isBloqueado ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
                         Switch(
                           value: !isBloqueado,
                           activeThumbColor: Colors.green,
@@ -2871,28 +1944,19 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                           onChanged: (val) async {
                             final novoStatus = val ? 'Ativo' : 'Inativo';
                             try {
-                              await ref
-                                  .read(professorServiceProvider)
-                                  .atualizarStatus(prof['id'], novoStatus);
+                              await ref.read(professorServiceProvider).atualizarStatus(prof['id'], novoStatus);
                               setStateModal(() => prof['status'] = novoStatus);
                             } catch (e) {
-                              if (context.mounted)
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Erro ao atualizar: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao atualizar: $e'), backgroundColor: Colors.red));
+                              }
                             }
                           },
                         ),
                       ],
                     ),
                     const SizedBox(width: 16),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.pop(context),
-                    ),
+                    IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
                   ],
                 ),
               ),
@@ -2909,19 +1973,10 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'DADOS PESSOAIS',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple,
-                                  ),
-                                ),
+                                const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                                 const Divider(),
                                 buildLinha('CPF', prof['cpf']),
-                                buildLinha(
-                                  'Nascimento',
-                                  prof['dataNascimento'],
-                                ),
+                                buildLinha('Nascimento', prof['dataNascimento']),
                                 buildLinhaContato('Celular', prof['telefone']),
                                 buildLinha('E-mail', prof['email']),
                               ],
@@ -2932,54 +1987,19 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'ATUAÇÃO PROFISSIONAL',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple,
-                                  ),
-                                ),
+                                const Text('ATUAÇÃO PROFISSIONAL', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                                 const Divider(),
                                 buildLinha('Status', prof['status']),
                                 const SizedBox(height: 4),
-                                const Text(
-                                  'Disciplinas:',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                    color: Colors.black87,
-                                  ),
-                                ),
+                                const Text('Disciplinas:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
                                 const SizedBox(height: 4),
                                 Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: (prof['disciplinas'] as List? ?? [])
-                                      .map(
-                                        (d) => Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade50,
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.blue.shade100,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            d.toString(),
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.blue,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
+                                  spacing: 6, runSpacing: 6,
+                                  children: (prof['disciplinas'] as List? ?? []).map((d) => Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade100)),
+                                    child: Text(d.toString(), style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                                  )).toList(),
                                 ),
                               ],
                             ),
@@ -2987,135 +2007,55 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                         ],
                       ),
                       const SizedBox(height: 24),
-                      const Text(
-                        'LECIONA NAS TURMAS',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
+                      const Text('LECIONA NAS TURMAS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                       const Divider(),
                       if (turmasVinculadas.isEmpty)
-                        const Text(
-                          'Não está vinculado a nenhuma turma.',
-                          style: TextStyle(color: Colors.grey),
-                        )
+                        const Text('Não está vinculado a nenhuma turma.', style: TextStyle(color: Colors.grey))
                       else
                         Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: turmasVinculadas
-                              .map(
-                                (t) => Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.blue.shade50,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: Colors.blue.shade100,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    t,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.blue,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              )
-                              .toList(),
+                          spacing: 6, runSpacing: 6,
+                          children: turmasVinculadas.map((t) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade100)),
+                            child: Text(t, style: const TextStyle(fontSize: 11, color: Colors.blue, fontWeight: FontWeight.bold)),
+                          )).toList(),
                         ),
                       const SizedBox(height: 24),
-                      const Text(
-                        'ENDEREÇO',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
+                      const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                       const Divider(),
-                      buildLinha(
-                        'Logradouro',
-                        '${prof['endereco']?['rua'] ?? ''}, Nº ${prof['endereco']?['numero'] ?? ''}',
-                      ),
-                      buildLinha(
-                        'Bairro/Cidade',
-                        '${prof['endereco']?['bairro'] ?? ''} - ${prof['endereco']?['cidade'] ?? ''}',
-                      ),
+                      buildLinha('Logradouro', '${prof['endereco']?['rua'] ?? ''}, Nº ${prof['endereco']?['numero'] ?? ''}'),
+                      buildLinha('Bairro/Cidade', '${prof['endereco']?['bairro'] ?? ''} - ${prof['endereco']?['cidade'] ?? ''}'),
                       const SizedBox(height: 24),
-                      const Text(
-                        'DOCUMENTOS E CERTIFICADOS',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
+                      const Text('DOCUMENTOS E CERTIFICADOS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                       const Divider(),
                       if (anexos.isEmpty)
-                        const Text(
-                          'Nenhum documento anexado ao perfil.',
-                          style: TextStyle(color: Colors.grey),
-                        )
+                        const Text('Nenhum documento anexado ao perfil.', style: TextStyle(color: Colors.grey))
                       else
                         ...anexos.map((anexo) {
                           final isPDF = anexo['extensao'] == 'pdf';
                           return Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              side: BorderSide(color: Colors.grey.shade300),
-                            ),
+                            margin: const EdgeInsets.only(bottom: 8), elevation: 0,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade300)),
                             child: ListTile(
-                              leading: Icon(
-                                isPDF
-                                    ? Icons.picture_as_pdf_rounded
-                                    : Icons.image_rounded,
-                                color: isPDF ? Colors.red : Colors.blue,
-                              ),
-                              title: Text(
-                                anexo['nome'] ?? 'Documento',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
-                              ),
+                              leading: Icon(isPDF ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPDF ? Colors.red : Colors.blue),
+                              title: Text(anexo['nome'] ?? 'Documento', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                               trailing: IconButton(
-                                icon: const Icon(
-                                  Icons.open_in_new_rounded,
-                                  color: Colors.deepPurple,
-                                ),
+                                icon: const Icon(Icons.open_in_new_rounded, color: Colors.deepPurple),
                                 tooltip: 'Visualizar / Baixar',
                                 onPressed: () async {
                                   final url = anexo['url'];
-                                  if (url != null &&
-                                      await canLaunchUrl(Uri.parse(url))) {
-                                    await launchUrl(
-                                      Uri.parse(url),
-                                      mode: LaunchMode.externalApplication,
-                                    );
+                                  if (url != null && await canLaunchUrl(Uri.parse(url))) {
+                                    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
                                   } else {
-                                    if (context.mounted)
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Não foi possível abrir o arquivo.',
-                                          ),
-                                        ),
-                                      );
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Não foi possível abrir o arquivo.')));
+                                    }
                                   }
                                 },
                               ),
                             ),
                           );
-                        }),
+                        }).toList(),
                     ],
                   ),
                 ),
@@ -3123,14 +2063,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
               actionsPadding: const EdgeInsets.all(24),
               actions: [
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: corPrimaria,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Fechar Ficha'),
                 ),
@@ -3156,27 +2089,26 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
         children: [
           Row(
             children: [
-              const Text(
-                'Professores Cadastrados',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
+              const Text('Professores Cadastrados', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const Spacer(),
               estadoProfessores.when(
                 loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
+                error: (erro, stack) => const SizedBox.shrink(),
                 data: (professores) {
                   final disciplinasSet = {'TODAS'};
                   for (var prof in professores) {
                     final discList = prof['disciplinas'] as List? ?? [];
                     for (var d in discList) {
                       final str = d.toString().toUpperCase().trim();
-                      if (str.isNotEmpty) disciplinasSet.add(str);
+                      if (str.isNotEmpty) {
+                        disciplinasSet.add(str);
+                      }
                     }
                   }
-                  final listaDisciplinas = disciplinasSet.toList()
-                    ..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
-                  if (!listaDisciplinas.contains(_filtroDisciplina))
+                  final listaDisciplinas = disciplinasSet.toList()..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
+                  if (!listaDisciplinas.contains(_filtroDisciplina)) {
                     _filtroDisciplina = 'TODAS';
+                  }
 
                   return Container(
                     constraints: const BoxConstraints(maxWidth: 300),
@@ -3191,31 +2123,17 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                       child: DropdownButton<String>(
                         isExpanded: true,
                         value: _filtroDisciplina,
-                        icon: const Icon(
-                          Icons.filter_alt_rounded,
-                          color: Colors.blue,
-                          size: 20,
-                        ),
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
                         onChanged: (v) {
-                          if (v != null) setState(() => _filtroDisciplina = v);
+                          if (v != null) {
+                            setState(() => _filtroDisciplina = v);
+                          }
                         },
-                        items: listaDisciplinas
-                            .map(
-                              (t) => DropdownMenuItem(
-                                value: t,
-                                child: Text(
-                                  t == 'TODAS' ? 'Todas as Matérias' : t,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.black87),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                        items: listaDisciplinas.map((t) => DropdownMenuItem(
+                          value: t,
+                          child: Text(t == 'TODAS' ? 'Todas as Matérias' : t, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)),
+                        )).toList(),
                       ),
                     ),
                   );
@@ -3223,32 +2141,21 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
               ),
               const SizedBox(width: 16),
               SizedBox(
-                width: 250,
-                height: 40,
+                width: 250, height: 40,
                 child: TextField(
-                  onChanged: (value) =>
-                      _debouncer.run(() => setState(() => _termoBusca = value)),
+                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
                   decoration: InputDecoration(
                     hintText: 'Pesquisar professor...',
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      size: 20,
-                      color: Colors.grey,
-                    ),
+                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide.none,
-                    ),
+                    filled: true, fillColor: Colors.grey.shade100,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                   ),
                 ),
               ),
               const SizedBox(width: 16),
               ElevatedButton.icon(
-                onPressed: () =>
-                    context.push('/admin/cadastros/professor/novo'),
+                onPressed: () => context.push('/admin/cadastros/professor/novo'),
                 icon: const Icon(Icons.person_add_alt_1_rounded),
                 label: const Text('Novo Professor'),
               ),
@@ -3258,45 +2165,33 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
           Expanded(
             child: estadoProfessores.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (erro, stack) =>
-                  Center(child: Text('Erro ao carregar: $erro')),
+              error: (erro, stack) => Center(child: Text('Erro ao carregar: $erro')),
               data: (professores) {
                 final filtrados = professores.where((p) {
                   final nome = p['nome']?.toString() ?? '';
                   final id = p['id']?.toString() ?? '';
-                  if (nome.trim().isEmpty || id.trim().isEmpty || id == 'null')
+                  if (nome.trim().isEmpty || id.trim().isEmpty || id == 'null') {
                     return false;
+                  }
 
                   final busca = _termoBusca.toLowerCase();
                   final matchBusca = nome.toLowerCase().contains(busca);
 
-                  final discList = (p['disciplinas'] as List? ?? [])
-                      .map((e) => e.toString().toUpperCase().trim())
-                      .toList();
-                  final matchDisc =
-                      _filtroDisciplina == 'TODAS' ||
-                      discList.contains(_filtroDisciplina);
+                  final discList = (p['disciplinas'] as List? ?? []).map((e) => e.toString().toUpperCase().trim()).toList();
+                  final matchDisc = _filtroDisciplina == 'TODAS' || discList.contains(_filtroDisciplina);
 
                   return matchBusca && matchDisc;
                 }).toList();
 
-                if (filtrados.isEmpty)
-                  return const Center(
-                    child: Text(
-                      'Nenhum professor encontrado com esses filtros.',
-                    ),
-                  );
+                if (filtrados.isEmpty) {
+                  return const Center(child: Text('Nenhum professor encontrado com esses filtros.'));
+                }
 
-                filtrados.sort(
-                  (a, b) => (a['nome'] ?? '').toString().compareTo(
-                    (b['nome'] ?? '').toString(),
-                  ),
-                );
+                filtrados.sort((a, b) => (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()));
 
                 return ListView.separated(
                   itemCount: filtrados.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 12),
+                  separatorBuilder: (context, index) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
                     final prof = filtrados[index];
                     final inativo = prof['status'] != 'Ativo';
@@ -3305,39 +2200,20 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                       elevation: 1,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: inativo
-                              ? Colors.red.shade200
-                              : Colors.grey.shade300,
-                        ),
+                        side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 8.0,
-                          horizontal: 16.0,
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
                         child: Row(
                           children: [
                             InkWell(
-                              onTap: prof['fotoUrl'] != null
-                                  ? () => _mostrarFotoAmpliada(
-                                      context,
-                                      prof['fotoUrl'],
-                                    )
-                                  : null,
+                              onTap: prof['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, prof['fotoUrl']) : null,
                               borderRadius: BorderRadius.circular(24),
                               child: CircleAvatar(
                                 radius: 24,
                                 backgroundColor: Colors.grey.shade200,
-                                backgroundImage: prof['fotoUrl'] != null
-                                    ? NetworkImage(prof['fotoUrl'])
-                                    : null,
-                                child: prof['fotoUrl'] == null
-                                    ? const Icon(
-                                        Icons.assignment_ind_rounded,
-                                        color: Colors.grey,
-                                      )
-                                    : null,
+                                backgroundImage: prof['fotoUrl'] != null ? NetworkImage(prof['fotoUrl']) : null,
+                                child: prof['fotoUrl'] == null ? const Icon(Icons.assignment_ind_rounded, color: Colors.grey) : null,
                               ),
                             ),
                             const SizedBox(width: 16),
@@ -3346,21 +2222,9 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    prof['nome'] ?? 'Sem nome',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
+                                  Text(prof['nome'] ?? 'Sem nome', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                   const SizedBox(height: 4),
-                                  Text(
-                                    'ID: ${prof['id']}',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
+                                  Text('ID: ${prof['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                                 ],
                               ),
                             ),
@@ -3368,71 +2232,24 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
                               flex: 2,
                               child: Text(
                                 (prof['disciplinas'] as List? ?? []).join(', '),
-                                style: TextStyle(
-                                  color: Colors.grey.shade700,
-                                  fontSize: 12,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: inativo
-                                    ? Colors.red.shade50
-                                    : Colors.green.shade50,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)),
                               child: Text(
                                 prof['status'] ?? 'Ativo',
-                                style: TextStyle(
-                                  color: inativo
-                                      ? Colors.red.shade700
-                                      : Colors.green.shade700,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 12,
-                                ),
+                                style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12),
                               ),
                             ),
                             const SizedBox(width: 24),
                             Row(
                               children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.visibility_rounded,
-                                    color: Colors.blueGrey,
-                                  ),
-                                  tooltip: 'Visualizar Ficha',
-                                  onPressed: () => _abrirFichaProfessor(
-                                    context,
-                                    prof,
-                                    turmas,
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.edit_rounded,
-                                    color: Colors.blue,
-                                  ),
-                                  tooltip: 'Editar Professor',
-                                  onPressed: () => context.push(
-                                    '/admin/cadastros/professor/novo',
-                                    extra: prof,
-                                  ),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete_rounded,
-                                    color: Colors.red,
-                                  ),
-                                  tooltip: 'Excluir',
-                                  onPressed: () =>
-                                      _confirmarExclusao(context, prof),
-                                ),
+                                IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaProfessor(context, prof, turmas)),
+                                IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Professor', onPressed: () => context.push('/admin/cadastros/professor/novo', extra: prof)),
+                                IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, prof)),
                               ],
                             ),
                           ],
@@ -3451,17 +2268,15 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba>
 }
 
 // ============================================================================
-// 4. COMPONENTE DA ABA DE SECRETÁRIA
+// 4. ABA DE SECRETÁRIA
 // ============================================================================
 class _GestaoSecretariaAba extends ConsumerStatefulWidget {
   const _GestaoSecretariaAba();
   @override
-  ConsumerState<_GestaoSecretariaAba> createState() =>
-      _GestaoSecretariaAbaState();
+  ConsumerState<_GestaoSecretariaAba> createState() => _GestaoSecretariaAbaState();
 }
 
-class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
-    with AutomaticKeepAliveClientMixin {
+class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -3483,42 +2298,24 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
           ),
           content: Text('Deseja excluir o registro de ${membro['nome']}?'),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Cancelar',
-                style: TextStyle(color: Colors.grey),
-              ),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () async {
                 try {
-                  await ref
-                      .read(secretariaServiceProvider)
-                      .excluirSecretaria(membro['id']);
-                  if (!context.mounted) return;
+                  await ref.read(secretariaServiceProvider).excluirSecretaria(membro['id']);
+                  if (!context.mounted) {
+                    return;
+                  }
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Registro excluído.'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Registro excluído.'), backgroundColor: Colors.green));
                 } catch (e) {
-                  if (context.mounted)
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Erro: $e'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                  }
                 }
               },
-              child: const Text(
-                'Excluir',
-                style: TextStyle(color: Colors.white),
-              ),
+              child: const Text('Excluir', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -3537,10 +2334,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
           text: TextSpan(
             style: const TextStyle(color: Colors.black87, fontSize: 14),
             children: [
-              TextSpan(
-                text: '$label: ',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
+              TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)),
               TextSpan(text: valor.isEmpty ? 'Não informado' : valor),
             ],
           ),
@@ -3556,30 +2350,15 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(
-              '$label: ',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 14,
-                color: Colors.black87,
-              ),
-            ),
-            Text(
-              telefone.isEmpty ? 'Não informado' : telefone,
-              style: const TextStyle(fontSize: 14, color: Colors.black87),
-            ),
+            Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
+            Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)),
             if (numeroLimpo.length >= 10) ...[
               const SizedBox(width: 8),
               Tooltip(
                 message: 'Abrir WhatsApp',
                 child: InkWell(
-                  onTap: () =>
-                      launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
-                  child: Image.asset(
-                    'assets/whatsapp.png',
-                    width: 18,
-                    height: 18,
-                  ),
+                  onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
+                  child: Image.asset('assets/whatsapp.png', width: 18, height: 18),
                 ),
               ),
               const SizedBox(width: 12),
@@ -3602,42 +2381,23 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
         return StatefulBuilder(
           builder: (context, setStateModal) {
             final statusAtual = mem['status'] ?? 'Ativo';
-            final isBloqueado =
-                statusAtual == 'Inativo' || statusAtual == 'Bloqueado';
+            final isBloqueado = statusAtual == 'Inativo' || statusAtual == 'Bloqueado';
 
             return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               titlePadding: const EdgeInsets.all(0),
               title: Container(
                 padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: corPrimaria.withAlpha(13),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(16),
-                  ),
-                ),
+                decoration: BoxDecoration(color: corPrimaria.withAlpha(13), borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
                 child: Row(
                   children: [
                     InkWell(
-                      onTap: mem['fotoUrl'] != null
-                          ? () => _mostrarFotoAmpliada(context, mem['fotoUrl'])
-                          : null,
+                      onTap: mem['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, mem['fotoUrl']) : null,
                       borderRadius: BorderRadius.circular(32),
                       child: CircleAvatar(
-                        radius: 32,
-                        backgroundColor: Colors.white,
-                        backgroundImage: mem['fotoUrl'] != null
-                            ? NetworkImage(mem['fotoUrl'])
-                            : null,
-                        child: mem['fotoUrl'] == null
-                            ? Icon(
-                                Icons.support_agent_rounded,
-                                size: 32,
-                                color: corPrimaria,
-                              )
-                            : null,
+                        radius: 32, backgroundColor: Colors.white,
+                        backgroundImage: mem['fotoUrl'] != null ? NetworkImage(mem['fotoUrl']) : null,
+                        child: mem['fotoUrl'] == null ? Icon(Icons.support_agent_rounded, size: 32, color: corPrimaria) : null,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -3645,63 +2405,34 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            mem['nome'] ?? 'Colaborador',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
+                          Text(mem['nome'] ?? 'Colaborador', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
                           const SizedBox(height: 4),
-                          Text(
-                            'ID: ${mem['id']}',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 14,
-                            ),
-                          ),
+                          Text('ID: ${mem['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
                         ],
                       ),
                     ),
                     Row(
                       children: [
-                        Text(
-                          isBloqueado ? 'INATIVO' : 'ATIVO',
-                          style: TextStyle(
-                            color: isBloqueado ? Colors.red : Colors.green,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                          ),
-                        ),
+                        Text(isBloqueado ? 'INATIVO' : 'ATIVO', style: TextStyle(color: isBloqueado ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
                         Switch(
                           value: !isBloqueado,
-                          activeThumbColor: Colors.green,
-                          inactiveThumbColor: Colors.red,
+                          activeThumbColor: Colors.green, inactiveThumbColor: Colors.red,
                           onChanged: (val) async {
                             final novoStatus = val ? 'Ativo' : 'Inativo';
                             try {
-                              await ref
-                                  .read(secretariaServiceProvider)
-                                  .atualizarStatus(mem['id'], novoStatus);
+                              await ref.read(secretariaServiceProvider).atualizarStatus(mem['id'], novoStatus);
                               setStateModal(() => mem['status'] = novoStatus);
                             } catch (e) {
-                              if (context.mounted)
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Erro ao atualizar: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao atualizar: $e'), backgroundColor: Colors.red));
+                              }
                             }
                           },
                         ),
                       ],
                     ),
                     const SizedBox(width: 16),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.pop(context),
-                    ),
+                    IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
                   ],
                 ),
               ),
@@ -3718,13 +2449,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'DADOS PESSOAIS',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple,
-                                  ),
-                                ),
+                                const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                                 const Divider(),
                                 buildLinha('CPF', mem['cpf']),
                                 buildLinha('Nascimento', mem['dataNascimento']),
@@ -3738,42 +2463,21 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'ATUAÇÃO',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepPurple,
-                                  ),
-                                ),
+                                const Text('ATUAÇÃO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                                 const Divider(),
                                 buildLinha('Status', mem['status']),
                                 const SizedBox(height: 4),
-                                buildLinha(
-                                  'Função/Cargo',
-                                  mem['funcao'] ?? 'Não informada',
-                                ),
+                                buildLinha('Função/Cargo', mem['funcao'] ?? 'Não informada'),
                               ],
                             ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 24),
-                      const Text(
-                        'ENDEREÇO',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.deepPurple,
-                        ),
-                      ),
+                      const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
                       const Divider(),
-                      buildLinha(
-                        'Logradouro',
-                        '${mem['endereco']?['rua'] ?? ''}, Nº ${mem['endereco']?['numero'] ?? ''}',
-                      ),
-                      buildLinha(
-                        'Bairro/Cidade',
-                        '${mem['endereco']?['bairro'] ?? ''} - ${mem['endereco']?['cidade'] ?? ''}',
-                      ),
+                      buildLinha('Logradouro', '${mem['endereco']?['rua'] ?? ''}, Nº ${mem['endereco']?['numero'] ?? ''}'),
+                      buildLinha('Bairro/Cidade', '${mem['endereco']?['bairro'] ?? ''} - ${mem['endereco']?['cidade'] ?? ''}'),
                     ],
                   ),
                 ),
@@ -3781,14 +2485,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
               actionsPadding: const EdgeInsets.all(24),
               actions: [
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: corPrimaria,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
                   onPressed: () => Navigator.pop(context),
                   child: const Text('Fechar Ficha'),
                 ),
@@ -3813,128 +2510,82 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
         data: (equipe) {
           final funcoesSet = {'TODAS'};
           for (var mem in equipe) {
-            final funcao = (mem['funcao'] ?? '')
-                .toString()
-                .toUpperCase()
-                .trim();
-            if (funcao.isNotEmpty) funcoesSet.add(funcao);
+            final funcao = (mem['funcao'] ?? '').toString().toUpperCase().trim();
+            if (funcao.isNotEmpty) {
+              funcoesSet.add(funcao);
+            }
           }
-          final listaFuncoes = funcoesSet.toList()
-            ..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
-          if (!listaFuncoes.contains(_filtroFuncao)) _filtroFuncao = 'TODAS';
+          final listaFuncoes = funcoesSet.toList()..sort((a, b) => a == 'TODAS' ? -1 : a.compareTo(b));
+          if (!listaFuncoes.contains(_filtroFuncao)) {
+            _filtroFuncao = 'TODAS';
+          }
 
           final filtrados = equipe.where((mem) {
             final nome = (mem['nome'] ?? '').toString().toLowerCase();
             final id = (mem['id'] ?? '').toString().toLowerCase();
-            if (nome.trim().isEmpty || id.trim().isEmpty || id == 'null')
+            if (nome.trim().isEmpty || id.trim().isEmpty || id == 'null') {
               return false;
+            }
 
             final busca = _termoBusca.toLowerCase().trim();
             final idApenasNumeros = id.replaceAll(RegExp(r'[^0-9]'), '');
-            final funcao = (mem['funcao'] ?? '')
-                .toString()
-                .toUpperCase()
-                .trim();
+            final funcao = (mem['funcao'] ?? '').toString().toUpperCase().trim();
 
-            final matchBusca =
-                busca.isEmpty ||
-                nome.contains(busca) ||
-                id.contains(busca) ||
-                idApenasNumeros.contains(busca);
-            final matchFuncao =
-                _filtroFuncao == 'TODAS' || funcao == _filtroFuncao;
+            final matchBusca = busca.isEmpty || nome.contains(busca) || id.contains(busca) || idApenasNumeros.contains(busca);
+            final matchFuncao = _filtroFuncao == 'TODAS' || funcao == _filtroFuncao;
 
             return matchBusca && matchFuncao;
           }).toList();
 
-          filtrados.sort(
-            (a, b) => (a['nome'] ?? '').toString().compareTo(
-              (b['nome'] ?? '').toString(),
-            ),
-          );
+          filtrados.sort((a, b) => (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()));
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Text(
-                    'Equipe da Secretaria',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
+                  const Text('Equipe da Secretaria', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const Spacer(),
-
                   Container(
                     constraints: const BoxConstraints(maxWidth: 300),
                     height: 40,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: Colors.blue.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
                         isExpanded: true,
                         value: _filtroFuncao,
-                        icon: const Icon(
-                          Icons.filter_alt_rounded,
-                          color: Colors.blue,
-                          size: 20,
-                        ),
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 13),
                         onChanged: (v) {
-                          if (v != null) setState(() => _filtroFuncao = v);
+                          if (v != null) {
+                            setState(() => _filtroFuncao = v);
+                          }
                         },
-                        items: listaFuncoes
-                            .map(
-                              (f) => DropdownMenuItem(
-                                value: f,
-                                child: Text(
-                                  f == 'TODAS' ? 'Todas as Funções' : f,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.black87),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                        items: listaFuncoes.map((f) => DropdownMenuItem(
+                          value: f,
+                          child: Text(f == 'TODAS' ? 'Todas as Funções' : f, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.black87)),
+                        )).toList(),
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
-
                   SizedBox(
-                    width: 250,
-                    height: 40,
+                    width: 250, height: 40,
                     child: TextField(
-                      onChanged: (value) => _debouncer.run(
-                        () => setState(() => _termoBusca = value),
-                      ),
+                      onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
                       decoration: InputDecoration(
                         hintText: 'Pesquisar nome ou ID (ex: 03)...',
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          size: 20,
-                          color: Colors.grey,
-                        ),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
                         contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
+                        filled: true, fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton.icon(
-                    onPressed: () =>
-                        context.push('/admin/cadastros/secretaria/novo'),
+                    onPressed: () => context.push('/admin/cadastros/secretaria/novo'),
                     icon: const Icon(Icons.person_add_alt_1_rounded),
                     label: const Text('Adicionar Equipe'),
                   ),
@@ -3943,16 +2594,10 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
               const SizedBox(height: 24),
               Expanded(
                 child: filtrados.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Nenhum colaborador encontrado para o filtro/pesquisa.',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      )
+                    ? const Center(child: Text('Nenhum colaborador encontrado para o filtro/pesquisa.', style: TextStyle(color: Colors.grey)))
                     : ListView.separated(
                         itemCount: filtrados.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: 12),
+                        separatorBuilder: (context, index) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final mem = filtrados[index];
                           final inativo = mem['status'] != 'Ativo';
@@ -3961,111 +2606,44 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
                             elevation: 1,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: inativo
-                                    ? Colors.red.shade200
-                                    : Colors.grey.shade300,
-                              ),
+                              side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300),
                             ),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 8.0,
-                                horizontal: 16.0,
-                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
                               child: Row(
                                 children: [
                                   CircleAvatar(
                                     radius: 24,
                                     backgroundColor: Colors.grey.shade200,
-                                    backgroundImage: mem['fotoUrl'] != null
-                                        ? NetworkImage(mem['fotoUrl'])
-                                        : null,
-                                    child: mem['fotoUrl'] == null
-                                        ? const Icon(
-                                            Icons.support_agent_rounded,
-                                            color: Colors.grey,
-                                          )
-                                        : null,
+                                    backgroundImage: mem['fotoUrl'] != null ? NetworkImage(mem['fotoUrl']) : null,
+                                    child: mem['fotoUrl'] == null ? const Icon(Icons.support_agent_rounded, color: Colors.grey) : null,
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
                                     flex: 3,
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          mem['nome'] ?? '',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
+                                        Text(mem['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                         const SizedBox(height: 4),
-                                        Text(
-                                          'ID: ${mem['id']}  |  Função: ${mem['funcao'] ?? 'Não informada'}  |  Tel: ${mem['telefone']}',
-                                          style: TextStyle(
-                                            color: Colors.grey.shade600,
-                                            fontSize: 12,
-                                          ),
-                                        ),
+                                        Text('ID: ${mem['id']}  |  Função: ${mem['funcao'] ?? 'Não informada'}  |  Tel: ${mem['telefone']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
                                       ],
                                     ),
                                   ),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: inativo
-                                          ? Colors.red.shade50
-                                          : Colors.green.shade50,
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)),
                                     child: Text(
                                       mem['status'] ?? 'Ativo',
-                                      style: TextStyle(
-                                        color: inativo
-                                            ? Colors.red.shade700
-                                            : Colors.green.shade700,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                      ),
+                                      style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12),
                                     ),
                                   ),
                                   const SizedBox(width: 24),
                                   Row(
                                     children: [
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.visibility_rounded,
-                                          color: Colors.blueGrey,
-                                        ),
-                                        tooltip: 'Visualizar Ficha',
-                                        onPressed: () =>
-                                            _abrirFichaSecretaria(context, mem),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.edit_rounded,
-                                          color: Colors.blue,
-                                        ),
-                                        tooltip: 'Editar Cadastro',
-                                        onPressed: () => context.push(
-                                          '/admin/cadastros/secretaria/novo',
-                                          extra: mem,
-                                        ),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_rounded,
-                                          color: Colors.red,
-                                        ),
-                                        tooltip: 'Excluir',
-                                        onPressed: () =>
-                                            _confirmarExclusao(context, mem),
-                                      ),
+                                      IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaSecretaria(context, mem)),
+                                      IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => context.push('/admin/cadastros/secretaria/novo', extra: mem)),
+                                      IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, mem)),
                                     ],
                                   ),
                                 ],
@@ -4084,7 +2662,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba>
 }
 
 // ============================================================================
-// 5. COMPONENTE DA ABA DE TURMAS
+// 5. ABA DE TURMAS
 // ============================================================================
 class _GestaoTurmasAba extends ConsumerStatefulWidget {
   const _GestaoTurmasAba();
@@ -4092,8 +2670,7 @@ class _GestaoTurmasAba extends ConsumerStatefulWidget {
   ConsumerState<_GestaoTurmasAba> createState() => _GestaoTurmasAbaState();
 }
 
-class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
-    with AutomaticKeepAliveClientMixin {
+class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
@@ -4103,11 +2680,7 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
 
   int _calcularPesoTurmaMEC(String nome) {
     final n = nome.toUpperCase();
-    if (n.contains('MÉDIO') ||
-        n.contains('MEDIO') ||
-        n.contains('SÉRIE') ||
-        n.contains('SERIE') ||
-        n.contains('TERCEIRÃO')) {
+    if (n.contains('MÉDIO') || n.contains('MEDIO') || n.contains('SÉRIE') || n.contains('SERIE') || n.contains('TERCEIRÃO')) {
       if (n.contains('1') || n.contains('PRIMEIR')) return 210;
       if (n.contains('2') || n.contains('SEGUND')) return 220;
       if (n.contains('3') || n.contains('TERCEIR')) return 230;
@@ -4120,36 +2693,18 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
       if (n.contains('4') || n.contains('QUART')) return 140;
       if (n.contains('5') || n.contains('QUINT')) return 150;
       if (n.contains('6') || n.contains('SEXT')) return 160;
-      if (n.contains('7') || n.contains('SÉTIM') || n.contains('SETIM'))
-        return 170;
+      if (n.contains('7') || n.contains('SÉTIM') || n.contains('SETIM')) return 170;
       if (n.contains('8') || n.contains('OITAV')) return 180;
       if (n.contains('9') || n.contains('NON')) return 190;
       return 100;
     }
     if (n.contains('BERÇÁRIO') || n.contains('BERCARIO')) return 10;
     if (n.contains('MATERNAL')) return 20;
-    if (n.contains('INFANTIL I') ||
-        n.contains('INFANTIL 1') ||
-        n.contains('JARDIM I') ||
-        n.contains('JARDIM 1'))
-      return 30;
-    if (n.contains('INFANTIL II') ||
-        n.contains('INFANTIL 2') ||
-        n.contains('JARDIM II') ||
-        n.contains('JARDIM 2'))
-      return 40;
+    if (n.contains('INFANTIL I') || n.contains('INFANTIL 1') || n.contains('JARDIM I') || n.contains('JARDIM 1')) return 30;
+    if (n.contains('INFANTIL II') || n.contains('INFANTIL 2') || n.contains('JARDIM II') || n.contains('JARDIM 2')) return 40;
     if (n.contains('INFANTIL III') || n.contains('INFANTIL 3')) return 50;
-    if (n.contains('INFANTIL IV') ||
-        n.contains('INFANTIL 4') ||
-        n.contains('PRÉ I') ||
-        n.contains('PRÉ 1'))
-      return 60;
-    if (n.contains('INFANTIL V') ||
-        n.contains('INFANTIL 5') ||
-        n.contains('PRÉ II') ||
-        n.contains('PRÉ 2') ||
-        n.contains('PRÉ'))
-      return 70;
+    if (n.contains('INFANTIL IV') || n.contains('INFANTIL 4') || n.contains('PRÉ I') || n.contains('PRÉ 1')) return 60;
+    if (n.contains('INFANTIL V') || n.contains('INFANTIL 5') || n.contains('PRÉ II') || n.contains('PRÉ 2') || n.contains('PRÉ')) return 70;
     if (n.contains('INFANTIL')) return 80;
     return 999;
   }
@@ -4165,41 +2720,28 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
             Text('Excluir Turma', style: TextStyle(color: Colors.red)),
           ],
         ),
-        content: Text(
-          'Deseja realmente apagar a turma ${turma['nome']}?\n\nAtenção: Isso não apagará os alunos vinculados, mas eles ficarão sem turma.',
-        ),
+        content: Text('Deseja realmente apagar a turma ${turma['nome']}?\n\nAtenção: Isso não apagará os alunos vinculados, mas eles ficarão sem turma.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               try {
                 await ref.read(turmaServiceProvider).excluirTurma(turma['id']);
-                if (!context.mounted) return;
+                if (!context.mounted) {
+                  return;
+                }
                 Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Turma excluída com sucesso!'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turma excluída com sucesso!'), backgroundColor: Colors.green));
+                }
               } catch (e) {
-                if (context.mounted)
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Erro ao excluir: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao excluir: $e'), backgroundColor: Colors.red));
+                }
               }
             },
-            child: const Text(
-              'Sim, Excluir',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('Sim, Excluir', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -4217,13 +2759,11 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
       padding: const EdgeInsets.all(24.0),
       child: estadoTurmas.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (erro, stack) =>
-            Center(child: Text('Erro ao carregar turmas: $erro')),
+        error: (erro, stack) => Center(child: Text('Erro ao carregar turmas: $erro')),
         data: (turmas) {
           final Set<String> anosSet = {DateTime.now().year.toString()};
           for (var t in turmas) {
-            if (t['anoLetivo'] != null &&
-                t['anoLetivo'].toString().isNotEmpty) {
+            if (t['anoLetivo'] != null && t['anoLetivo'].toString().isNotEmpty) {
               anosSet.add(t['anoLetivo'].toString());
             }
           }
@@ -4231,11 +2771,8 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
           listaAnos.insert(0, 'TODOS');
 
           final filtradas = turmas.where((t) {
-            final matchBusca = t['nome'].toString().toLowerCase().contains(
-              _termoBusca.toLowerCase(),
-            );
-            final matchAno =
-                _anoSelecionado == 'TODOS' || t['anoLetivo'] == _anoSelecionado;
+            final matchBusca = t['nome'].toString().toLowerCase().contains(_termoBusca.toLowerCase());
+            final matchAno = _anoSelecionado == 'TODOS' || t['anoLetivo'] == _anoSelecionado;
             return matchBusca && matchAno;
           }).toList();
 
@@ -4243,9 +2780,7 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
             final pesoA = _calcularPesoTurmaMEC(a['nome'] ?? '');
             final pesoB = _calcularPesoTurmaMEC(b['nome'] ?? '');
             if (pesoA == pesoB) {
-              return (a['nome'] ?? '').toString().compareTo(
-                (b['nome'] ?? '').toString(),
-              );
+              return (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString());
             }
             return pesoA.compareTo(pesoB);
           });
@@ -4255,88 +2790,49 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
             children: [
               Row(
                 children: [
-                  const Text(
-                    'Turmas Cadastradas',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
+                  const Text('Turmas Cadastradas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const Spacer(),
                   Container(
                     height: 40,
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: Colors.blue.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.blue.shade200), borderRadius: BorderRadius.circular(8)),
                     child: DropdownButtonHideUnderline(
                       child: DropdownButton<String>(
-                        value: listaAnos.contains(_anoSelecionado)
-                            ? _anoSelecionado
-                            : listaAnos.first,
-                        icon: const Icon(
-                          Icons.filter_alt_rounded,
-                          color: Colors.blue,
-                          size: 20,
-                        ),
-                        style: const TextStyle(
-                          color: Colors.blue,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        value: listaAnos.contains(_anoSelecionado) ? _anoSelecionado : listaAnos.first,
+                        icon: const Icon(Icons.filter_alt_rounded, color: Colors.blue, size: 20),
+                        style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 14),
                         onChanged: (novoAno) {
-                          if (novoAno != null)
+                          if (novoAno != null) {
                             setState(() => _anoSelecionado = novoAno);
+                          }
                         },
-                        items: listaAnos
-                            .map(
-                              (ano) => DropdownMenuItem(
-                                value: ano,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 8.0),
-                                  child: Text(
-                                    ano == 'TODOS'
-                                        ? 'Todos os Anos'
-                                        : 'Ano Letivo: $ano',
-                                    style: const TextStyle(
-                                      color: Colors.black87,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            )
-                            .toList(),
+                        items: listaAnos.map((ano) => DropdownMenuItem(
+                          value: ano,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Text(ano == 'TODOS' ? 'Todos os Anos' : 'Ano Letivo: $ano', style: const TextStyle(color: Colors.black87)),
+                          ),
+                        )).toList(),
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
                   SizedBox(
-                    width: 250,
-                    height: 40,
+                    width: 250, height: 40,
                     child: TextField(
-                      onChanged: (value) => _debouncer.run(
-                        () => setState(() => _termoBusca = value),
-                      ),
+                      onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
                       decoration: InputDecoration(
                         hintText: 'Pesquisar turma...',
-                        prefixIcon: const Icon(
-                          Icons.search_rounded,
-                          size: 20,
-                          color: Colors.grey,
-                        ),
+                        prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
                         contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: BorderSide.none,
-                        ),
+                        filled: true, fillColor: Colors.grey.shade100,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                       ),
                     ),
                   ),
                   const SizedBox(width: 16),
                   ElevatedButton.icon(
-                    onPressed: () =>
-                        context.push('/admin/cadastros/turma/novo'),
+                    onPressed: () => context.push('/admin/cadastros/turma/novo'),
                     icon: const Icon(Icons.meeting_room_rounded),
                     label: const Text('Nova Turma'),
                   ),
@@ -4345,187 +2841,85 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
               const SizedBox(height: 24),
               Expanded(
                 child: filtradas.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Nenhuma turma encontrada para o filtro selecionado.',
-                          style: TextStyle(color: Colors.grey.shade600),
-                        ),
-                      )
+                    ? Center(child: Text('Nenhuma turma encontrada para o filtro selecionado.', style: TextStyle(color: Colors.grey.shade600)))
                     : ListView.separated(
                         itemCount: filtradas.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: 12),
+                        separatorBuilder: (context, index) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final turma = filtradas[index];
                           final statusTurma = turma['status'] ?? 'FORMADA';
                           final emFormacao = statusTurma == 'EM FORMAÇÃO';
                           final arquivada = statusTurma == 'Inativa';
-                          final isExtra =
-                              _calcularPesoTurmaMEC(turma['nome'] ?? '') == 999;
-
-                          final profsCount =
-                              (turma['professoresVinculados'] as List? ?? [])
-                                  .length;
+                          final isExtra = _calcularPesoTurmaMEC(turma['nome'] ?? '') == 999;
+                          final profsCount = (turma['professoresVinculados'] as List? ?? []).length;
                           final idTurma = turma['id'].toString();
                           final turnoFormatado = turma['turno'] ?? '';
-                          final turmaNomeOficial =
-                              '${turma['nome']} (${turma['anoLetivo']}) - $turnoFormatado'
-                                  .toUpperCase();
-                          final turmaNomeAntigo =
-                              '${turma['nome']} (${turma['anoLetivo']})'
-                                  .toUpperCase();
+                          final turmaNomeOficial = '${turma['nome']} (${turma['anoLetivo']}) - $turnoFormatado'.toUpperCase();
+                          final turmaNomeAntigo = '${turma['nome']} (${turma['anoLetivo']})'.toUpperCase();
 
                           int alunosCount = 0;
                           for (var a in alunosDoSistema) {
-                            if (a['status'] == 'Transferido' ||
-                                a['status'] == 'Inativo')
+                            if (a['status'] == 'Transferido' || a['status'] == 'Inativo') {
                               continue;
-                            final turmaAluno = (a['turma'] ?? '')
-                                .toString()
-                                .trim()
-                                .toUpperCase();
-                            final turmaIdAluno = (a['turmaId'] ?? '')
-                                .toString()
-                                .trim();
-                            final turmasExtrasIds = List<String>.from(
-                              a['turmasExtrasIds'] ?? [],
-                            );
+                            }
+                            final turmaAluno = (a['turma'] ?? '').toString().trim().toUpperCase();
+                            final turmaIdAluno = (a['turmaId'] ?? '').toString().trim();
+                            final turmasExtrasIds = List<String>.from(a['turmasExtrasIds'] ?? []);
 
-                            if (turmaAluno == turmaNomeOficial ||
-                                turmaAluno == turmaNomeAntigo ||
-                                turmaIdAluno == idTurma ||
-                                turmasExtrasIds.contains(idTurma)) {
+                            if (turmaAluno == turmaNomeOficial || turmaAluno == turmaNomeAntigo || turmaIdAluno == idTurma || turmasExtrasIds.contains(idTurma)) {
                               alunosCount++;
                             }
                           }
 
                           return Card(
                             elevation: 1,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(
-                                color: arquivada
-                                    ? Colors.red.shade200
-                                    : Colors.grey.shade300,
-                              ),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: arquivada ? Colors.red.shade200 : Colors.grey.shade300)),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 12.0,
-                                horizontal: 16.0,
-                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
                               child: Row(
                                 children: [
                                   Container(
                                     padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: arquivada
-                                          ? Colors.red.shade50
-                                          : (isExtra
-                                                ? Colors.purple.shade50
-                                                : Colors.blue.shade50),
+                                      color: arquivada ? Colors.red.shade50 : (isExtra ? Colors.purple.shade50 : Colors.blue.shade50),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Icon(
-                                      isExtra
-                                          ? Icons.extension_rounded
-                                          : Icons.meeting_room_rounded,
-                                      color: arquivada
-                                          ? Colors.red
-                                          : (isExtra
-                                                ? Colors.purple
-                                                : Colors.blue),
+                                      isExtra ? Icons.extension_rounded : Icons.meeting_room_rounded,
+                                      color: arquivada ? Colors.red : (isExtra ? Colors.purple : Colors.blue),
                                     ),
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
                                     flex: 3,
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Row(
                                           children: [
-                                            Flexible(
-                                              child: Text(
-                                                '${turma['nome']} (${turma['anoLetivo']})',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 16,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
+                                            Flexible(child: Text('${turma['nome']} (${turma['anoLetivo']})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), overflow: TextOverflow.ellipsis)),
                                             if (isExtra)
                                               Container(
-                                                margin: const EdgeInsets.only(
-                                                  left: 8,
-                                                ),
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                      vertical: 2,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.purple.shade600,
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
-                                                child: const Text(
-                                                  'EXTRA',
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
+                                                margin: const EdgeInsets.only(left: 8), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(color: Colors.purple.shade600, borderRadius: BorderRadius.circular(4)),
+                                                child: const Text('EXTRA', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                                               ),
                                           ],
                                         ),
                                         const SizedBox(height: 8),
                                         Row(
                                           children: [
-                                            Icon(
-                                              Icons.meeting_room_outlined,
-                                              size: 14,
-                                              color: Colors.grey.shade600,
-                                            ),
+                                            Icon(Icons.meeting_room_outlined, size: 14, color: Colors.grey.shade600),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              'Sala: ${turma['sala'] ?? 'N/A'}',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade700,
-                                                fontSize: 12,
-                                              ),
-                                            ),
+                                            Text('Sala: ${turma['sala'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
                                             const SizedBox(width: 12),
-                                            Icon(
-                                              Icons.people_alt_outlined,
-                                              size: 14,
-                                              color: Colors.grey.shade600,
-                                            ),
+                                            Icon(Icons.people_alt_outlined, size: 14, color: Colors.grey.shade600),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              '$alunosCount Aluno(s)',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade700,
-                                                fontSize: 12,
-                                              ),
-                                            ),
+                                            Text('$alunosCount Aluno(s)', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
                                             const SizedBox(width: 12),
-                                            Icon(
-                                              Icons.assignment_ind_outlined,
-                                              size: 14,
-                                              color: Colors.grey.shade600,
-                                            ),
+                                            Icon(Icons.assignment_ind_outlined, size: 14, color: Colors.grey.shade600),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              '$profsCount Prof(s)',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade700,
-                                                fontSize: 12,
-                                              ),
-                                            ),
+                                            Text('$profsCount Prof(s)', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
                                           ],
                                         ),
                                       ],
@@ -4535,45 +2929,23 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
                                     flex: 2,
                                     child: Row(
                                       children: [
-                                        Icon(
-                                          Icons.wb_sunny_outlined,
-                                          size: 16,
-                                          color: Colors.grey.shade600,
-                                        ),
+                                        Icon(Icons.wb_sunny_outlined, size: 16, color: Colors.grey.shade600),
                                         const SizedBox(width: 4),
-                                        Text(
-                                          turma['turno'] ?? '',
-                                          style: TextStyle(
-                                            color: Colors.grey.shade700,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
+                                        Text(turma['turno'] ?? '', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold)),
                                       ],
                                     ),
                                   ),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: emFormacao
-                                          ? Colors.orange.shade50
-                                          : (arquivada
-                                                ? Colors.red.shade50
-                                                : Colors.green.shade50),
+                                      color: emFormacao ? Colors.orange.shade50 : (arquivada ? Colors.red.shade50 : Colors.green.shade50),
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     child: Text(
                                       statusTurma,
                                       style: TextStyle(
-                                        color: emFormacao
-                                            ? Colors.orange.shade700
-                                            : (arquivada
-                                                  ? Colors.red.shade700
-                                                  : Colors.green.shade700),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
+                                        color: emFormacao ? Colors.orange.shade700 : (arquivada ? Colors.red.shade700 : Colors.green.shade700),
+                                        fontWeight: FontWeight.bold, fontSize: 12,
                                       ),
                                     ),
                                   ),
@@ -4581,35 +2953,19 @@ class _GestaoTurmasAbaState extends ConsumerState<_GestaoTurmasAba>
                                   Row(
                                     children: [
                                       IconButton(
-                                        icon: const Icon(
-                                          Icons.visibility_rounded,
-                                          color: Colors.blueGrey,
-                                        ),
+                                        icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
                                         tooltip: 'Painel da Turma',
-                                        onPressed: () => context.push(
-                                          '/admin/cadastros/turma/painel',
-                                          extra: turma,
-                                        ),
+                                        onPressed: () => context.push('/admin/cadastros/turma/painel', extra: turma),
                                       ),
                                       IconButton(
-                                        icon: const Icon(
-                                          Icons.edit_rounded,
-                                          color: Colors.blue,
-                                        ),
+                                        icon: const Icon(Icons.edit_rounded, color: Colors.blue),
                                         tooltip: 'Editar',
-                                        onPressed: () => context.push(
-                                          '/admin/cadastros/turma/novo',
-                                          extra: turma,
-                                        ),
+                                        onPressed: () => context.push('/admin/cadastros/turma/novo', extra: turma),
                                       ),
                                       IconButton(
-                                        icon: const Icon(
-                                          Icons.delete_rounded,
-                                          color: Colors.red,
-                                        ),
+                                        icon: const Icon(Icons.delete_rounded, color: Colors.red),
                                         tooltip: 'Excluir',
-                                        onPressed: () =>
-                                            _confirmarExclusao(context, turma),
+                                        onPressed: () => _confirmarExclusao(context, turma),
                                       ),
                                     ],
                                   ),
