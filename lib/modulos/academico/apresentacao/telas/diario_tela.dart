@@ -235,6 +235,42 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   }
 
   // ==========================================================================
+  // CONFIRMAÇÃO AUTOMÁTICA DE PROFESSOR (O POPUP INTELIGENTE)
+  // ==========================================================================
+  Future<bool> _confirmarEnvioProfessor(BuildContext context, String nomeProfessor) async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.send_rounded, color: Colors.blue),
+            SizedBox(width: 8),
+            Text('Confirmar Envio', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Text(
+          'Olá, $nomeProfessor.\n\nTem certeza de que deseja enviar a mensagem abaixo? Ela ficará registrada em seu nome para a turma e para a direção.',
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('Sim, Enviar', style: TextStyle(fontWeight: FontWeight.bold)),
+          )
+        ],
+      )
+    ) ?? false;
+  }
+
+  // ==========================================================================
   // COMPONENTES REUTILIZÁVEIS
   // ==========================================================================
   Widget _buildBotaoStatus(String matricula, String sigla, String palavraCompleta, IconData icone, Color cor, String statusAtual) {
@@ -273,6 +309,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   // CÂMERA E DIÁRIO DE SALA
   // ==========================================================================
   Future<void> _capturarEEnviarFoto(StateSetter setModalState) async {
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final picker = ImagePicker();
       final XFile? foto = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
@@ -297,13 +334,11 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
       setState(() { _anexoAulaUrl = url; _fazendoUploadAnexo = false; });
       await _salvarAlteracaoNoBanco({'anexoUrl': url});
       
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Foto anexada!'), backgroundColor: Colors.green));
+      messenger.showSnackBar(const SnackBar(content: Text('Foto anexada!'), backgroundColor: Colors.green));
     } catch (e) {
       setModalState(() => _fazendoUploadAnexo = false);
       setState(() => _fazendoUploadAnexo = false);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+      messenger.showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
     }
   }
 
@@ -568,55 +603,54 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
               onPressed: enviando ? null : () async {
-                if (ctrlTexto.text.trim().isEmpty) {
-                  return;
+                if (ctrlTexto.text.trim().isEmpty) return;
+                
+                final user = ref.read(authProvider).value;
+                if (user == null) return;
+                
+                final emailUsuario = user.email?.trim().toLowerCase() ?? '';
+                final professores = ref.read(professoresStreamProvider).value ?? [];
+                
+                String remetenteNome = 'Professor(a)';
+                String remetenteId = user.id;
+
+                // INTELIGÊNCIA DE NOME PELO E-MAIL (Igual ao Dashboard)
+                final p = professores.firstWhere((prof) {
+                  final emailProf = (prof['email'] ?? '').toString().trim().toLowerCase();
+                  return emailProf.isNotEmpty && emailProf == emailUsuario;
+                }, orElse: () => {});
+
+                if (p.isNotEmpty) {
+                  remetenteNome = p['nome'] ?? 'Professor(a)';
+                  if (p['id'] != null) remetenteId = p['id'].toString();
                 }
+
+                // CHAMA O POPUP DE CONFIRMAÇÃO DO PROFESSOR
+                final confirmado = await _confirmarEnvioProfessor(ctx, remetenteNome);
+                if (!confirmado) return; // Se cancelou, não envia.
+
+                final messenger = ScaffoldMessenger.of(context);
+                final nav = Navigator.of(ctx);
                 setDialogState(() => enviando = true);
+                
                 try {
-                  final user = ref.read(authProvider).value;
-                  final professores = ref.read(professoresStreamProvider).value ?? [];
+                  await FirebaseFirestore.instance
+                      .collection('tenants').doc(user.id)
+                      .collection('turmas').doc(widget.turmaId)
+                      .collection('avisos')
+                      .add({
+                        'tipoDestinatario': 'ALUNO',
+                        'alunoId': alunoIdSeguro,
+                        'mensagem': ctrlTexto.text.trim(),
+                        'dataEnvio': FieldValue.serverTimestamp(),
+                        'remetenteId': remetenteId,
+                        'remetenteNome': 'Professor(a) - $remetenteNome',
+                      });
                   
-                  if (user != null) {
-                    
-                    // INTELIGÊNCIA DE NOMES
-                    String remetenteNome = 'Usuário Desconhecido';
-                    String remetenteId = user.id;
-
-                    final p = professores.firstWhere((prof) {
-                      final pid = prof['id']?.toString().trim();
-                      final uid = prof['uid']?.toString().trim();
-                      final authUid = prof['authUid']?.toString().trim();
-                      return (pid == user.id && pid != null) || 
-                             (uid == user.id && uid != null) || 
-                             (authUid == user.id && authUid != null);
-                    }, orElse: () => {});
-
-                    if (p.isNotEmpty) {
-                      remetenteNome = 'Professor(a) - ${p['nome']}';
-                      if (p['id'] != null) remetenteId = p['id'].toString();
-                    }
-
-                    await FirebaseFirestore.instance
-                        .collection('tenants').doc(user.id)
-                        .collection('turmas').doc(widget.turmaId)
-                        .collection('avisos')
-                        .add({
-                          'tipoDestinatario': 'ALUNO',
-                          'alunoId': alunoIdSeguro,
-                          'mensagem': ctrlTexto.text.trim(),
-                          'dataEnvio': FieldValue.serverTimestamp(),
-                          'remetenteId': remetenteId,
-                          'remetenteNome': remetenteNome,
-                        });
-                    
-                    if (!ctx.mounted) return;
-                    Navigator.pop(ctx);
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado com sucesso!'), backgroundColor: Colors.green));
-                  }
+                  nav.pop();
+                  messenger.showSnackBar(const SnackBar(content: Text('Aviso enviado com sucesso!'), backgroundColor: Colors.green));
                 } catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                  messenger.showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
                 } finally {
                   if (ctx.mounted) {
                     setDialogState(() => enviando = false);
@@ -685,15 +719,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     final dataB = b.data() as Map<String, dynamic>;
                     final timeA = dataA['dataEnvio'];
                     final timeB = dataB['dataEnvio'];
-                    if (timeA == null && timeB == null) {
-                      return 0;
-                    }
-                    if (timeA == null) {
-                      return 1;
-                    }
-                    if (timeB == null) {
-                      return -1;
-                    }
+                    if (timeA == null && timeB == null) return 0;
+                    if (timeA == null) return 1;
+                    if (timeB == null) return -1;
                     return (timeB as dynamic).compareTo(timeA as dynamic);
                   });
 
@@ -780,15 +808,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         final dataB = b.data();
         final timeA = dataA['dataCriacao'];
         final timeB = dataB['dataCriacao'];
-        if (timeA == null && timeB == null) {
-          return 0;
-        }
-        if (timeA == null) {
-          return 1;
-        }
-        if (timeB == null) {
-          return -1;
-        }
+        if (timeA == null && timeB == null) return 0;
+        if (timeA == null) return 1;
+        if (timeB == null) return -1;
         return (timeB as dynamic).compareTo(timeA as dynamic);
       });
 
@@ -816,9 +838,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         var normais = notasBimestre.where((n) => n['isRecuperacao'] != true).toList();
 
         for (var rec in recuperacoes) {
-          if (normais.isEmpty) {
-            continue;
-          }
+          if (normais.isEmpty) continue;
           
           normais.sort((a, b) => ((a['nota'] / a['maxima']).compareTo(b['nota'] / b['maxima'])));
           var piorNormal = normais.first;
@@ -973,15 +993,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                         final dataB = b.data() as Map<String, dynamic>;
                         final timeA = dataA['dataEnvio'];
                         final timeB = dataB['dataEnvio'];
-                        if (timeA == null && timeB == null) {
-                          return 0;
-                        }
-                        if (timeA == null) {
-                          return 1;
-                        }
-                        if (timeB == null) {
-                          return -1;
-                        }
+                        if (timeA == null && timeB == null) return 0;
+                        if (timeA == null) return 1;
+                        if (timeB == null) return -1;
                         return (timeB as dynamic).compareTo(timeA as dynamic);
                       });
                       var avisosRecentes = docs.take(3).toList(); 
@@ -1054,11 +1068,11 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             onPressed: () async {
               final user = ref.read(authProvider).value;
               if (user != null) {
+                final messenger = ScaffoldMessenger.of(context);
+                final nav = Navigator.of(ctx);
                 await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(id).delete();
-                if (!ctx.mounted) return;
-                Navigator.pop(ctx);
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação excluída com sucesso!'), backgroundColor: Colors.red));
+                nav.pop();
+                messenger.showSnackBar(const SnackBar(content: Text('Avaliação excluída com sucesso!'), backgroundColor: Colors.red));
               }
             },
             child: const Text('Sim, Excluir'),
@@ -1097,14 +1111,14 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 setModalState(() => salvando = true);
                 final user = ref.read(authProvider).value;
                 if (user != null) {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final nav = Navigator.of(ctx);
                   await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({
                     'nome': ctrlNome.text.trim(),
                     'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0,
                   });
-                  if (!ctx.mounted) return;
-                  Navigator.pop(ctx);
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avaliação atualizada!'), backgroundColor: Colors.green));
+                  nav.pop();
+                  messenger.showSnackBar(const SnackBar(content: Text('Avaliação atualizada!'), backgroundColor: Colors.green));
                 }
               },
               child: salvando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Salvar'),
@@ -1211,6 +1225,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 setModalState(() => salvando = true);
                 final user = ref.read(authProvider).value;
                 if (user != null) {
+                  final nav = Navigator.of(ctx);
                   List<String> ausentes = alunosTurma.where((a) => _obterStatusAluno((a['matricula'] ?? '').toString()) == 'A').map((a) => (a['matricula'] ?? '').toString()).toList();
                   
                   final novaAvaliacao = {
@@ -1227,9 +1242,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                   };
 
                   final docRef = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').add(novaAvaliacao);
-                  if (!ctx.mounted) return;
-                  Navigator.pop(ctx); 
-                  if (!mounted) return;
+                  nav.pop(); 
                   setState(() { _abaAtiva = 1; _bimestreAtivo = bimestreAlvo; });
                   _abrirModalLancarNotas(novaAvaliacao, docRef.id, alunosTurma, corPrimaria);
                 }
@@ -1356,6 +1369,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                             if (user == null) {
                               return;
                             }
+                            final messenger = ScaffoldMessenger.of(context);
+                            final nav = Navigator.of(ctx);
+
                             final Map<String, double> notasFinais = {};
                             controladores.forEach((mat, ctrl) { if (ctrl.text.trim().isNotEmpty) notasFinais[mat] = double.tryParse(ctrl.text.replaceAll(',', '.')) ?? 0.0; });
                             
@@ -1363,10 +1379,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                             notasFinais.forEach((k, v) { notasParaSalvar[k] = v; });
 
                             await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({'notas': notasParaSalvar});
-                            if (!ctx.mounted) return;
-                            Navigator.pop(ctx);
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notas salvas com sucesso!'), backgroundColor: Colors.green));
+                            nav.pop();
+                            messenger.showSnackBar(const SnackBar(content: Text('Notas salvas com sucesso!'), backgroundColor: Colors.green));
                           },
                           icon: const Icon(Icons.save_rounded), label: const Text('SALVAR NOTAS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                         ),
@@ -1409,10 +1423,10 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
               onPressed: () async { 
+                final nav = Navigator.of(ctx);
                 setState(() => _conteudoAulaAtual = ctrl.text.trim()); 
                 await _salvarAlteracaoNoBanco({'conteudo': _conteudoAulaAtual}); 
-                if (!ctx.mounted) return;
-                Navigator.pop(ctx);
+                nav.pop();
               },
               icon: const Icon(Icons.save_rounded, size: 18), label: const Text('Salvar Diário', style: TextStyle(fontWeight: FontWeight.bold)),
             )
@@ -1422,69 +1436,68 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
-  // INTELIGÊNCIA REFATORADA AQUI: ENVIAR AVISO DO PROFESSOR CORRETAMENTE
+  // ==========================================================================
+  // ENVIO DE AVISOS PELO MURAL DO PROFESSOR (Com Confirmação Inteligente)
+  // ==========================================================================
   Future<void> _enviarAvisoFirebase() async {
+    final messenger = ScaffoldMessenger.of(context);
+
     if (_tipoAviso != 'TURMA' && _alunoAvisoSelecionado == null) { 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione um aluno.'), backgroundColor: Colors.red)); 
+      messenger.showSnackBar(const SnackBar(content: Text('Selecione um aluno.'), backgroundColor: Colors.red)); 
       return; 
     }
     if (_mensagemAvisoCtrl.text.trim().isEmpty) { 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A mensagem não pode estar vazia.'), backgroundColor: Colors.red)); 
+      messenger.showSnackBar(const SnackBar(content: Text('A mensagem não pode estar vazia.'), backgroundColor: Colors.red)); 
       return; 
     }
+
+    final user = ref.read(authProvider).value;
+    if (user == null) return;
+
+    // INTELIGÊNCIA: Cruza o email logado com a lista de professores
+    final emailUsuario = user.email?.trim().toLowerCase() ?? '';
+    final professores = ref.read(professoresStreamProvider).value ?? [];
+    
+    String remetenteNome = 'Professor(a)';
+    String remetenteId = user.id;
+
+    final p = professores.firstWhere((prof) {
+      final emailProf = (prof['email'] ?? '').toString().trim().toLowerCase();
+      return emailProf.isNotEmpty && emailProf == emailUsuario;
+    }, orElse: () => {});
+
+    if (p.isNotEmpty) {
+      remetenteNome = p['nome'] ?? 'Professor(a)';
+      if (p['id'] != null) remetenteId = p['id'].toString();
+    }
+
+    // CHAMA O POPUP DE CONFIRMAÇÃO DO PROFESSOR
+    final confirmado = await _confirmarEnvioProfessor(context, remetenteNome);
+    if (!confirmado) return;
     
     setState(() => _enviandoAviso = true);
     try {
-      final user = ref.read(authProvider).value;
-      if (user != null) {
-        
-        // NOVO: Puxando o nome e o ID VERDADEIRO do professor que está logado
-        String remetenteNome = 'Usuário Desconhecido';
-        String remetenteId = user.id;
-
-        final listaProfs = ref.read(professoresStreamProvider).value ?? [];
-        final profData = listaProfs.firstWhere((p) {
-          final pid = p['id']?.toString().trim();
-          final uid = p['uid']?.toString().trim();
-          final authUid = p['authUid']?.toString().trim();
-          // O Cérebro verifica quem está logado comparando todas as chaves possíveis
-          return (pid == user.id && pid != null) || 
-                 (uid == user.id && uid != null) || 
-                 (authUid == user.id && authUid != null);
-        }, orElse: () => {});
-
-        if (profData.isNotEmpty) {
-          remetenteNome = 'Professor(a) - ${profData['nome']}';
-          // Garante que enviamos o ID de Professor (Ex: PROF-05) e não da conta base!
-          remetenteId = (profData['id'] ?? user.id).toString(); 
-        }
-
-        await FirebaseFirestore.instance
-            .collection('tenants').doc(user.id)
-            .collection('turmas').doc(widget.turmaId)
-            .collection('avisos')
-            .add({
-              'tipoDestinatario': _tipoAviso, 
-              'alunoId': _tipoAviso == 'TURMA' ? null : _alunoAvisoSelecionado, 
-              'mensagem': _mensagemAvisoCtrl.text.trim(), 
-              'dataEnvio': FieldValue.serverTimestamp(), 
-              'remetenteId': remetenteId, // Agora salva o ID certo do prof
-              'remetenteNome': remetenteNome, // E já deixa o nome pronto!
-            });
-            
-        if (context.mounted) { 
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado!'), backgroundColor: Colors.green)); 
-          _mensagemAvisoCtrl.clear(); 
-          setState(() { 
-            _alunoAvisoSelecionado = null; 
-            _tipoAviso = 'TURMA'; 
-          }); 
-        }
-      }
+      await FirebaseFirestore.instance
+          .collection('tenants').doc(user.id)
+          .collection('turmas').doc(widget.turmaId)
+          .collection('avisos')
+          .add({
+            'tipoDestinatario': _tipoAviso, 
+            'alunoId': _tipoAviso == 'TURMA' ? null : _alunoAvisoSelecionado, 
+            'mensagem': _mensagemAvisoCtrl.text.trim(), 
+            'dataEnvio': FieldValue.serverTimestamp(), 
+            'remetenteId': remetenteId, 
+            'remetenteNome': 'Professor(a) - $remetenteNome', 
+          });
+          
+      messenger.showSnackBar(const SnackBar(content: Text('Aviso enviado!'), backgroundColor: Colors.green)); 
+      _mensagemAvisoCtrl.clear(); 
+      setState(() { 
+        _alunoAvisoSelecionado = null; 
+        _tipoAviso = 'TURMA'; 
+      }); 
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); 
-      }
+      messenger.showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); 
     } finally {
       if (mounted) {
         setState(() => _enviandoAviso = false);
@@ -1617,15 +1630,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 final dataB = b.data() as Map<String, dynamic>;
                 final timeA = dataA['dataCriacao'];
                 final timeB = dataB['dataCriacao'];
-                if (timeA == null && timeB == null) {
-                  return 0;
-                }
-                if (timeA == null) {
-                  return 1;
-                }
-                if (timeB == null) {
-                  return -1;
-                }
+                if (timeA == null && timeB == null) return 0;
+                if (timeA == null) return 1;
+                if (timeB == null) return -1;
                 return (timeB as dynamic).compareTo(timeA as dynamic);
               });
 
@@ -1717,7 +1724,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(children: [Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.campaign_rounded, color: corPrimaria)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Enviar Novo Aviso', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text('Comunique-se com a turma ou responsáveis.', style: TextStyle(color: Colors.grey))]))]),
+                  Row(children: [Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.campaign_rounded, color: corPrimaria)), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Enviar Novo Aviso', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text('Comunique-se com a turma ou responsáveis.', style: TextStyle(color: Colors.grey))]))]),
                   const SizedBox(height: 24), const Text('Enviar para:', style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 8),
                   SegmentedButton<String>(segments: const [ButtonSegment(value: 'TURMA', label: Text('Toda a Turma', style: TextStyle(fontSize: 12))), ButtonSegment(value: 'ALUNO', label: Text('Aluno Específico', style: TextStyle(fontSize: 12))), ButtonSegment(value: 'RESPONSAVEL', label: Text('Responsável', style: TextStyle(fontSize: 12)))], selected: {_tipoAviso}, onSelectionChanged: (s) => setState(() { _tipoAviso = s.first; _alunoAvisoSelecionado = null; })),
                   if (_tipoAviso != 'TURMA') ...[
@@ -1749,7 +1756,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     }),
                   ],
                   const SizedBox(height: 16), TextField(controller: _mensagemAvisoCtrl, maxLines: 4, decoration: InputDecoration(labelText: 'Mensagem do Aviso', alignLabelWithHint: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), const SizedBox(height: 24),
-                  SizedBox(height: 50, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _enviandoAviso ? null : _enviarAvisoFirebase, icon: _enviandoAviso ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.send_rounded), label: Text(_enviandoAviso ? 'Enviando...' : 'ENVIAR AVISO', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)))),
+                  SizedBox(height: 50, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), onPressed: _enviandoAviso ? null : _enviarAvisoFirebase, icon: _enviandoAviso ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.send_rounded), label: Text(_enviandoAviso ? 'Aguarde...' : 'ENVIAR AVISO', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)))),
                 ],
               ),
             ),
@@ -1770,15 +1777,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 final dataB = b.data() as Map<String, dynamic>;
                 final timeA = dataA['dataEnvio'];
                 final timeB = dataB['dataEnvio'];
-                if (timeA == null && timeB == null) {
-                  return 0;
-                }
-                if (timeA == null) {
-                  return 1;
-                }
-                if (timeB == null) {
-                  return -1;
-                }
+                if (timeA == null && timeB == null) return 0;
+                if (timeA == null) return 1;
+                if (timeB == null) return -1;
                 return (timeB as dynamic).compareTo(timeA as dynamic);
               });
 
@@ -1812,6 +1813,10 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                       final dataEnvio = data['dataEnvio'];
                       final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
 
+                      // Exibir quem enviou
+                      final String nomeRemetente = data['remetenteNome']?.toString().trim() ?? '';
+                      final String exibirRemetente = nomeRemetente.isEmpty ? 'Professor(a) - Sem Identificação' : nomeRemetente;
+
                       return Card(
                         elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)), 
                         child: Padding(
@@ -1828,12 +1833,23 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                       TextSpan(
                                         children: [
                                           TextSpan(
+                                            text: 'De: $exibirRemetente ',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                          ),
+                                          const WidgetSpan(
+                                            child: Padding(
+                                              padding: EdgeInsets.symmetric(horizontal: 4),
+                                              child: Icon(Icons.arrow_right_alt_rounded, size: 16, color: Colors.grey),
+                                            ),
+                                            alignment: PlaceholderAlignment.middle,
+                                          ),
+                                          TextSpan(
                                             text: prefixoDestino,
-                                            style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria),
+                                            style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12),
                                           ),
                                           TextSpan(
                                             text: nomeDestino,
-                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 12),
                                           ),
                                         ],
                                       ),
