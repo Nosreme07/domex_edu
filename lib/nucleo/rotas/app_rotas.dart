@@ -28,7 +28,6 @@ import '../../modulos/admin/apresentacao/telas/admin_secretaria_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_configuracoes_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart';
-// ---> NOVO IMPORT DO CALENDÁRIO <---
 import '../../modulos/admin/apresentacao/telas/admin_calendario_tela.dart';
 
 // ============================================================================
@@ -39,10 +38,13 @@ import '../../modulos/super_admin/apresentacao/telas/super_admin_dashboard_tela.
 import '../../modulos/super_admin/apresentacao/telas/super_admin_usuarios_tela.dart';
 
 // ============================================================================
-// IMPORTS: PAINEL DO PROFESSOR
+// IMPORTS: PAINEL DO PROFESSOR E PERFIL
 // ============================================================================
 import '../../modulos/academico/layout/professor_layout.dart';
 import '../../modulos/academico/apresentacao/telas/professor_dashboard_tela.dart';
+import '../../modulos/academico/apresentacao/telas/meu_perfil_tela.dart';
+// ---> IMPORT DA NOVA TELA DO CALENDÁRIO DO PROFESSOR AQUI <---
+import '../../modulos/academico/apresentacao/telas/professor_calendario_tela.dart';
 
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
@@ -52,7 +54,6 @@ class AppRotas {
   static String? extrairSubdominio() {
     if (kIsWeb) {
       // 1. Tenta pegar via parâmetro na URL (Ideal para testes no Localhost)
-      // Exemplo: localhost:5000/?escola=primeiravisao
       final uri = Uri.base;
       if (uri.queryParameters.containsKey('escola')) {
         return uri.queryParameters['escola'];
@@ -121,18 +122,15 @@ class AppRotas {
             builder: (context, state) => const AdminConfiguracoesTela(),
           ),
 
-          // --- NOVO: MÓDULO DE CALENDÁRIO ---
           GoRoute(
             path: '/admin/calendario',
             builder: (context, state) => const AdminCalendarioTela(),
           ),
 
-          // --- Central de Cadastros (Com Abas) ---
           GoRoute(
             path: '/admin/cadastros',
             builder: (context, state) {
               final aba = state.extra as int? ?? 0;
-              // USO DO ALIAS AQUI PARA BURLAR O CACHE
               return central_cadastros.AdminCadastrosTela(
                 key: ValueKey(aba),
                 abaInicial: aba,
@@ -232,6 +230,15 @@ class AppRotas {
           GoRoute(
             path: '/professor',
             builder: (context, state) => const ProfessorDashboardTela(),
+          ),
+          GoRoute(
+            path: '/professor/perfil',
+            builder: (context, state) => const MeuPerfilTela(),
+          ),
+          // ---> ROTA CORRIGIDA PARA APONTAR PARA A TELA NOVA <---
+          GoRoute(
+            path: '/professor/calendario',
+            builder: (context, state) => const ProfessorCalendarioTela(),
           ),
         ],
       ),

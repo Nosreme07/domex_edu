@@ -39,7 +39,7 @@ evento semanal e o que tem no diário.
 ** LOGIN **
 -----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
-- verificar os avisos enviados para o aluno e para o seu responsável.
+- fazer com que quando o professor for iniciar uma turma e não for o dia de aula dele mostre um popup informando que nesse dia não tem aula cadastrada, e pergunte se tem certeza que deseja abrir a aula.
 - 
 **ABA AVISOS**
 - Verificar os avisos enviados recente para nomear o nome do aluno
