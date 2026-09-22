@@ -6,9 +6,10 @@ import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
 class UsuarioEscolaService {
   final String escolaId;
+  final String codigoEscola; 
   final _db = FirebaseFirestore.instance.collection('usuarios');
 
-  UsuarioEscolaService(this.escolaId);
+  UsuarioEscolaService(this.escolaId, this.codigoEscola);
 
   Future<void> _garantirContaNoFirebaseAuth(String email, String senha) async {
     try {
@@ -36,7 +37,7 @@ class UsuarioEscolaService {
     dadosUsuario['dataCriacao'] = FieldValue.serverTimestamp();
     
     final idLogin = dadosUsuario['idLogin'].toString().toLowerCase().trim();
-    final emailAuth = idLogin.contains('@') ? idLogin : '$idLogin@domex.com';
+    final emailAuth = idLogin.contains('@') ? idLogin : '$idLogin@$codigoEscola.com';
 
     if (dadosUsuario.containsKey('senha')) {
       await _garantirContaNoFirebaseAuth(emailAuth, dadosUsuario['senha']);
@@ -47,24 +48,24 @@ class UsuarioEscolaService {
     await _db.doc(idLogin).set(dadosUsuario, SetOptions(merge: true));
   }
 
-  // ==========================================================================
-  // AGORA ELE RECEBE O MAPA INTEIRO PARA GUARDAR A ESCOLA E O PERFIL CORRETO
-  // ==========================================================================
   Future<void> resetarSenhaEGerarAuth(Map<String, dynamic> u) async {
+    // Garante que pega a matrícula 100% limpa, ignorando erros antigos
     final idLogin = u['login'].toString().toLowerCase().trim();
-    final emailAuth = idLogin.contains('@') ? idLogin : '$idLogin@domex.com';
+    
+    // Cria a credencial usando o domínio atualizado nas configurações
+    final emailAuth = idLogin.contains('@') ? idLogin : '$idLogin@$codigoEscola.com';
     final senhaPadrao = 'Domex@123';
 
     await _garantirContaNoFirebaseAuth(emailAuth, senhaPadrao);
     
-    // Força a inserção dos dados essenciais para o login fluir!
+    // Sobrescreve os dados no banco, atualizando o email para o domínio correto!
     await _db.doc(idLogin).set({
       'idLogin': idLogin,
-      'email': emailAuth,
+      'email': emailAuth, 
       'nome': u['nome'] ?? 'Usuário',
       'perfil': u['perfil'].toString().toLowerCase(),
       'status': u['status'] ?? 'Ativo',
-      'escolaId': escolaId, // Amarra perfeitamente à escola logada
+      'escolaId': escolaId, 
       'senha': senhaPadrao,
       'precisaTrocarSenha': true,
     }, SetOptions(merge: true));
@@ -76,9 +77,9 @@ class UsuarioEscolaService {
 }
 
 final usuarioEscolaServiceProvider = Provider<UsuarioEscolaService?>((ref) {
-  final usuario = ref.watch(authProvider).value;
-  if (usuario == null) return null;
-  return UsuarioEscolaService(usuario.id); 
+  final sessao = ref.watch(authProvider).value;
+  if (sessao == null) return null;
+  return UsuarioEscolaService(sessao.id, sessao.codigoEscola); 
 });
 
 final usuariosEscolaStreamProvider = StreamProvider<List<Map<String, dynamic>>>((ref) {

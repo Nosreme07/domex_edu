@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -45,6 +46,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
 
   // Controladores de Texto
   final _nomeInstCtrl = TextEditingController();
+  final _dominioCtrl = TextEditingController(); 
   final _cnpjCtrl = TextEditingController();
   final _sloganCtrl = TextEditingController();
   final _responsavelCtrl = TextEditingController();
@@ -70,7 +72,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
 
   @override
   void dispose() {
-    _nomeInstCtrl.dispose(); _cnpjCtrl.dispose(); _sloganCtrl.dispose();
+    _nomeInstCtrl.dispose(); _dominioCtrl.dispose(); _cnpjCtrl.dispose(); _sloganCtrl.dispose();
     _responsavelCtrl.dispose(); _emailCtrl.dispose(); _telefoneCtrl.dispose();
     _instaCtrl.dispose(); _faceCtrl.dispose(); _youtubeCtrl.dispose();
     _ruaCtrl.dispose(); _numeroCtrl.dispose(); _bairroCtrl.dispose(); _cidadeCtrl.dispose();
@@ -100,6 +102,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
         
         setState(() {
           _nomeInstCtrl.text = dados['nomeEscola'] ?? dados['nome'] ?? '';
+          _dominioCtrl.text = dados['dominio'] ?? ''; // Puxa o domínio limpo do banco
           _cnpjCtrl.text = dados['cnpj'] ?? '';
           _sloganCtrl.text = dados['slogan'] ?? '';
           _responsavelCtrl.text = dados['responsavel'] ?? '';
@@ -151,6 +154,8 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
 
         final dadosParaSalvar = {
           'nomeEscola': _nomeInstCtrl.text.trim(),
+          // Garante que tira qualquer @ que tenha vindo por acidente e guarda só as letras minúsculas
+          'dominio': _dominioCtrl.text.replaceAll('@', '').trim().toLowerCase(), 
           'cnpj': _cnpjCtrl.text.trim(),
           'slogan': _sloganCtrl.text.trim(),
           'responsavel': _responsavelCtrl.text.trim(),
@@ -159,8 +164,8 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
           'instagram': _instaCtrl.text.trim(),
           'facebook': _faceCtrl.text.trim(),
           'youtube': _youtubeCtrl.text.trim(),
-          'corPrimaria': '#${_corPrimariaSelecionada.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-          'corSecundaria': '#${_corSecundariaSelecionada.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+          'corPrimaria': '#${_corPrimariaSelecionada.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+          'corSecundaria': '#${_corSecundariaSelecionada.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
           if (linkLogoFinal != null) 'logoUrl': linkLogoFinal,
           'endereco': {
             'rua': _ruaCtrl.text.trim(),
@@ -384,6 +389,33 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
                               Expanded(flex: 1, child: TextFormField(controller: _cnpjCtrl, inputFormatters: [_cnpjMask], decoration: const InputDecoration(labelText: 'CNPJ', hintText: '00.000.000/0000-00', border: OutlineInputBorder()))),
                             ],
                           ),
+                          const SizedBox(height: 16),
+                          
+                          // ================= NOVO CAMPO: DOMÍNIO COM MÁSCARA =================
+                          TextFormField(
+                            controller: _dominioCtrl,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')), // Força apenas minúsculas e números
+                            ],
+                            decoration: InputDecoration(
+                              labelText: 'Domínio da Escola (Para Login)',
+                              hintText: 'colegioconexaobr',
+                              helperText: 'Este domínio isola a sua escola. O aluno acessará informando a matrícula + domínio.\nEx: Se a matrícula for 20260013, no Firebase ficará 20260013@colegioconexaobr.com',
+                              helperMaxLines: 3,
+                              border: const OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.domain_verification, color: corPrimariaTema),
+                              // O Segredo está aqui:
+                              prefixText: '@ ',
+                              prefixStyle: TextStyle(color: corPrimariaTema, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return 'Obrigatório para o login dos alunos.';
+                              if (v.trim().length < 3) return 'Muito curto. No mínimo 3 caracteres.';
+                              return null;
+                            },
+                          ),
+                          // ===================================================================
+
                           const SizedBox(height: 16),
                           TextFormField(controller: _sloganCtrl, decoration: const InputDecoration(labelText: 'Slogan (Frase de Efeito)', border: OutlineInputBorder())),
                           const SizedBox(height: 16),

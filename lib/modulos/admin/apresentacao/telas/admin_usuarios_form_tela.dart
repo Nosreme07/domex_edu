@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
 import '../estado/responsavel_provider.dart';
@@ -78,7 +79,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
             Text('Excluir Login de Acesso', style: TextStyle(color: Colors.red)),
           ],
         ),
-        content: Text('Deseja realmente apagar as credenciais de acesso de ${u['nome']} (${u['login']})?\n\nIsso removerá apenas o acesso dele ao sistema. O cadastro original da secretaria será mantido intacto.'),
+        content: Text('Deseja realmente apagar as credenciais de acesso de ${u['nome']} (${u['login']})?\n\nIsso removerá apenas o acesso dele ao sistema. O cadastro original da secretaria será mantido intacto.\n\nNota: Como a pessoa possui um cadastro ativo, ela continuará aparecendo nesta lista. Se deseja ocultá-la completamente, altere o status para Bloqueado/Inativo.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
@@ -89,7 +90,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                 await servico.excluirUsuario(u['login']);
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciais excluídas. Cadastro base mantido.'), backgroundColor: Colors.green));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciais de login excluídas. Cadastro base mantido.'), backgroundColor: Colors.green));
                 }
               }
             },
@@ -104,6 +105,9 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     final corPrimaria = Theme.of(context).primaryColor;
     final String perfil = u['perfil'].toString().toUpperCase();
     final doc = u['rawDoc'];
+    
+    final sessao = ref.read(authProvider).value;
+    final codigoEscola = sessao?.codigoEscola ?? 'domex';
     
     final telefone = (u['telefone'] ?? '').toString();
     final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
@@ -126,11 +130,13 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     List<Widget> _construirInfoEspecifica() {
       List<Widget> widgets = [];
+      
       if (perfil == 'ALUNO') {
         final resp = doc['responsaveis'] as List? ?? [];
         final respNomes = resp.map((r) => r['nome']).join(', ');
         widgets.add(buildLinhaCopiavel('Responsáveis', respNomes));
         widgets.add(buildLinhaCopiavel('Turma Regular', doc['turma'] ?? ''));
+        
         final turmasExtras = List<String>.from(doc['turmasExtrasNomes'] ?? []);
         if (turmasExtras.isNotEmpty) {
           widgets.add(buildLinhaCopiavel('Turmas Extras', turmasExtras.join(', ')));
@@ -154,6 +160,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
       else if (perfil == 'SECRETARIA') {
         widgets.add(buildLinhaCopiavel('Função', doc['funcao'] ?? ''));
       }
+
       return widgets;
     }
 
@@ -257,6 +264,9 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                       
                       buildLinhaCopiavel('Login no Sistema', u['login']),
                       
+                      if (!u['login'].toString().contains('@'))
+                        buildLinhaCopiavel('Código da Instituição', codigoEscola),
+                      
                       if (telefone.isNotEmpty) ...[
                         Text('Contato', style: TextStyle(fontSize: 11, color: Colors.grey.shade600, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 4),
@@ -293,15 +303,12 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
               ),
               actionsPadding: const EdgeInsets.all(16),
               actions: [
-                // =======================================================
-                // AQUI CHAMAMOS A NOVA FUNÇÃO PASSANDO TODO O MAPA 'u'
-                // =======================================================
                 TextButton.icon(
                   onPressed: () async {
                     try {
                       final servico = ref.read(usuarioEscolaServiceProvider);
                       if (servico != null) {
-                        await servico.resetarSenhaEGerarAuth(u); // Passando 'u' inteiro!
+                        await servico.resetarSenhaEGerarAuth(u);
                       }
                       
                       if (context.mounted) {
@@ -313,14 +320,16 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                               children: [
                                 Icon(Icons.check_circle, color: Colors.green),
                                 SizedBox(width: 8),
-                                Text('Senha Resetada!', style: TextStyle(color: Colors.green)),
+                                Text('Conta Ativada & Senha Resetada!', style: TextStyle(color: Colors.green)),
                               ],
                             ),
                             content: Text(
-                              'A senha de ${u['nome']} foi restaurada para o padrão do sistema.\n\n'
-                              'Por favor, repasse a seguinte informação para o utilizador:\n\n'
+                              'As credenciais de ${u['nome']} foram configuradas com sucesso no sistema de login.\n\n'
+                              'Por favor, repasse as seguintes informações para o acesso:\n\n'
+                              'Login de Acesso: ${u['login']}\n'
+                              '${!u['login'].toString().contains('@') ? 'Código da Instituição: $codigoEscola\n' : ''}'
                               'Senha Provisória: Domex@123\n\n'
-                              'No próximo login, o sistema exigirá que ele crie uma nova senha de segurança.',
+                              'No próximo login, o sistema exigirá a criação de uma nova senha.',
                               style: const TextStyle(fontSize: 15),
                             ),
                             actions: [
@@ -335,12 +344,12 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                       }
                     } catch (e) {
                       if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao resetar senha: $e'), backgroundColor: Colors.red));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao criar acesso: $e'), backgroundColor: Colors.red));
                       }
                     }
                   },
                   icon: const Icon(Icons.lock_reset_rounded, color: Colors.orange),
-                  label: const Text('Resetar Senha', style: TextStyle(color: Colors.orange)),
+                  label: const Text('Gerar Acesso / Resetar Senha', style: TextStyle(color: Colors.orange)),
                 ),
                 const Spacer(),
                 if (u['origem'] != 'MANUAL') ...[
@@ -374,8 +383,10 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     final ctrlEmail = TextEditingController(text: usuarioEdit?['idLogin'] ?? '');
     String? tipoSelecionado = usuarioEdit != null ? usuarioEdit['perfil'].toString().toUpperCase() : null;
     String statusSelecionado = usuarioEdit?['status'] ?? 'Ativo';
+    
     String? idPessoaSelecionada;
     Map<String, dynamic>? pessoaSelecionada;
+    
     final bool isEdicao = usuarioEdit != null;
     bool salvando = false;
 
@@ -462,7 +473,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                           displayStringForOption: (option) => '${option['nome']} (${_getPessoaId(option, tipoSelecionado!)})',
                           optionsBuilder: (TextEditingValue textEditingValue) {
                             if (textEditingValue.text.isEmpty) return listaPessoas; 
-                            
                             final busca = textEditingValue.text.toLowerCase();
                             return listaPessoas.where((p) {
                               final id = _getPessoaId(p, tipoSelecionado!).toLowerCase();
@@ -588,10 +598,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                          if (tipoSelecionado == 'ALUNO') dados['matricula'] = idRef;
                          if (tipoSelecionado == 'RESPONSÁVEL') dados['cpf'] = idRef;
                          if (tipoSelecionado == 'PROFESSOR' || tipoSelecionado == 'SECRETARIA') dados['idVinculo'] = idRef;
-
-                         if (!emailFinal.contains('@')) {
-                            dados['idLogin'] = '$emailFinal@domex.com'; 
-                         }
                       }
 
                       await servico.salvarUsuario(dados);
@@ -693,8 +699,11 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
       
       String? matchedLogin;
 
+      // Tenta achar o registro global da pessoa (para ver se já tem senha e login de acesso)
       if (manuaisMap.containsKey(login)) {
         matchedLogin = login;
+      } else if (!login.contains('@') && manuaisMap.containsKey('$login@domex.com')) {
+        matchedLogin = '$login@domex.com'; // Captura os antigos sujos com @domex.com
       } else if (nomeParaLogin.containsKey(nome)) {
         matchedLogin = nomeParaLogin[nome];
       }
@@ -702,12 +711,12 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
       if (matchedLogin != null) {
         status = manuaisMap[matchedLogin]!['status'] ?? status;
         
-        String emailAcesso = (manuaisMap[matchedLogin]!['email'] ?? '').toString().trim();
-        
-        if (emailAcesso.isNotEmpty) {
-          login = emailAcesso.toLowerCase();
-        } else if (!login.contains('@')) {
-          login = manuaisMap[matchedLogin]!['idLogin'] ?? login;
+        // CORREÇÃO: Limpamos visualmente a tela
+        // Se a chave original (ex: 20260007) não tiver '@', NÃO usamos o email antigo do banco, 
+        // e mostramos apenas a matrícula pura na lista!
+        if (loginChave.contains('@')) {
+           String emailAcesso = (manuaisMap[matchedLogin]!['email'] ?? '').toString().trim();
+           if (emailAcesso.isNotEmpty) login = emailAcesso.toLowerCase();
         }
         
         manuaisMap.remove(matchedLogin); 
@@ -715,7 +724,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
       todosUsuarios.add({
         'nome': data['nome'] ?? 'Sem Nome',
-        'login': login,
+        'login': login, // Agora, para alunos sem email, vai ficar a matrícula pura
         'telefone': data['telefone'] ?? '',
         'perfil': perfil,
         'status': status,

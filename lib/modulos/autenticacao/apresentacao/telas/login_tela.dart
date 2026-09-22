@@ -14,12 +14,14 @@ class LoginTela extends ConsumerStatefulWidget {
 class _LoginTelaState extends ConsumerState<LoginTela> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  final _codigoEscolaController = TextEditingController(); // NOVO: Campo de Código da Escola
   final _senhaController = TextEditingController();
   bool _ocultarSenha = true;
 
   @override
   void dispose() {
     _emailController.dispose();
+    _codigoEscolaController.dispose();
     _senhaController.dispose();
     super.dispose();
   }
@@ -27,20 +29,18 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
   void _executarLogin() {
     if (_formKey.currentState!.validate()) {
       String login = _emailController.text.trim().toLowerCase();
+      String codigoEscola = _codigoEscolaController.text.trim().toLowerCase();
       
-      // MÁGICA DE INJEÇÃO: Se não tiver @, forçamos o @domex.com
+      // MÁGICA: Evita conflito entre escolas!
       if (!login.contains('@')) {
-        login = '$login@domex.com';
+        if (codigoEscola.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Para acessar com Matrícula ou ID, informe o Código da Instituição.'), backgroundColor: Colors.red),
+          );
+          return;
+        }
+        login = '$login@$codigoEscola.com';
       }
-
-      // CARIMBO DE DEBUG VISUAL:
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('🔎 [DEBUG] Enviando para o Firebase: $login', style: const TextStyle(fontWeight: FontWeight.bold)),
-          backgroundColor: Colors.amber.shade800,
-          duration: const Duration(seconds: 4),
-        ),
-      );
 
       ref.read(authProvider.notifier).fazerLogin(login, _senhaController.text);
     }
@@ -48,9 +48,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
 
   void _abrirModalRecuperacaoSenha(Color corDominante) {
     final emailRecuperacaoController = TextEditingController(text: _emailController.text.trim().toLowerCase());
-    if (!emailRecuperacaoController.text.contains('@')) {
-      emailRecuperacaoController.clear();
-    }
+    if (!emailRecuperacaoController.text.contains('@')) emailRecuperacaoController.clear();
     
     final formKeyModal = GlobalKey<FormState>();
     bool enviando = false;
@@ -111,7 +109,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                       } catch (e) {
                         setStateModal(() => enviando = false);
                         if (ctx.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ERRO Firebase: ${e.toString()}'), backgroundColor: Colors.red));
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ERRO: E-mail não encontrado.'), backgroundColor: Colors.red));
                         }
                       }
                     }
@@ -133,7 +131,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
         error: (error, stackTrace) {
           final msgErro = error.toString().replaceAll('Exception: ', '');
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ $msgErro', style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
+            SnackBar(content: Text('❌ $msgErro', style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red, duration: const Duration(seconds: 4)),
           );
         },
         data: (usuario) {
@@ -141,7 +139,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
             if (usuario.perfil == 'super_admin') context.go('/super-admin');
             else if (usuario.perfil == 'admin_escola') context.go('/admin');
             else if (usuario.perfil == 'professor') context.go('/professor');
-            else if (usuario.perfil.toUpperCase() == 'ALUNO') context.go('/aluno'); // Redireciona o aluno!
+            else if (usuario.perfil == 'aluno') context.go('/aluno'); 
           }
         },
       );
@@ -183,11 +181,22 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                           prefixIcon: const Icon(Icons.person_outline, color: corDominante),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        // Removido a exigência do @ para permitir matrícula!
                         validator: (v) => v!.isEmpty ? 'Insira seu login' : null,
                       ),
                       const SizedBox(height: 16),
                       
+                      // NOVO CAMPO: CÓDIGO DA ESCOLA
+                      TextFormField(
+                        controller: _codigoEscolaController,
+                        decoration: InputDecoration(
+                          labelText: 'Código da Instituição',
+                          hintText: 'Apenas se usar Matrícula/ID',
+                          prefixIcon: const Icon(Icons.domain_rounded, color: corDominante),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
                       TextFormField(
                         controller: _senhaController,
                         obscureText: _ocultarSenha,
