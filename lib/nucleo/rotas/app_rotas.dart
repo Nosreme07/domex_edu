@@ -17,7 +17,6 @@ import '../layout/dashboard_tela.dart';
 import '../layout/admin_layout.dart';
 import '../../modulos/admin/apresentacao/telas/admin_visao_geral_tela.dart';
 
-// ---> TÉCNICA ANTI-BUG: ALIAS DE IMPORTAÇÃO PARA IGNORAR O CACHE <---
 import '../../modulos/admin/apresentacao/telas/admin_cadastros_tela.dart'
     as central_cadastros;
 
@@ -43,8 +42,14 @@ import '../../modulos/super_admin/apresentacao/telas/super_admin_usuarios_tela.d
 import '../../modulos/academico/layout/professor_layout.dart';
 import '../../modulos/academico/apresentacao/telas/professor_dashboard_tela.dart';
 import '../../modulos/academico/apresentacao/telas/meu_perfil_tela.dart';
-// ---> IMPORT DA NOVA TELA DO CALENDÁRIO DO PROFESSOR AQUI <---
 import '../../modulos/academico/apresentacao/telas/professor_calendario_tela.dart';
+
+// ============================================================================
+// IMPORTS: PAINEL DO ALUNO
+// ============================================================================
+import '../../modulos/alunos/layout/aluno_layout.dart';
+import '../../modulos/alunos/apresentacao/telas/aluno_dashboard_tela.dart';
+
 
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
@@ -53,13 +58,11 @@ class AppRotas {
   /// Função utilitária para descobrir se o cliente está acessando via subdomínio
   static String? extrairSubdominio() {
     if (kIsWeb) {
-      // 1. Tenta pegar via parâmetro na URL (Ideal para testes no Localhost)
       final uri = Uri.base;
       if (uri.queryParameters.containsKey('escola')) {
         return uri.queryParameters['escola'];
       }
 
-      // 2. Tenta pegar via subdomínio real (Para quando estiver em Produção)
       final host = uri.host;
       if (host != 'localhost' && host != '127.0.0.1') {
         List<String> partes = host.split('.');
@@ -220,7 +223,7 @@ class AppRotas {
       ),
 
       // ==========================================================
-      // GRUPO 4: ESTRUTURA DO PROFESSOR (Diário de Classe)
+      // GRUPO 4: ESTRUTURA DO PROFESSOR
       // ==========================================================
       ShellRoute(
         builder: (context, state, child) {
@@ -235,13 +238,28 @@ class AppRotas {
             path: '/professor/perfil',
             builder: (context, state) => const MeuPerfilTela(),
           ),
-          // ---> ROTA CORRIGIDA PARA APONTAR PARA A TELA NOVA <---
           GoRoute(
             path: '/professor/calendario',
             builder: (context, state) => const ProfessorCalendarioTela(),
           ),
         ],
       ),
+
+      // ==========================================================
+      // GRUPO 5: ESTRUTURA DO ALUNO
+      // ==========================================================
+      ShellRoute(
+        builder: (context, state, child) {
+          return AlunoLayout(child: child);
+        },
+        routes: [
+          GoRoute(
+            path: '/aluno',
+            builder: (context, state) => const AlunoDashboardTela(),
+          ),
+        ],
+      ),
+
     ],
   );
 }
