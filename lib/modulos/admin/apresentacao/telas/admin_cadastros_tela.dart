@@ -16,6 +16,9 @@ import '../estado/professor_provider.dart';
 import '../estado/secretaria_provider.dart';
 import '../estado/turma_provider.dart';
 
+// Importação da Tela de Usuários
+import 'admin_usuarios_form_tela.dart';
+
 // ============================================================================
 // FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA
 // ============================================================================
@@ -106,14 +109,15 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             ],
           ),
         ),
-        body: const TabBarView(
+        // Adicionada as instâncias separadas para evitar os erros de invalid_constant e non_constant_list
+        body: TabBarView(
           children: [
-            _GestaoAlunosAba(),
-            _GestaoResponsaveisAba(),
-            _GestaoProfessoresAba(),
-            _GestaoSecretariaAba(),
-            _GestaoTurmasAba(),
-            Center(child: Text('Aba de Usuários em Construção', style: TextStyle(color: Colors.grey))),
+            const _GestaoAlunosAba(),
+            const _GestaoResponsaveisAba(),
+            const _GestaoProfessoresAba(),
+            const _GestaoSecretariaAba(),
+            const _GestaoTurmasAba(),
+            const AdminUsuariosFormTela(),
           ],
         ),
       ),
@@ -2055,7 +2059,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
                               ),
                             ),
                           );
-                        }).toList(),
+                        }), // .toList() removido!
                     ],
                   ),
                 ),

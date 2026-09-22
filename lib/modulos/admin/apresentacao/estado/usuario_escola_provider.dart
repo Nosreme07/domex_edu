@@ -38,7 +38,7 @@ final usuariosEscolaStreamProvider = StreamProvider<List<Map<String, dynamic>>>(
   return FirebaseFirestore.instance
       .collection('usuarios')
       .where('escolaId', isEqualTo: usuario.id)
-      .orderBy('nome')
+      // O orderBy foi removido daqui para evitar o erro de Índice Composto do Firebase
       .snapshots()
       .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
 });
