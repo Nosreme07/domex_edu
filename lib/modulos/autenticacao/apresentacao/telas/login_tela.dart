@@ -26,19 +26,32 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
 
   void _executarLogin() {
     if (_formKey.currentState!.validate()) {
-      // Login limpo e direto usando o e-mail real do usuário
-      ref.read(authProvider.notifier).fazerLogin(
-            _emailController.text.trim().toLowerCase(),
-            _senhaController.text,
-          );
+      String login = _emailController.text.trim().toLowerCase();
+      
+      // MÁGICA DE INJEÇÃO: Se não tiver @, forçamos o @domex.com
+      if (!login.contains('@')) {
+        login = '$login@domex.com';
+      }
+
+      // CARIMBO DE DEBUG VISUAL:
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🔎 [DEBUG] Enviando para o Firebase: $login', style: const TextStyle(fontWeight: FontWeight.bold)),
+          backgroundColor: Colors.amber.shade800,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+
+      ref.read(authProvider.notifier).fazerLogin(login, _senhaController.text);
     }
   }
 
-  // ==========================================================================
-  // LÓGICA DE RECUPERAÇÃO DE SENHA VIA E-MAIL REAL
-  // ==========================================================================
   void _abrirModalRecuperacaoSenha(Color corDominante) {
     final emailRecuperacaoController = TextEditingController(text: _emailController.text.trim().toLowerCase());
+    if (!emailRecuperacaoController.text.contains('@')) {
+      emailRecuperacaoController.clear();
+    }
+    
     final formKeyModal = GlobalKey<FormState>();
     bool enviando = false;
 
@@ -64,7 +77,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                        'Digite o e-mail cadastrado na sua conta. Enviaremos um link seguro para você redefinir sua senha.',
+                        'Digite o e-mail cadastrado na sua conta.\n(Atenção: Não é possível recuperar senha utilizando apenas matrícula ou ID)',
                         style: TextStyle(color: Colors.black54),
                       ),
                       const SizedBox(height: 24),
@@ -75,10 +88,6 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                           labelText: 'E-mail cadastrado',
                           prefixIcon: Icon(Icons.email_outlined, color: corDominante),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: corDominante, width: 2),
-                          ),
                         ),
                         validator: (v) => v!.isEmpty || !v.contains('@') ? 'Insira um e-mail válido' : null,
                       ),
@@ -88,47 +97,26 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
               ),
               actionsPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               actions: [
-                TextButton(
-                  onPressed: enviando ? null : () => Navigator.pop(ctx),
-                  child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-                ),
+                TextButton(onPressed: enviando ? null : () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: corDominante,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: corDominante, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
                   onPressed: enviando ? null : () async {
                     if (formKeyModal.currentState!.validate()) {
                       setStateModal(() => enviando = true);
                       try {
                         await FirebaseAuth.instance.sendPasswordResetEmail(email: emailRecuperacaoController.text.trim().toLowerCase());
-                        
                         if (!ctx.mounted) return;
                         Navigator.pop(ctx); 
-                        
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('E-mail de recuperação enviado! Verifique sua caixa de entrada e spam.'), backgroundColor: Colors.green),
-                        );
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('E-mail enviado!'), backgroundColor: Colors.green));
                       } catch (e) {
                         setStateModal(() => enviando = false);
-                        
                         if (ctx.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('ERRO: E-mail não encontrado ou problema de rede. ($e)'), 
-                              backgroundColor: Colors.red,
-                              duration: const Duration(seconds: 8), 
-                            )
-                          );
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('ERRO Firebase: ${e.toString()}'), backgroundColor: Colors.red));
                         }
                       }
                     }
                   },
-                  child: enviando
-                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Enviar Link'),
+                  child: enviando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Enviar Link'),
                 ),
               ],
             );
@@ -145,19 +133,15 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
         error: (error, stackTrace) {
           final msgErro = error.toString().replaceAll('Exception: ', '');
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msgErro), backgroundColor: Colors.red),
+            SnackBar(content: Text('❌ $msgErro', style: const TextStyle(fontWeight: FontWeight.bold)), backgroundColor: Colors.red, duration: const Duration(seconds: 5)),
           );
         },
         data: (usuario) {
           if (usuario != null) {
-            // ROTEAMENTO INTELIGENTE (Já funciona perfeitamente!)
-            if (usuario.perfil == 'super_admin') {
-              context.go('/super-admin');
-            } else if (usuario.perfil == 'admin_escola') {
-              context.go('/admin');
-            } else if (usuario.perfil == 'professor') {
-              context.go('/professor');
-            }
+            if (usuario.perfil == 'super_admin') context.go('/super-admin');
+            else if (usuario.perfil == 'admin_escola') context.go('/admin');
+            else if (usuario.perfil == 'professor') context.go('/professor');
+            else if (usuario.perfil.toUpperCase() == 'ALUNO') context.go('/aluno'); // Redireciona o aluno!
           }
         },
       );
@@ -165,12 +149,10 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
 
     final authState = ref.watch(authProvider);
     final isLoading = authState.isLoading;
-
     const corDominante = Color(0xFF2C3E50); 
-    final corFundo = Colors.grey.shade100;
 
     return Scaffold(
-      backgroundColor: corFundo,
+      backgroundColor: Colors.grey.shade100,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -189,37 +171,23 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                     children: [
                       const Icon(Icons.school_rounded, size: 64, color: corDominante),
                       const SizedBox(height: 24),
-                      const Text(
-                        'Acesso ao Sistema',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: corDominante),
-                      ),
+                      const Text('Acesso ao Sistema', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: corDominante)),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Insira seu e-mail e senha para acessar o seu painel.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.black54),
-                      ),
+                      const Text('Insira seu e-mail, matrícula ou ID para acessar o seu painel.', textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)),
                       const SizedBox(height: 32),
                       
-                      // Campo de E-mail Limpo
                       TextFormField(
                         controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
                         decoration: InputDecoration(
-                          labelText: 'E-mail',
-                          prefixIcon: const Icon(Icons.email_outlined, color: corDominante),
+                          labelText: 'E-mail, Matrícula ou ID',
+                          prefixIcon: const Icon(Icons.person_outline, color: corDominante),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: corDominante, width: 2),
-                          ),
                         ),
-                        validator: (v) => v!.isEmpty || !v.contains('@') ? 'Insira um e-mail válido' : null,
+                        // Removido a exigência do @ para permitir matrícula!
+                        validator: (v) => v!.isEmpty ? 'Insira seu login' : null,
                       ),
                       const SizedBox(height: 16),
                       
-                      // Campo de Senha
                       TextFormField(
                         controller: _senhaController,
                         obscureText: _ocultarSenha,
@@ -231,10 +199,6 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                             onPressed: () => setState(() => _ocultarSenha = !_ocultarSenha),
                           ),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: corDominante, width: 2),
-                          ),
                         ),
                         validator: (v) => v!.isEmpty ? 'Insira sua senha' : null,
                         onFieldSubmitted: (_) => _executarLogin(), 
@@ -253,10 +217,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                       SizedBox(
                         height: 56,
                         child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: corDominante,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
+                          style: ElevatedButton.styleFrom(backgroundColor: corDominante, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                           onPressed: isLoading ? null : _executarLogin,
                           child: isLoading
                               ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))

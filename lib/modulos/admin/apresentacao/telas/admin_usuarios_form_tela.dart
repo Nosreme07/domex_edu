@@ -35,12 +35,9 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
   String _termoBusca = '';
   String _filtroPerfil = 'TODOS';
-  String _filtroStatus = 'TODOS'; // Novo filtro de status
+  String _filtroStatus = 'TODOS';
   final _debouncer = Debouncer(milliseconds: 400);
 
-  // ==========================================================================
-  // FUNÇÃO: ABRIR FOTO EM TELA CHEIA (ZOOM)
-  // ==========================================================================
   void _mostrarFotoAmpliada(String url) {
     showDialog(
       context: context,
@@ -70,9 +67,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     );
   }
 
-  // ==========================================================================
-  // EXCLUSÃO APENAS DO ACESSO LOGIN (MANTÉM O CADASTRO BASE)
-  // ==========================================================================
   void _confirmarExclusaoAcesso(Map<String, dynamic> u) {
     showDialog(
       context: context,
@@ -84,7 +78,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
             Text('Excluir Login de Acesso', style: TextStyle(color: Colors.red)),
           ],
         ),
-        content: Text('Deseja realmente apagar as credenciais de acesso de ${u['nome']} (${u['login']})?\n\nIsso removerá apenas o acesso dele ao sistema. O cadastro original da secretaria será mantido intacto.\n\nNota: Como a pessoa possui um cadastro ativo, ela continuará aparecendo nesta lista. Se deseja ocultá-la completamente, altere o status para Bloqueado/Inativo.'),
+        content: Text('Deseja realmente apagar as credenciais de acesso de ${u['nome']} (${u['login']})?\n\nIsso removerá apenas o acesso dele ao sistema. O cadastro original da secretaria será mantido intacto.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
@@ -95,7 +89,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                 await servico.excluirUsuario(u['login']);
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciais de login excluídas. Cadastro base mantido.'), backgroundColor: Colors.green));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciais excluídas. Cadastro base mantido.'), backgroundColor: Colors.green));
                 }
               }
             },
@@ -106,9 +100,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     );
   }
 
-  // ==========================================================================
-  // MODAL DE DETALHES RÁPIDOS DO USUÁRIO
-  // ==========================================================================
   void _abrirFichaDetalhes(Map<String, dynamic> u, List<Map<String, dynamic>> turmasDoSistema) {
     final corPrimaria = Theme.of(context).primaryColor;
     final String perfil = u['perfil'].toString().toUpperCase();
@@ -135,13 +126,11 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     List<Widget> _construirInfoEspecifica() {
       List<Widget> widgets = [];
-      
       if (perfil == 'ALUNO') {
         final resp = doc['responsaveis'] as List? ?? [];
         final respNomes = resp.map((r) => r['nome']).join(', ');
         widgets.add(buildLinhaCopiavel('Responsáveis', respNomes));
         widgets.add(buildLinhaCopiavel('Turma Regular', doc['turma'] ?? ''));
-        
         final turmasExtras = List<String>.from(doc['turmasExtrasNomes'] ?? []);
         if (turmasExtras.isNotEmpty) {
           widgets.add(buildLinhaCopiavel('Turmas Extras', turmasExtras.join(', ')));
@@ -165,7 +154,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
       else if (perfil == 'SECRETARIA') {
         widgets.add(buildLinhaCopiavel('Função', doc['funcao'] ?? ''));
       }
-
       return widgets;
     }
 
@@ -219,7 +207,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Status Atual com Botão de Toggle Rápido
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(color: corStatus.withAlpha(20), borderRadius: BorderRadius.circular(8), border: Border.all(color: corStatus.withAlpha(50))),
@@ -306,14 +293,16 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
               ),
               actionsPadding: const EdgeInsets.all(16),
               actions: [
-                // NOVO BOTÃO DE RESET DE SENHA COM POPUP INFORMATIVO
+                // =======================================================
+                // AQUI CHAMAMOS A NOVA FUNÇÃO PASSANDO TODO O MAPA 'u'
+                // =======================================================
                 TextButton.icon(
                   onPressed: () async {
                     try {
-                      await FirebaseFirestore.instance.collection('usuarios').doc(u['login']).set({
-                        'senha': 'Domex@123',
-                        'precisaTrocarSenha': true,
-                      }, SetOptions(merge: true));
+                      final servico = ref.read(usuarioEscolaServiceProvider);
+                      if (servico != null) {
+                        await servico.resetarSenhaEGerarAuth(u); // Passando 'u' inteiro!
+                      }
                       
                       if (context.mounted) {
                         showDialog(
@@ -380,31 +369,22 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     );
   }
 
-// ==========================================================================
-  // MODAL PARA CRIAR ACESSOS ADMINISTRATIVOS MANUAIS
-  // ==========================================================================
   void _abrirModalAcessoManual(List alunos, List professores, List responsaveis, List secretaria, [Map<String, dynamic>? usuarioEdit]) {
     final formKey = GlobalKey<FormState>();
-    
-    // Controles e Estados
     final ctrlEmail = TextEditingController(text: usuarioEdit?['idLogin'] ?? '');
     String? tipoSelecionado = usuarioEdit != null ? usuarioEdit['perfil'].toString().toUpperCase() : null;
     String statusSelecionado = usuarioEdit?['status'] ?? 'Ativo';
-    
     String? idPessoaSelecionada;
     Map<String, dynamic>? pessoaSelecionada;
-    
     final bool isEdicao = usuarioEdit != null;
     bool salvando = false;
 
-    // Função auxiliar para capturar o ID correto da pessoa
     String _getPessoaId(Map<String, dynamic> p, String tipo) {
       if (tipo == 'ALUNO') return p['matricula']?.toString() ?? '';
       if (tipo == 'RESPONSÁVEL') return p['cpf']?.toString() ?? '';
       return p['id']?.toString() ?? '';
     }
 
-    // Função auxiliar para puxar a lista certa do Riverpod
     List<Map<String, dynamic>> _obterLista(String? tipo) {
       if (tipo == 'ALUNO') return List<Map<String, dynamic>>.from(alunos);
       if (tipo == 'PROFESSOR') return List<Map<String, dynamic>>.from(professores);
@@ -445,7 +425,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                       ),
                       const SizedBox(height: 16),
                       
-                      // 1. TIPO DE USUÁRIO
                       DropdownButtonFormField<String>(
                         value: ['ALUNO', 'RESPONSÁVEL', 'PROFESSOR', 'SECRETARIA'].contains(tipoSelecionado) ? tipoSelecionado : null,
                         decoration: InputDecoration(labelText: 'Tipo de Usuário', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
@@ -467,7 +446,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                       ),
                       const SizedBox(height: 12),
                       
-                      // 2. CADASTRO (CAMPO DE PESQUISA COM AUTOCOMPLETE)
                       if (isEdicao)
                         TextFormField(
                           initialValue: '${usuarioEdit['nome']} (ID Vinculado)',
@@ -480,10 +458,10 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                         )
                       else if (tipoSelecionado != null)
                         Autocomplete<Map<String, dynamic>>(
-                          key: ValueKey(tipoSelecionado), // Recria o campo e zera o texto se o tipo mudar
+                          key: ValueKey(tipoSelecionado), 
                           displayStringForOption: (option) => '${option['nome']} (${_getPessoaId(option, tipoSelecionado!)})',
                           optionsBuilder: (TextEditingValue textEditingValue) {
-                            if (textEditingValue.text.isEmpty) return listaPessoas; // Mostra tudo se clicar sem digitar
+                            if (textEditingValue.text.isEmpty) return listaPessoas; 
                             
                             final busca = textEditingValue.text.toLowerCase();
                             return listaPessoas.where((p) {
@@ -515,7 +493,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                                 suffixIcon: const Icon(Icons.search_rounded),
                               ),
                               onChanged: (val) {
-                                // Se o usuário digitar, apagar e não selecionar nada válido na lista
                                 if (idPessoaSelecionada != null) {
                                   setModalState(() => idPessoaSelecionada = null);
                                 }
@@ -551,7 +528,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                         ),
                       const SizedBox(height: 12),
 
-                      // 3. E-MAIL DE ACESSO (LIVRE)
                       TextFormField(
                         controller: ctrlEmail,
                         decoration: InputDecoration(
@@ -563,7 +539,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                       ),
                       const SizedBox(height: 12),
                       
-                      // 4. STATUS DO ACESSO
                       DropdownButtonFormField<String>(
                         value: statusSelecionado,
                         decoration: InputDecoration(labelText: 'Status do Acesso', border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
@@ -613,6 +588,10 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                          if (tipoSelecionado == 'ALUNO') dados['matricula'] = idRef;
                          if (tipoSelecionado == 'RESPONSÁVEL') dados['cpf'] = idRef;
                          if (tipoSelecionado == 'PROFESSOR' || tipoSelecionado == 'SECRETARIA') dados['idVinculo'] = idRef;
+
+                         if (!emailFinal.contains('@')) {
+                            dados['idLogin'] = '$emailFinal@domex.com'; 
+                         }
                       }
 
                       await servico.salvarUsuario(dados);
@@ -695,15 +674,11 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     final manuais = manuaisAsync.value ?? [];
     final turmasDoSistema = turmasAsync.value ?? [];
 
-    // ========================================================================
-    // LÓGICA REFORÇADA DE DEDUPLICAÇÃO DE USUÁRIOS (Elimina o clone de Abraão)
-    // ========================================================================
     Map<String, Map<String, dynamic>> manuaisMap = {};
     for (var m in manuais) {
       manuaisMap[m['idLogin'].toString().toLowerCase().trim()] = m;
     }
 
-    // Mapa extra para evitar duplicação cruzada via nome (se login e e-mail diferirem no Firebase)
     Map<String, String> nomeParaLogin = {};
     for (var m in manuais) {
       nomeParaLogin[m['nome'].toString().toLowerCase().trim()] = m['idLogin'].toString().toLowerCase().trim();
@@ -711,14 +686,13 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     List<Map<String, dynamic>> todosUsuarios = [];
 
-void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Color cor, String loginChave) {
+    void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Color cor, String loginChave) {
       String login = loginChave.toLowerCase().trim();
       String nome = (data['nome'] ?? '').toString().toLowerCase().trim();
       String status = data['status'] ?? 'Ativo';
       
       String? matchedLogin;
 
-      // Verifica se existe no manual pelo ID ou pelo Nome
       if (manuaisMap.containsKey(login)) {
         matchedLogin = login;
       } else if (nomeParaLogin.containsKey(nome)) {
@@ -728,18 +702,13 @@ void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Co
       if (matchedLogin != null) {
         status = manuaisMap[matchedLogin]!['status'] ?? status;
         
-        // --- CÓDIGO CORRIGIDO AQUI ---
-        // Pega o e-mail do banco de usuários, se existir. 
-        // Caso contrário, mantém o e-mail que já veio do cadastro original.
         String emailAcesso = (manuaisMap[matchedLogin]!['email'] ?? '').toString().trim();
         
         if (emailAcesso.isNotEmpty) {
           login = emailAcesso.toLowerCase();
         } else if (!login.contains('@')) {
-          // Se não houver e-mail de acesso e o login não for um e-mail, usa o idLogin (ex: PROF-07)
           login = manuaisMap[matchedLogin]!['idLogin'] ?? login;
         }
-        // ----------------------------
         
         manuaisMap.remove(matchedLogin); 
       }
@@ -883,7 +852,7 @@ void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Co
               const SizedBox(width: 16),
               
               ElevatedButton.icon(
-                onPressed: () => _abrirModalAcessoManual(alunos, professores, responsaveis, secretaria), // Agora passa as listas capturadas
+                onPressed: () => _abrirModalAcessoManual(alunos, professores, responsaveis, secretaria), 
                 style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
                 icon: const Icon(Icons.admin_panel_settings_rounded),
                 label: const Text('Novo Acesso Manual'),
@@ -973,7 +942,6 @@ void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Co
                                   ),
                                 ),
                                 
-                                // Dropdown Select de Status Diretamente no Card
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
                                   decoration: BoxDecoration(color: isAtivo ? Colors.green.shade50 : Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: isAtivo ? Colors.green.shade200 : Colors.red.shade200)),
@@ -1014,7 +982,6 @@ void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Co
                                 ),
                                 const SizedBox(width: 24),
                                 
-                                // O BOTÃO EXCLUIR ACESSO PRESENTE EM TODOS OS CARDS
                                 IconButton(
                                   icon: const Icon(Icons.delete_rounded, color: Colors.red), 
                                   tooltip: 'Excluir Acesso', 
