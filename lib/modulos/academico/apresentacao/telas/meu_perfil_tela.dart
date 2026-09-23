@@ -13,8 +13,6 @@ import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
-import '../../../admin/apresentacao/estado/professor_provider.dart';
-import '../../../admin/apresentacao/estado/turma_provider.dart';
 
 // ============================================================================
 // FORMATADOR DE TEXTO (MAIÚSCULO)
@@ -193,7 +191,7 @@ class _MeuPerfilTelaState extends ConsumerState<MeuPerfilTela> {
   // ==========================================================================
   // MODAL PARA O PROFESSOR EDITAR OS PRÓPRIOS DADOS
   // ==========================================================================
-  void _abrirModalEditarDados(Map<String, dynamic> professorAtual, Color corPrimaria) {
+  void _abrirModalEditarDados(Map<String, dynamic> professorAtual, Color corPrimaria, String tenantId) {
     final formKey = GlobalKey<FormState>();
     final upperCase = UpperCaseTextFormatter();
     
@@ -336,19 +334,24 @@ class _MeuPerfilTelaState extends ConsumerState<MeuPerfilTela> {
                   final messenger = ScaffoldMessenger.of(context);
                   final nav = Navigator.of(ctx);
                   try {
-                    final dadosAtualizados = Map<String, dynamic>.from(professorAtual);
-                    dadosAtualizados['nome'] = nomeCtrl.text.trim();
-                    dadosAtualizados['cpf'] = cpfCtrl.text.trim();
-                    dadosAtualizados['dataNascimento'] = dataNascimentoCtrl.text.trim();
-                    dadosAtualizados['telefone'] = telefoneCtrl.text.trim();
-                    dadosAtualizados['endereco'] = {
-                      'rua': ruaCtrl.text.trim(),
-                      'numero': numeroCtrl.text.trim(),
-                      'bairro': bairroCtrl.text.trim(),
-                      'cidade': cidadeCtrl.text.trim(),
-                    };
+                    await FirebaseFirestore.instance
+                      .collection('tenants')
+                      .doc(tenantId)
+                      .collection('professores')
+                      .doc(professorAtual['id'])
+                      .update({
+                        'nome': nomeCtrl.text.trim(),
+                        'cpf': cpfCtrl.text.trim(),
+                        'dataNascimento': dataNascimentoCtrl.text.trim(),
+                        'telefone': telefoneCtrl.text.trim(),
+                        'endereco': {
+                          'rua': ruaCtrl.text.trim(),
+                          'numero': numeroCtrl.text.trim(),
+                          'bairro': bairroCtrl.text.trim(),
+                          'cidade': cidadeCtrl.text.trim(),
+                        }
+                      });
 
-                    await ref.read(professorServiceProvider).salvarProfessor(dadosAtualizados);
                     nav.pop();
                     messenger.showSnackBar(const SnackBar(content: Text('Dados atualizados com sucesso!'), backgroundColor: Colors.green));
                   } catch (e) {
@@ -401,10 +404,12 @@ class _MeuPerfilTelaState extends ConsumerState<MeuPerfilTela> {
     }
 
     final emailUsuario = usuarioLogado.email.trim().toLowerCase();
-    final tenantId = usuarioLogado.id; 
+    final profId = usuarioLogado.id.trim().toLowerCase(); 
+    final tenantId = usuarioLogado.tenantId; // ISOLAMENTO DA ESCOLA (SAAS)
 
-    final estadoProfessores = ref.watch(professoresStreamProvider);
-    final estadoTurmas = ref.watch(turmasStreamProvider);
+    // STREAMS DIRETOS PARA EVITAR BLOQUEIOS DO FIREBASE
+    final profsStream = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('professores').snapshots();
+    final turmasStream = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').snapshots();
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
@@ -414,17 +419,21 @@ class _MeuPerfilTelaState extends ConsumerState<MeuPerfilTela> {
         elevation: 1,
         title: const Text('Meu Perfil', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
       ),
-      body: estadoProfessores.when(
-        loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
-        error: (e, s) => Center(child: Text('Erro ao carregar perfil: $e')),
-        data: (professores) {
+      body: StreamBuilder<QuerySnapshot>(
+        stream: profsStream,
+        builder: (context, snapProfs) {
+          if (!snapProfs.hasData) return Center(child: CircularProgressIndicator(color: corPrimaria));
+          
+          final professores = snapProfs.data!.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+
           final profMap = professores.where((p) {
             final emailProf = (p['email'] ?? '').toString().trim().toLowerCase();
-            return emailProf == emailUsuario;
+            final idBanco = (p['id'] ?? '').toString().trim().toLowerCase();
+            return idBanco == profId || (emailProf.isNotEmpty && emailProf == emailUsuario);
           }).toList();
 
           if (profMap.isEmpty) {
-            return const Center(child: Text('Dados do professor não encontrados.'));
+            return const Center(child: Text('Dados do professor não encontrados nesta escola.'));
           }
 
           final professor = profMap.first;
@@ -515,7 +524,7 @@ class _MeuPerfilTelaState extends ConsumerState<MeuPerfilTela> {
                           IconButton(
                             icon: const Icon(Icons.edit_note_rounded, color: Colors.blue),
                             tooltip: 'Editar Dados',
-                            onPressed: () => _abrirModalEditarDados(professor, corPrimaria),
+                            onPressed: () => _abrirModalEditarDados(professor, corPrimaria, tenantId),
                           )
                         ],
                       ),
@@ -635,10 +644,12 @@ class _MeuPerfilTelaState extends ConsumerState<MeuPerfilTela> {
                 ),
                 const Divider(height: 1),
                 
-                estadoTurmas.when(
-                  loading: () => Center(child: Padding(padding: const EdgeInsets.all(24), child: CircularProgressIndicator(color: corPrimaria))),
-                  error: (e, s) => const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('Erro ao buscar turmas'))),
-                  data: (todasAsTurmas) {
+                StreamBuilder<QuerySnapshot>(
+                  stream: turmasStream,
+                  builder: (context, snapTurmas) {
+                    if (!snapTurmas.hasData) return Center(child: Padding(padding: const EdgeInsets.all(24), child: CircularProgressIndicator(color: corPrimaria)));
+                    
+                    final todasAsTurmas = snapTurmas.data!.docs.map((d) => d.data() as Map<String, dynamic>).toList();
                     final minhasTurmas = todasAsTurmas.where((t) {
                       if (t['status'] == 'Inativa') return false;
                       final vinculados = t['professoresVinculados'] as List? ?? [];
@@ -662,7 +673,7 @@ class _MeuPerfilTelaState extends ConsumerState<MeuPerfilTela> {
                     }
 
                     return ListView.builder(
-                      shrinkWrap: true, // Garante que a lista não quebre o layout
+                      shrinkWrap: true, 
                       physics: isMobile ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
                       padding: EdgeInsets.all(isMobile ? 16 : 24),
                       itemCount: minhasTurmas.length,

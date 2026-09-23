@@ -5,20 +5,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 class UsuarioSessao {
   final String id;
+  final String tenantId; // NOVO: Garante que sabemos de qual escola este usuário é!
   final String nome;
   final String email;
   final String perfil; 
   final String? nomeEscola;
-  final String? dominioPersonalizado; // NOVO CAMPO ADICIONADO
+  final String? dominioPersonalizado; 
   final Color corPrimaria;
 
-  // AGORA PRIORIZA O DOMÍNIO ESCOLHIDO NAS CONFIGURAÇÕES
   String get codigoEscola {
     if (dominioPersonalizado != null && dominioPersonalizado!.trim().isNotEmpty) {
       return dominioPersonalizado!.trim().toLowerCase();
     }
     
-    // Fallback: se a escola ainda não configurou o domínio, gera a partir do nome
     if (nomeEscola == null) return 'escola';
     String codigo = nomeEscola!.toLowerCase();
     var comAcento = 'àáâãäåòóôõöøèéêëçìíîïùúûüñ';
@@ -30,7 +29,7 @@ class UsuarioSessao {
   }
 
   UsuarioSessao({
-    required this.id, required this.nome, required this.email,
+    required this.id, required this.tenantId, required this.nome, required this.email,
     required this.perfil, this.nomeEscola, this.dominioPersonalizado,
     this.corPrimaria = const Color(0xFF2C3E50), 
   });
@@ -44,7 +43,10 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
       try {
         final List<String> emailsMaster = ['emerson.fernandesantos@gmail.com', 'suporte@jpsmicromaq.com.br'];
         if (emailsMaster.contains(usuarioFirebase.email)) {
-          return UsuarioSessao(id: 'MASTER-01', nome: 'Emerson Fernandes', email: usuarioFirebase.email!, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900);
+          return UsuarioSessao(
+            id: 'MASTER-01', tenantId: 'MASTER-01', nome: 'Emerson Fernandes', 
+            email: usuarioFirebase.email!, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900
+          );
         }
         return await _buscarDadosNoFirestore(usuarioFirebase.email!);
       } catch (e) {
@@ -67,68 +69,86 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
   }
 
   Future<UsuarioSessao> _buscarDadosNoFirestore(String emailAuthFirebase) async {
-    final snapshotEscola = await FirebaseFirestore.instance.collection('tenants').where('email', isEqualTo: emailAuthFirebase).get();
+    String emailCompleto = emailAuthFirebase.toLowerCase().trim();
+    
+    // 1. TENTA ACHAR A ESCOLA PRIMEIRO
+    final snapshotEscola = await FirebaseFirestore.instance.collection('tenants').where('email', isEqualTo: emailCompleto).get();
     
     if (snapshotEscola.docs.isNotEmpty) {
       final dadosEscola = snapshotEscola.docs.first.data();
       if (dadosEscola['status'] == 'Bloqueado') throw Exception('O acesso desta escola está bloqueado. Contate o suporte.');
       
+      final escolaId = dadosEscola['id'] ?? snapshotEscola.docs.first.id;
       return UsuarioSessao(
-        id: dadosEscola['id'] ?? snapshotEscola.docs.first.id, 
+        id: escolaId, tenantId: escolaId, 
         nome: 'Administração', 
-        email: emailAuthFirebase, 
+        email: emailCompleto, 
         perfil: 'admin_escola',
         nomeEscola: dadosEscola['nomeEscola'] ?? dadosEscola['nome'], 
-        dominioPersonalizado: dadosEscola['dominio'], // LÊ DO BANCO AQUI!
+        dominioPersonalizado: dadosEscola['dominio'], 
         corPrimaria: _safelyParseColor(dadosEscola), 
       );
     }
 
-    String loginBusca = emailAuthFirebase;
-    if (loginBusca.contains('@')) {
-       final partes = loginBusca.split('@');
-       loginBusca = partes[0];
+    String prefixo = emailCompleto;
+    if (emailCompleto.contains('@')) {
+       prefixo = emailCompleto.split('@')[0];
     }
 
     Map<String, dynamic>? dadosUsuarioEncontrado;
     String perfilEncontrado = 'aluno';
     String? idEscolaEncontrada;
 
-    final snapUsuariosManuais = await FirebaseFirestore.instance.collection('usuarios').where('idLogin', isEqualTo: loginBusca).get();
+    // Busca acessos manuais globais 
+    var snapUsuariosManuais = await FirebaseFirestore.instance.collection('usuarios').where('idLogin', isEqualTo: emailCompleto).get();
+    if (snapUsuariosManuais.docs.isEmpty) {
+      snapUsuariosManuais = await FirebaseFirestore.instance.collection('usuarios').where('idLogin', isEqualTo: prefixo).get();
+    }
+    if (snapUsuariosManuais.docs.isEmpty) {
+      snapUsuariosManuais = await FirebaseFirestore.instance.collection('usuarios').where('email', isEqualTo: emailCompleto).get();
+    }
+
     if (snapUsuariosManuais.docs.isNotEmpty) {
       dadosUsuarioEncontrado = snapUsuariosManuais.docs.first.data();
       perfilEncontrado = (dadosUsuarioEncontrado['perfil'] ?? 'admin').toString().toLowerCase();
       idEscolaEncontrada = dadosUsuarioEncontrado['escolaId'];
     }
 
+    // Busca nas Subcoleções do Tenant
     if (dadosUsuarioEncontrado == null) {
-      final todasAsEscolas = await FirebaseFirestore.instance.collection('tenants').get();
-      for (var escolaDoc in todasAsEscolas.docs) {
-        final escolaIdRef = escolaDoc.id;
+      var snapQuery = await FirebaseFirestore.instance.collectionGroup('alunos').where('matricula', isEqualTo: prefixo).get();
+      if (snapQuery.docs.isEmpty) {
+         snapQuery = await FirebaseFirestore.instance.collectionGroup('alunos').where('email', isEqualTo: emailCompleto).get();
+      }
 
-        final snapAluno = await escolaDoc.reference.collection('alunos').where('matricula', isEqualTo: loginBusca).get();
-        if (snapAluno.docs.isNotEmpty) {
-          dadosUsuarioEncontrado = snapAluno.docs.first.data();
-          dadosUsuarioEncontrado['id'] = snapAluno.docs.first.id;
-          perfilEncontrado = 'aluno';
-          idEscolaEncontrada = escolaIdRef;
-          break;
+      if (snapQuery.docs.isNotEmpty) {
+        dadosUsuarioEncontrado = snapQuery.docs.first.data();
+        dadosUsuarioEncontrado['id'] = snapQuery.docs.first.id;
+        perfilEncontrado = 'aluno';
+        idEscolaEncontrada = snapQuery.docs.first.reference.parent.parent?.id;
+      } else {
+        
+        snapQuery = await FirebaseFirestore.instance.collectionGroup('professores').where('id', isEqualTo: prefixo).get();
+        if (snapQuery.docs.isEmpty) {
+           snapQuery = await FirebaseFirestore.instance.collectionGroup('professores').where('email', isEqualTo: emailCompleto).get();
         }
 
-        final snapProf = await escolaDoc.reference.collection('professores').where('id', isEqualTo: loginBusca).get();
-        if (snapProf.docs.isNotEmpty) {
-          dadosUsuarioEncontrado = snapProf.docs.first.data();
+        if (snapQuery.docs.isNotEmpty) {
+          dadosUsuarioEncontrado = snapQuery.docs.first.data();
           perfilEncontrado = 'professor';
-          idEscolaEncontrada = escolaIdRef;
-          break;
-        }
+          idEscolaEncontrada = snapQuery.docs.first.reference.parent.parent?.id;
+        } else {
+          
+          snapQuery = await FirebaseFirestore.instance.collectionGroup('responsaveis').where('cpf', isEqualTo: prefixo).get();
+          if (snapQuery.docs.isEmpty) {
+             snapQuery = await FirebaseFirestore.instance.collectionGroup('responsaveis').where('email', isEqualTo: emailCompleto).get();
+          }
 
-        final snapResp = await escolaDoc.reference.collection('responsaveis').where('cpf', isEqualTo: loginBusca).get();
-        if (snapResp.docs.isNotEmpty) {
-          dadosUsuarioEncontrado = snapResp.docs.first.data();
-          perfilEncontrado = 'responsavel';
-          idEscolaEncontrada = escolaIdRef;
-          break;
+          if (snapQuery.docs.isNotEmpty) {
+            dadosUsuarioEncontrado = snapQuery.docs.first.data();
+            perfilEncontrado = 'responsavel';
+            idEscolaEncontrada = snapQuery.docs.first.reference.parent.parent?.id;
+          }
         }
       }
     }
@@ -146,14 +166,15 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
       if (docEscola.exists && docEscola.data() != null) {
         final dadosE = docEscola.data()!;
         nomeEscola = dadosE['nomeEscola'] ?? dadosE['nome'] ?? 'Escola';
-        dominioEscola = dadosE['dominio']; // LÊ DO BANCO PARA O ALUNO TAMBÉM!
+        dominioEscola = dadosE['dominio']; 
         corDaEscola = _safelyParseColor(dadosE);
       }
 
       return UsuarioSessao(
-        id: dadosUsuarioEncontrado['id'] ?? dadosUsuarioEncontrado['matricula'] ?? dadosUsuarioEncontrado['cpf'] ?? loginBusca,
+        id: dadosUsuarioEncontrado['id'] ?? dadosUsuarioEncontrado['matricula'] ?? dadosUsuarioEncontrado['cpf'] ?? prefixo,
+        tenantId: idEscolaEncontrada, // <--- SALVA O ID DA ESCOLA AQUI
         nome: dadosUsuarioEncontrado['nome'] ?? 'Usuário', 
-        email: emailAuthFirebase, 
+        email: emailCompleto, 
         perfil: perfilEncontrado, 
         nomeEscola: nomeEscola, 
         dominioPersonalizado: dominioEscola,
@@ -169,7 +190,7 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
     state = await AsyncValue.guard(() async {
       final List<String> emailsMaster = ['emerson.fernandesantos@gmail.com', 'suporte@jpsmicromaq.com.br'];
       if (emailsMaster.contains(email) && senha == '123456') {
-        return UsuarioSessao(id: 'MASTER-01', nome: 'Emerson Fernandes', email: email, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900);
+        return UsuarioSessao(id: 'MASTER-01', tenantId: 'MASTER-01', nome: 'Emerson Fernandes', email: email, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900);
       } 
       
       try {

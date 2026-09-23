@@ -3,15 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart'; // Necessário para formatação de datas
+import 'package:intl/intl.dart'; 
 
-// Importamos o provedor de Autenticação para saber quem está logado
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
-
-// Importamos os provedores do Admin e Calendário
-import '../../../admin/apresentacao/estado/professor_provider.dart';
-import '../../../admin/apresentacao/estado/turma_provider.dart';
-import '../../../admin/apresentacao/estado/calendario_provider.dart';
 
 // ============================================================================
 // WIDGET DO LETREIRO ANIMADO (ROLAGEM INFINITA)
@@ -108,11 +102,6 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
   String _anoSelecionado = DateTime.now().year.toString();
   final List<String> _diasSemanaAbrev = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
 
-  // ==========================================================
-  // FUNÇÕES UTILITÁRIAS E POPUPS
-  // ==========================================================
-  
-  // Descobre qual é o dia da semana atual no padrão do Firebase
   String _obterDiaSemanaAtualFirebase() {
     switch (DateTime.now().weekday) {
       case 1: return 'SEGUNDA';
@@ -126,7 +115,6 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
     }
   }
 
-  // Nome bonito para o popup de aviso
   String _nomeDiaCompleto(String dia) {
     switch (dia) {
       case 'SEGUNDA': return 'Segunda-feira';
@@ -293,17 +281,22 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
     }
 
     final emailUsuario = usuarioLogado.email.trim().toLowerCase();
+    final profId = usuarioLogado.id.trim().toLowerCase(); 
+    final tenantId = usuarioLogado.tenantId; // AGORA TEMOS O ID DA ESCOLA
     final nomeEscola = usuarioLogado.nomeEscola ?? 'Escola Domex Edu';
-    final tenantId = usuarioLogado.id;
 
-    final estadoProfessores = ref.watch(professoresStreamProvider);
-    final estadoTurmas = ref.watch(turmasStreamProvider);
-    final estadoCalendario = ref.watch(calendarioStreamProvider); 
+    // Cria as ligações diretas ao banco de dados isolando a escola correta
+    final turmasStream = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').snapshots();
+    final profsStream = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('professores').snapshots();
+    final calStream = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('calendario').snapshots();
 
-    return estadoTurmas.when(
-      loading: () => Scaffold(body: Center(child: CircularProgressIndicator(color: corPrimaria))),
-      error: (e, s) => Scaffold(body: Center(child: Text('Erro ao carregar turmas: $e'))),
-      data: (turmas) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: turmasStream,
+      builder: (context, snapTurmas) {
+        if (!snapTurmas.hasData) return Scaffold(body: Center(child: CircularProgressIndicator(color: corPrimaria)));
+        
+        final turmas = snapTurmas.data!.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+        
         final Set<String> anosSet = {DateTime.now().year.toString()};
         for (var t in turmas) {
           if (t['anoLetivo'] != null && t['anoLetivo'].toString().isNotEmpty && t['status'] != 'Inativa') {
@@ -316,17 +309,22 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
 
         return Scaffold(
           backgroundColor: Colors.grey.shade50,
-          body: estadoProfessores.when(
-            loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
-            error: (e, s) => Center(child: Text('Erro ao carregar dados: $e')),
-            data: (professores) {
+          body: StreamBuilder<QuerySnapshot>(
+            stream: profsStream,
+            builder: (context, snapProfs) {
+              if (!snapProfs.hasData) return Center(child: CircularProgressIndicator(color: corPrimaria));
+              
+              final professores = snapProfs.data!.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+
               final profMap = professores.where((p) {
                 final emailProf = (p['email'] ?? '').toString().trim().toLowerCase();
-                return emailProf == emailUsuario;
+                final idProf = (p['id'] ?? '').toString().trim().toLowerCase();
+                
+                return idProf == profId || (emailProf.isNotEmpty && emailProf == emailUsuario);
               }).toList();
 
               if (profMap.isEmpty) {
-                return _buildErrorState('Professor não encontrado.', 'O e-mail ($emailUsuario) não está vinculado a nenhum professor.');
+                return _buildErrorState('Professor não encontrado.', 'A sua ficha de professor não foi localizada no cadastro desta escola.');
               }
 
               final professorLogado = profMap.first;
@@ -336,14 +334,14 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                 return _buildErrorState('Acesso Bloqueado', 'Seu cadastro consta como inativo na escola.', isBlock: true);
               }
 
-              final profId = professorLogado['id'];
               final profNome = professorLogado['nome'] ?? 'Professor(a)';
               final profFoto = professorLogado['fotoUrl'];
+              final idOriginalProf = professorLogado['id']; // Pega o ID original com maiúsculas para cruzar com as turmas
 
               final minhasTurmasBrutas = turmas.where((t) {
                 if (t['status'] == 'Inativa') return false;
                 final vinculados = t['professoresVinculados'] as List? ?? [];
-                return vinculados.any((v) => v['professorId'] == profId);
+                return vinculados.any((v) => v['professorId'] == idOriginalProf);
               }).toList();
 
               final minhasTurmas = minhasTurmasBrutas.where((t) => t['anoLetivo'] == anoExibicao).toList();
@@ -352,9 +350,6 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ========================================================
-                  // CABEÇALHO DA COR DA ESCOLA (FOTO + NOME + ESCOLA + ANO)
-                  // ========================================================
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                     decoration: BoxDecoration(
@@ -423,17 +418,12 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                     ),
                   ),
 
-                  // ========================================================
-                  // LETREIRO DE AVISOS DA DIREÇÃO (MARQUEE)
-                  // ========================================================
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collectionGroup('avisos').where('tipoDestinatario', isEqualTo: 'PROFESSORES').snapshots(),
+                    stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('avisos').where('tipoDestinatario', isEqualTo: 'PROFESSORES').snapshots(),
                     builder: (context, snapAvisos) {
                       if (!snapAvisos.hasData || snapAvisos.data!.docs.isEmpty) return const SizedBox.shrink();
                       
-                      var docs = snapAvisos.data!.docs.where((d) => d.reference.path.contains('tenants/$tenantId')).toList();
-                      if (docs.isEmpty) return const SizedBox.shrink();
-
+                      var docs = snapAvisos.data!.docs;
                       String avisosJuntos = docs.map((d) {
                         final data = d.data() as Map<String, dynamic>;
                         return "   •   ${data['remetenteNome']}: ${data['mensagem']}";
@@ -443,16 +433,12 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                     }
                   ),
 
-                  // CONTEÚDO PRINCIPAL ROLÁVEL
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // ========================================================
-                          // AGENDA DA SEMANA
-                          // ========================================================
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -474,10 +460,13 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                           ),
                           const SizedBox(height: 8),
 
-                          estadoCalendario.when(
-                            loading: () => const SizedBox(height: 70, child: Center(child: CircularProgressIndicator())),
-                            error: (e, s) => SizedBox(height: 70, child: Center(child: Text('Erro ao carregar agenda: $e'))),
-                            data: (eventosRaw) {
+                          StreamBuilder<QuerySnapshot>(
+                            stream: calStream,
+                            builder: (context, snapCal) {
+                              if (!snapCal.hasData) return const SizedBox(height: 70, child: Center(child: CircularProgressIndicator()));
+                              
+                              final eventosRaw = snapCal.data!.docs.map((d) => d.data() as Map<String, dynamic>).toList();
+
                               DateTime hoje = DateTime.now();
                               DateTime inicioSemana = DateTime(hoje.year, hoje.month, hoje.day).subtract(Duration(days: hoje.weekday - 1));
                               DateTime fimSemana = inicioSemana.add(const Duration(days: 6, hours: 23, minutes: 59));
@@ -578,9 +567,6 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                           const Divider(height: 1),
                           const SizedBox(height: 16),
 
-                          // ========================================================
-                          // MINHAS TURMAS 
-                          // ========================================================
                           Row(
                             children: [
                               Icon(Icons.meeting_room_rounded, color: corPrimaria, size: 18),
@@ -628,7 +614,7 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                                         final turma = minhasTurmas[index];
 
                                         final horariosGerais = turma['horarios'] as List? ?? [];
-                                        final meusHorariosRaw = horariosGerais.where((h) => h['professorId'] == profId).toList();
+                                        final meusHorariosRaw = horariosGerais.where((h) => h['professorId'] == idOriginalProf).toList();
 
                                         List<String> meusHorarios = [];
                                         for (var h in meusHorariosRaw) {
@@ -718,9 +704,6 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                                                 ),
                                                 const Spacer(),
                                                 
-                                                // ==========================================================
-                                                // VALIDAÇÃO: SÓ ENTRA SE TIVER AULA HOJE
-                                                // ==========================================================
                                                 SizedBox(
                                                   width: double.infinity,
                                                   height: 36,
@@ -729,16 +712,13 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                                                     onPressed: () {
                                                       final diaHojeStr = _obterDiaSemanaAtualFirebase();
                                                       
-                                                      // Verifica na grade se tem a palavra "SEGUNDA", "TERÇA", etc hoje
                                                       bool temAulaHoje = meusHorariosRaw.any((h) => 
                                                         (h['dia']?.toString().trim().toUpperCase() ?? '') == diaHojeStr
                                                       );
 
                                                       if (temAulaHoje || meusHorariosRaw.isEmpty) {
-                                                        // Se tem aula na grade (ou se a grade não foi cadastrada), abre direto.
                                                         context.push('/diario/${turma['id']}');
                                                       } else {
-                                                        // Bloqueia com Popup de Aviso
                                                         showDialog(
                                                           context: context,
                                                           builder: (ctx) => AlertDialog(

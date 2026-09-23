@@ -8,7 +8,6 @@ import 'package:printing/printing.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart'; 
-import '../../../admin/apresentacao/estado/calendario_provider.dart'; 
 
 // ============================================================================
 // DEBOUNCER PARA PESQUISA
@@ -126,18 +125,15 @@ class _ProfessorCalendarioTelaState extends ConsumerState<ProfessorCalendarioTel
   // ==========================================================================
   // EXPORTAÇÃO DE PDF
   // ==========================================================================
-  Future<void> _exportarCalendarioParaPdf(List<Map<String, dynamic>> eventosDoAno) async {
+  Future<void> _exportarCalendarioParaPdf(List<Map<String, dynamic>> eventosDoAno, String tenantId) async {
     final corTemaFlutter = Theme.of(context).primaryColor;
     final corPrimariaPdf = _getPdfColor(corTemaFlutter);
     
-    final usuario = ref.read(authProvider).value;
     Map<String, dynamic> dadosEscola = {};
-    if (usuario != null) {
-      try {
-        final docEscola = await FirebaseFirestore.instance.collection('tenants').doc(usuario.id).get();
-        if (docEscola.exists && docEscola.data() != null) dadosEscola = docEscola.data()!;
-      } catch (e) { debugPrint('Erro ao buscar dados escola PDF: $e'); }
-    }
+    try {
+      final docEscola = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).get();
+      if (docEscola.exists && docEscola.data() != null) dadosEscola = docEscola.data()!;
+    } catch (e) { debugPrint('Erro ao buscar dados escola PDF: $e'); }
 
     final nomeEscola = dadosEscola['nomeEscola'] ?? dadosEscola['nome'] ?? 'ESCOLA NÃO CONFIGURADA';
     final anoVigente = _dataFoco.year;
@@ -780,10 +776,16 @@ class _ProfessorCalendarioTelaState extends ConsumerState<ProfessorCalendarioTel
 
   @override
   Widget build(BuildContext context) {
-    final estadoCalendario = ref.watch(calendarioStreamProvider);
     final corPrimaria = Theme.of(context).primaryColor;
-    
     final bool isMobile = MediaQuery.of(context).size.width < 800;
+    
+    final usuarioLogado = ref.watch(authProvider).value;
+
+    if (usuarioLogado == null) {
+      return Scaffold(body: Center(child: CircularProgressIndicator(color: corPrimaria)));
+    }
+    
+    final tenantId = usuarioLogado.tenantId;
 
     String tituloPeriodo = '';
     if (_modoVisualizacao == 'MÊS' || _modoVisualizacao == 'SEMANA') {
@@ -798,211 +800,213 @@ class _ProfessorCalendarioTelaState extends ConsumerState<ProfessorCalendarioTel
         backgroundColor: Colors.white, foregroundColor: Colors.black87, elevation: 1,
         title: const Text('Calendário Escolar', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: Padding(
-        padding: EdgeInsets.all(isMobile ? 12.0 : 32.0),
-        child: Column(
-          children: [
-            // ====================================================================
-            // BARRA SUPERIOR DE CONTROLES (COMPACTA PARA MOBILE, LARGA PARA PC)
-            // ====================================================================
-            Container(
-              padding: EdgeInsets.all(isMobile ? 12 : 16),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-              width: double.infinity,
-              child: isMobile 
-                ? Column( // <--- LAYOUT EXCLUSIVO E COMPACTO PARA O CELULAR
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('calendario').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+            return Center(child: CircularProgressIndicator(color: corPrimaria));
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text('Erro: ${snapshot.error}'));
+          }
+
+          final eventosRaw = snapshot.data?.docs.map((d) => d.data() as Map<String, dynamic>).toList() ?? [];
+
+          return Padding(
+            padding: EdgeInsets.all(isMobile ? 12.0 : 32.0),
+            child: Column(
+              children: [
+                // ====================================================================
+                // BARRA SUPERIOR DE CONTROLES (COMPACTA PARA MOBILE, LARGA PARA PC)
+                // ====================================================================
+                Container(
+                  padding: EdgeInsets.all(isMobile ? 12 : 16),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                  width: double.infinity,
+                  child: isMobile 
+                    ? Column( // <--- LAYOUT EXCLUSIVO E COMPACTO PARA O CELULAR
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              IconButton(onPressed: () => _navegar(-1), icon: const Icon(Icons.chevron_left_rounded, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-                              const SizedBox(width: 8),
-                              Text(tituloPeriodo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.deepPurple)),
-                              const SizedBox(width: 8),
-                              IconButton(onPressed: () => _navegar(1), icon: const Icon(Icons.chevron_right_rounded, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                              Row(
+                                children: [
+                                  IconButton(onPressed: () => _navegar(-1), icon: const Icon(Icons.chevron_left_rounded, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                                  const SizedBox(width: 8),
+                                  Text(tituloPeriodo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.deepPurple)),
+                                  const SizedBox(width: 8),
+                                  IconButton(onPressed: () => _navegar(1), icon: const Icon(Icons.chevron_right_rounded, size: 22), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  TextButton(
+                                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                                    onPressed: _irParaHoje, 
+                                    child: const Text('HOJE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))
+                                  ),
+                                  const SizedBox(width: 12),
+                                  InkWell(
+                                    onTap: () {
+                                      List<Map<String, dynamic>> todosEventos = List.from(eventosRaw);
+                                      todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year));
+                                      _exportarCalendarioParaPdf(todosEventos, tenantId);
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+                                      child: Icon(Icons.print_rounded, size: 18, color: corPrimaria),
+                                    )
+                                  )
+                                ],
+                              )
                             ],
                           ),
+                          const SizedBox(height: 12),
                           Row(
                             children: [
-                              TextButton(
-                                style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                                onPressed: _irParaHoje, 
-                                child: const Text('HOJE', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))
+                              Container(
+                                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: ['SEM', 'MÊS', 'ANO'].map((modo) {
+                                    String valorReal = modo == 'SEM' ? 'SEMANA' : modo;
+                                    bool isAtivo = _modoVisualizacao == valorReal;
+                                    return InkWell(
+                                      onTap: () => setState(() => _modoVisualizacao = valorReal),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(color: isAtivo ? Colors.deepPurple : Colors.transparent, borderRadius: BorderRadius.circular(8)),
+                                        child: Text(modo, style: TextStyle(fontWeight: FontWeight.bold, color: isAtivo ? Colors.white : Colors.grey.shade600, fontSize: 11)),
+                                      ),
+                                    );
+                                  }).toList(),
+                                ),
                               ),
                               const SizedBox(width: 12),
-                              estadoCalendario.when(
-                                data: (eventosRaw) => InkWell(
-                                  onTap: () {
-                                    List<Map<String, dynamic>> todosEventos = List.from(eventosRaw);
-                                    todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year));
-                                    _exportarCalendarioParaPdf(todosEventos);
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(6)),
-                                    child: Icon(Icons.print_rounded, size: 18, color: corPrimaria),
-                                  )
+                              Expanded(
+                                child: SizedBox(
+                                  height: 32,
+                                  child: TextField(
+                                    onChanged: (val) => _debouncer.run(() => setState(() => _termoBusca = val)),
+                                    style: const TextStyle(fontSize: 12),
+                                    decoration: InputDecoration(
+                                      hintText: 'Pesquisar...',
+                                      hintStyle: const TextStyle(fontSize: 12),
+                                      prefixIcon: const Icon(Icons.search, size: 16),
+                                      filled: true,
+                                      fillColor: Colors.grey.shade100,
+                                      contentPadding: EdgeInsets.zero,
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
+                                    ),
+                                  ),
                                 ),
-                                loading: () => const SizedBox.shrink(),
-                                error: (e, s) => const SizedBox.shrink(),
-                              )
+                              ),
                             ],
                           )
                         ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
+                      )
+                    : Row( // <--- LAYOUT ESPAÇOSO PARA O COMPUTADOR
                         children: [
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(onPressed: () => _navegar(-1), icon: const Icon(Icons.chevron_left_rounded)),
+                              SizedBox(
+                                width: 140,
+                                child: Text(tituloPeriodo, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepPurple)),
+                              ),
+                              IconButton(onPressed: () => _navegar(1), icon: const Icon(Icons.chevron_right_rounded)),
+                              TextButton(onPressed: _irParaHoje, child: const Text('HOJE', style: TextStyle(fontWeight: FontWeight.bold))),
+                            ],
+                          ),
+                          const Spacer(),
                           Container(
                             decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
-                              children: ['SEM', 'MÊS', 'ANO'].map((modo) {
-                                String valorReal = modo == 'SEM' ? 'SEMANA' : modo;
-                                bool isAtivo = _modoVisualizacao == valorReal;
+                              children: ['SEMANA', 'MÊS', 'ANO'].map((modo) {
+                                bool isAtivo = _modoVisualizacao == modo;
                                 return InkWell(
-                                  onTap: () => setState(() => _modoVisualizacao = valorReal),
+                                  onTap: () => setState(() => _modoVisualizacao = modo),
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                                     decoration: BoxDecoration(color: isAtivo ? Colors.deepPurple : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-                                    child: Text(modo, style: TextStyle(fontWeight: FontWeight.bold, color: isAtivo ? Colors.white : Colors.grey.shade600, fontSize: 11)),
+                                    child: Text(modo, style: TextStyle(fontWeight: FontWeight.bold, color: isAtivo ? Colors.white : Colors.grey.shade600, fontSize: 12)),
                                   ),
                                 );
                               }).toList(),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: SizedBox(
-                              height: 32,
-                              child: TextField(
-                                onChanged: (val) => _debouncer.run(() => setState(() => _termoBusca = val)),
-                                style: const TextStyle(fontSize: 12),
-                                decoration: InputDecoration(
-                                  hintText: 'Pesquisar...',
-                                  hintStyle: const TextStyle(fontSize: 12),
-                                  prefixIcon: const Icon(Icons.search, size: 16),
-                                  filled: true,
-                                  fillColor: Colors.grey.shade100,
-                                  contentPadding: EdgeInsets.zero,
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                                ),
+                          const SizedBox(width: 24),
+                          SizedBox(
+                            width: 250,
+                            height: 40,
+                            child: TextField(
+                              onChanged: (val) => _debouncer.run(() => setState(() => _termoBusca = val)),
+                              decoration: InputDecoration(
+                                hintText: 'Pesquisar evento...',
+                                prefixIcon: const Icon(Icons.search, size: 20),
+                                filled: true,
+                                fillColor: Colors.grey.shade100,
+                                contentPadding: EdgeInsets.zero,
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
                               ),
                             ),
                           ),
-                        ],
-                      )
-                    ],
-                  )
-                : Row( // <--- LAYOUT ESPAÇOSO PARA O COMPUTADOR
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(onPressed: () => _navegar(-1), icon: const Icon(Icons.chevron_left_rounded)),
-                          SizedBox(
-                            width: 140,
-                            child: Text(tituloPeriodo, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepPurple)),
-                          ),
-                          IconButton(onPressed: () => _navegar(1), icon: const Icon(Icons.chevron_right_rounded)),
-                          TextButton(onPressed: _irParaHoje, child: const Text('HOJE', style: TextStyle(fontWeight: FontWeight.bold))),
-                        ],
-                      ),
-                      const Spacer(),
-                      Container(
-                        decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: ['SEMANA', 'MÊS', 'ANO'].map((modo) {
-                            bool isAtivo = _modoVisualizacao == modo;
-                            return InkWell(
-                              onTap: () => setState(() => _modoVisualizacao = modo),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                decoration: BoxDecoration(color: isAtivo ? Colors.deepPurple : Colors.transparent, borderRadius: BorderRadius.circular(8)),
-                                child: Text(modo, style: TextStyle(fontWeight: FontWeight.bold, color: isAtivo ? Colors.white : Colors.grey.shade600, fontSize: 12)),
-                              ),
-                            );
-                          }).toList(),
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      SizedBox(
-                        width: 250,
-                        height: 40,
-                        child: TextField(
-                          onChanged: (val) => _debouncer.run(() => setState(() => _termoBusca = val)),
-                          decoration: InputDecoration(
-                            hintText: 'Pesquisar evento...',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            filled: true,
-                            fillColor: Colors.grey.shade100,
-                            contentPadding: EdgeInsets.zero,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 24),
-                      estadoCalendario.when(
-                        data: (eventosRaw) {
-                          return ElevatedButton.icon(
+                          const SizedBox(width: 24),
+                          ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, elevation: 0),
                             onPressed: () {
                               List<Map<String, dynamic>> todosEventos = List.from(eventosRaw);
                               todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year));
-                              _exportarCalendarioParaPdf(todosEventos);
+                              _exportarCalendarioParaPdf(todosEventos, tenantId);
                             },
                             icon: const Icon(Icons.print_rounded, size: 18),
                             label: const Text('Exportar PDF'),
-                          );
-                        },
-                        loading: () => const SizedBox.shrink(),
-                        error: (erro, stack) => const SizedBox.shrink(),
-                      )
-                    ],
-                  ),
-            ),
-            SizedBox(height: isMobile ? 12 : 24),
+                          )
+                        ],
+                      ),
+                ),
+                SizedBox(height: isMobile ? 12 : 24),
 
-            // ÁREA DE CONTEÚDO PRINCIPAL
-            Expanded(
-              child: estadoCalendario.when(
-                loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
-                error: (erro, stack) => Center(child: Text('Erro: $erro')),
-                data: (eventosRaw) {
-                  List<Map<String, dynamic>> todosEventos = List.from(eventosRaw);
-                  todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year));
-                  todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year - 1));
-                  todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year + 1));
+                // ÁREA DE CONTEÚDO PRINCIPAL
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      List<Map<String, dynamic>> todosEventos = List.from(eventosRaw);
+                      todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year));
+                      todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year - 1));
+                      todosEventos.addAll(_obterFeriadosNacionais(_dataFoco.year + 1));
 
-                  if (_termoBusca.isNotEmpty) {
-                    return _buildListaBusca(todosEventos);
-                  }
+                      if (_termoBusca.isNotEmpty) {
+                        return _buildListaBusca(todosEventos);
+                      }
 
-                  Map<String, List<Map<String, dynamic>>> eventosPorData = {};
-                  for (var e in todosEventos) {
-                    final dataStr = e['data']?.toString() ?? '';
-                    if (dataStr.isNotEmpty) {
-                      if (!eventosPorData.containsKey(dataStr)) eventosPorData[dataStr] = [];
-                      eventosPorData[dataStr]!.add(e);
+                      Map<String, List<Map<String, dynamic>>> eventosPorData = {};
+                      for (var e in todosEventos) {
+                        final dataStr = e['data']?.toString() ?? '';
+                        if (dataStr.isNotEmpty) {
+                          if (!eventosPorData.containsKey(dataStr)) eventosPorData[dataStr] = [];
+                          eventosPorData[dataStr]!.add(e);
+                        }
+                      }
+
+                      if (_modoVisualizacao == 'MÊS') {
+                        return _buildVisaoMes(eventosPorData, isMobile);
+                      } else if (_modoVisualizacao == 'SEMANA') {
+                        return _buildVisaoSemana(eventosPorData, isMobile);
+                      } else {
+                        return _buildVisaoAno(eventosPorData, isMobile);
+                      }
                     }
-                  }
-
-                  if (_modoVisualizacao == 'MÊS') {
-                    return _buildVisaoMes(eventosPorData, isMobile);
-                  } else if (_modoVisualizacao == 'SEMANA') {
-                    return _buildVisaoSemana(eventosPorData, isMobile);
-                  } else {
-                    return _buildVisaoAno(eventosPorData, isMobile);
-                  }
-                }
-              ),
-            )
-          ],
-        ),
+                  ),
+                )
+              ],
+            ),
+          );
+        }
       ),
     );
   }

@@ -7,9 +7,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
-import '../../../admin/apresentacao/estado/turma_provider.dart';
-import '../../../admin/apresentacao/estado/aluno_provider.dart';
-import '../../../admin/apresentacao/estado/professor_provider.dart';
 
 // ============================================================================
 // FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA 
@@ -117,16 +114,15 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   }
 
   // ==========================================================================
-  // FUNÇÕES DE BANCO DE DADOS E AULA
+  // FUNÇÕES DE BANCO DE DADOS E AULA (USANDO tenantId)
   // ==========================================================================
   Future<void> _carregarDiarioDoBanco() async {
     final user = ref.read(authProvider).value;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
+    
     setState(() => _carregandoDiario = true);
     try {
-      final doc = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('diarios').doc(_dataBanco).get();
+      final doc = await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').doc(_dataBanco).get();
       if (doc.exists) {
         final data = doc.data()!;
         setState(() {
@@ -153,10 +149,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   Future<void> _salvarAlteracaoNoBanco(Map<String, dynamic> dados) async {
     final user = ref.read(authProvider).value;
-    if (user == null) {
-      return;
-    }
-    await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('diarios').doc(_dataBanco).set(dados, SetOptions(merge: true));
+    if (user == null) return;
+    await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').doc(_dataBanco).set(dados, SetOptions(merge: true));
   }
 
   void _verificarEEncerrarAulaAtualAntesDeMudar() {
@@ -313,19 +307,16 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     try {
       final picker = ImagePicker();
       final XFile? foto = await picker.pickImage(source: ImageSource.camera, imageQuality: 70);
-      if (foto == null) {
-        return; 
-      }
+      if (foto == null) return; 
 
       setModalState(() => _fazendoUploadAnexo = true);
       setState(() => _fazendoUploadAnexo = true);
 
       final user = ref.read(authProvider).value;
-      if (user == null) {
-        return;
-      }
+      if (user == null) return;
+      
       final nomeArquivo = 'anexo_aula_$_dataBanco-${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final refStorage = FirebaseStorage.instance.ref('tenants/${user.id}/turmas/${widget.turmaId}/diarios/$nomeArquivo');
+      final refStorage = FirebaseStorage.instance.ref('tenants/${user.tenantId}/turmas/${widget.turmaId}/diarios/$nomeArquivo');
 
       await refStorage.putFile(File(foto.path));
       final url = await refStorage.getDownloadURL();
@@ -573,9 +564,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   Future<Map<String, dynamic>> _buscarEstatisticasAluno(Map<String, dynamic> aluno) async {
     final user = ref.read(authProvider).value;
-    if (user == null) {
-      return {};
-    }
+    if (user == null) return {};
 
     final matricula = (aluno['matricula'] ?? '').toString();
     final alunoIdSeguro = (aluno['id'] ?? aluno['matricula'] ?? aluno['nome']).toString();
@@ -586,7 +575,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
     try {
       List<Map<String, dynamic>> freqRaw = [];
-      final diariosSnap = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('diarios').get();
+      final diariosSnap = await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').get();
       for (var doc in diariosSnap.docs) {
         final data = doc.data();
         if (data['status'] != 'NAO_INICIADA' && doc.id.startsWith(prefixoMes)) {
@@ -603,7 +592,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
           return { 'data': "${p[2]}/${p[1]}/${p[0]}", 'status': e['status'] as String };
       }).toList();
 
-      final avaliacoesSnap = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').get();
+      final avaliacoesSnap = await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').get();
       final avaliacoes = avaliacoesSnap.docs;
       
       avaliacoes.sort((a, b) {
@@ -611,15 +600,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         final dataB = b.data();
         final timeA = dataA['dataCriacao'];
         final timeB = dataB['dataCriacao'];
-        if (timeA == null && timeB == null) {
-          return 0;
-        }
-        if (timeA == null) {
-          return 1;
-        }
-        if (timeB == null) {
-          return -1;
-        }
+        if (timeA == null && timeB == null) return 0;
+        if (timeA == null) return 1;
+        if (timeB == null) return -1;
         return (timeB as dynamic).compareTo(timeA as dynamic);
       });
 
@@ -647,9 +630,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         var normais = notasBimestre.where((n) => n['isRecuperacao'] != true).toList();
 
         for (var rec in recuperacoes) {
-          if (normais.isEmpty) {
-            continue;
-          }
+          if (normais.isEmpty) continue;
           
           normais.sort((a, b) => ((a['nota'] / a['maxima']).compareTo(b['nota'] / b['maxima'])));
           var piorNormal = normais.first;
@@ -787,7 +768,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 Container(width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8), color: Colors.grey.shade50, child: const Text('Últimos Avisos Enviados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.black54))),
                 if (user != null && alunoIdSeguro.isNotEmpty)
                   StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avisos')
+                    stream: FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avisos')
                             .where('alunoId', isEqualTo: alunoIdSeguro)
                             .snapshots(),
                     builder: (context, snapAvisos) {
@@ -804,15 +785,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                         final dataB = b.data() as Map<String, dynamic>;
                         final timeA = dataA['dataEnvio'];
                         final timeB = dataB['dataEnvio'];
-                        if (timeA == null && timeB == null) {
-                          return 0;
-                        }
-                        if (timeA == null) {
-                          return 1;
-                        }
-                        if (timeB == null) {
-                          return -1;
-                        }
+                        if (timeA == null && timeB == null) return 0;
+                        if (timeA == null) return 1;
+                        if (timeB == null) return -1;
                         return (timeB as dynamic).compareTo(timeA as dynamic);
                       });
                       var avisosRecentes = docs.take(3).toList(); 
@@ -887,7 +862,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               if (user != null) {
                 final messenger = ScaffoldMessenger.of(context);
                 final nav = Navigator.of(ctx);
-                await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(id).delete();
+                await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(id).delete();
                 nav.pop();
                 messenger.showSnackBar(const SnackBar(content: Text('Avaliação excluída com sucesso!'), backgroundColor: Colors.red));
               }
@@ -922,15 +897,13 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
               onPressed: salvando ? null : () async {
-                if (ctrlNome.text.trim().isEmpty) {
-                  return;
-                }
+                if (ctrlNome.text.trim().isEmpty) return;
                 setModalState(() => salvando = true);
                 final user = ref.read(authProvider).value;
                 if (user != null) {
                   final messenger = ScaffoldMessenger.of(context);
                   final nav = Navigator.of(ctx);
-                  await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({
+                  await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({
                     'nome': ctrlNome.text.trim(),
                     'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0,
                   });
@@ -1037,9 +1010,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
               onPressed: salvando ? null : () async {
-                if (ctrlNome.text.trim().isEmpty) {
-                  return;
-                }
+                if (ctrlNome.text.trim().isEmpty) return;
                 setModalState(() => salvando = true);
                 final user = ref.read(authProvider).value;
                 if (user != null) {
@@ -1059,7 +1030,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     'isRecuperacao': isRecuperacao,
                   };
 
-                  final docRef = await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').add(novaAvaliacao);
+                  final docRef = await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').add(novaAvaliacao);
                   nav.pop(); 
                   setState(() { _abaAtiva = 1; _bimestreAtivo = bimestreAlvo; });
                   _abrirModalLancarNotas(novaAvaliacao, docRef.id, alunosTurma, corPrimaria);
@@ -1184,9 +1155,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                           onPressed: () async {
                             final user = ref.read(authProvider).value;
-                            if (user == null) {
-                              return;
-                            }
+                            if (user == null) return;
                             final messenger = ScaffoldMessenger.of(context);
                             final nav = Navigator.of(ctx);
 
@@ -1196,7 +1165,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                             final notasParaSalvar = Map<String, dynamic>.from(notasAtuais);
                             notasFinais.forEach((k, v) { notasParaSalvar[k] = v; });
 
-                            await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({'notas': notasParaSalvar});
+                            await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({'notas': notasParaSalvar});
                             nav.pop();
                             messenger.showSnackBar(const SnackBar(content: Text('Notas salvas com sucesso!'), backgroundColor: Colors.green));
                           },
@@ -1291,25 +1260,11 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 final user = ref.read(authProvider).value;
                 if (user == null) return;
                 
-                final emailUsuario = user.email?.trim().toLowerCase() ?? '';
-                final professores = ref.read(professoresStreamProvider).value ?? [];
-                
-                String remetenteNome = 'Professor(a)';
+                String remetenteNome = user.nome;
                 String remetenteId = user.id;
 
-                final p = professores.firstWhere((prof) {
-                  final emailProf = (prof['email'] ?? '').toString().trim().toLowerCase();
-                  return emailProf.isNotEmpty && emailProf == emailUsuario;
-                }, orElse: () => {});
-
-                if (p.isNotEmpty) {
-                  remetenteNome = p['nome'] ?? 'Professor(a)';
-                  if (p['id'] != null) remetenteId = p['id'].toString();
-                }
-
-                // CHAMA O POPUP DE CONFIRMAÇÃO DO PROFESSOR
                 final confirmado = await _confirmarEnvioProfessor(ctx, remetenteNome, corPrimaria);
-                if (!confirmado) return; // Se cancelou, não envia.
+                if (!confirmado) return;
 
                 final messenger = ScaffoldMessenger.of(context);
                 final nav = Navigator.of(ctx);
@@ -1317,7 +1272,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 
                 try {
                   await FirebaseFirestore.instance
-                      .collection('tenants').doc(user.id)
+                      .collection('tenants').doc(user.tenantId)
                       .collection('turmas').doc(widget.turmaId)
                       .collection('avisos')
                       .add({
@@ -1349,9 +1304,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   void _abrirHistoricoCompletoAvisos(String alunoIdSeguro, String nomeAluno, Color corPrimaria) {
     final user = ref.read(authProvider).value;
-    if (user == null) {
-      return;
-    }
+    if (user == null) return;
 
     showModalBottomSheet(
       context: context,
@@ -1384,7 +1337,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             const Divider(height: 1),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avisos')
+                stream: FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avisos')
                         .where('alunoId', isEqualTo: alunoIdSeguro)
                         .snapshots(),
                 builder: (context, snapAvisos) {
@@ -1467,31 +1420,17 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
     final user = ref.read(authProvider).value;
     if (user == null) return;
-
-    final emailUsuario = user.email?.trim().toLowerCase() ?? '';
-    final professores = ref.read(professoresStreamProvider).value ?? [];
     
-    String remetenteNome = 'Professor(a)';
+    String remetenteNome = user.nome;
     String remetenteId = user.id;
 
-    final p = professores.firstWhere((prof) {
-      final emailProf = (prof['email'] ?? '').toString().trim().toLowerCase();
-      return emailProf.isNotEmpty && emailProf == emailUsuario;
-    }, orElse: () => {});
-
-    if (p.isNotEmpty) {
-      remetenteNome = p['nome'] ?? 'Professor(a)';
-      if (p['id'] != null) remetenteId = p['id'].toString();
-    }
-
-    // CHAMA O POPUP DE CONFIRMAÇÃO DO PROFESSOR
     final confirmado = await _confirmarEnvioProfessor(context, remetenteNome, corPrimaria);
     if (!confirmado) return;
     
     setState(() => _enviandoAviso = true);
     try {
       await FirebaseFirestore.instance
-          .collection('tenants').doc(user.id)
+          .collection('tenants').doc(user.tenantId)
           .collection('turmas').doc(widget.turmaId)
           .collection('avisos')
           .add({
@@ -1583,6 +1522,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   Widget _buildAbaNotas(List<Map<String, dynamic>> alunosTurma, Color corPrimaria) {
     final user = ref.watch(authProvider).value;
+    if (user == null) return const SizedBox.shrink();
+    
     return Column(
       children: [
         Padding(
@@ -1631,8 +1572,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
         const SizedBox(height: 16),
         Expanded(
-          child: user == null ? Center(child: CircularProgressIndicator(color: corPrimaria)) : StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avaliacoes').where('bimestre', isEqualTo: _bimestreAtivo).snapshots(),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').where('bimestre', isEqualTo: _bimestreAtivo).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return Center(child: CircularProgressIndicator(color: corPrimaria));
               var docs = snapshot.data?.docs.toList() ?? [];
@@ -1726,21 +1667,10 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   // AQUI FICA A LÓGICA DE FILTRAGEM DO MURAL DO PROFESSOR
   Widget _buildAbaAvisos(List<Map<String, dynamic>> alunos, Color corPrimaria) {
     final user = ref.watch(authProvider).value;
-    final professores = ref.watch(professoresStreamProvider).value ?? [];
+    if (user == null) return const SizedBox.shrink();
     
-    // 1. Descobrir quem é o professor logado
-    String emailUsuario = user?.email?.trim().toLowerCase() ?? '';
-    String idProf = user?.id ?? '';
+    String idProf = user.id;
     
-    final profLogado = professores.firstWhere((p) {
-      final emailProf = (p['email'] ?? '').toString().trim().toLowerCase();
-      return emailProf.isNotEmpty && emailProf == emailUsuario;
-    }, orElse: () => {});
-
-    if (profLogado.isNotEmpty && profLogado['id'] != null) {
-      idProf = profLogado['id'].toString();
-    }
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24).copyWith(bottom: 100),
       child: Column(
@@ -1799,37 +1729,24 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
           const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('Mural da Turma', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87))), 
           const SizedBox(height: 12),
           
-          if (user != null) StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turmaId).collection('avisos').orderBy('dataEnvio', descending: true).limit(_limiteAvisosTurma).snapshots(),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avisos').orderBy('dataEnvio', descending: true).limit(_limiteAvisosTurma).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) return Center(child: Padding(padding: const EdgeInsets.all(24), child: CircularProgressIndicator(color: corPrimaria)));
               final docs = snapshot.data?.docs ?? [];
               
-              // =========================================================================
-              // FILTRO INTELIGENTE PARA O MURAL DO PROFESSOR
-              // =========================================================================
               var docsFiltrados = docs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 final remetenteIdBanco = data['remetenteId']?.toString();
                 final remetenteNomeBanco = data['remetenteNome']?.toString() ?? '';
                 final tipoDest = data['tipoDestinatario']?.toString() ?? 'TURMA';
                 
-                // É da Administração?
                 bool isAdmin = remetenteNomeBanco.contains('Administração') || remetenteNomeBanco.contains('Direção') || remetenteNomeBanco.contains('Admin');
-                
-                // Foi este professor que enviou?
                 bool isMe = remetenteIdBanco == idProf;
                 
-                // REGRA 1: Mostra tudo o que o professor logado enviou
                 if (isMe) return true; 
-                
-                // REGRA 2: Mostra os avisos gerais da Admin para a Turma
                 if (isAdmin && tipoDest == 'TURMA') return true; 
-                
-                // REGRA 3: Mostra os avisos da Admin exclusivos para a equipe de Professores
                 if (isAdmin && tipoDest == 'PROFESSORES') return true; 
-                
-                // Esconde todo o resto (ex: Admin para um aluno específico, ou mensagens de outros professores)
                 return false; 
               }).toList();
 
@@ -1866,7 +1783,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                       } else if (data['tipoDestinatario'] == 'PROFESSORES') {
                         prefixoDestino = 'Aviso Interno: ';
                         nomeDestino = 'Para Professores';
-                        isAvisoParaEquipe = true; // Flag para pintar de amarelo
+                        isAvisoParaEquipe = true;
                       } else {
                         final alunoAlvo = alunos.firstWhere((a) {
                           final idPossivel = (a['id'] ?? a['matricula'] ?? a['nome']).toString();
@@ -1886,7 +1803,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
                       return Card(
                         elevation: 0, 
-                        // Se for aviso da direção para o professor, pinta o fundo de amarelo
                         color: isAvisoParaEquipe ? Colors.orange.shade50 : Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12), 
@@ -1970,34 +1886,41 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   @override
   Widget build(BuildContext context) {
     final corPrimaria = Theme.of(context).primaryColor;
-    final estadoTurmas = ref.watch(turmasStreamProvider);
-    final estadoAlunos = ref.watch(alunosStreamProvider);
+    final user = ref.watch(authProvider).value;
 
-    String tituloAppBar = 'Diário de Classe';
-    if (estadoTurmas.hasValue) {
-      final tMap = estadoTurmas.value!.where((t) => t['id'] == widget.turmaId).toList();
-      if (tMap.isNotEmpty) {
-        tituloAppBar = tMap.first['nome'] ?? 'Diário de Classe';
-      }
+    if (user == null) {
+      return Scaffold(body: Center(child: CircularProgressIndicator(color: corPrimaria)));
     }
+    
+    final tenantId = user.tenantId;
 
-    return Scaffold(
-      backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(backgroundColor: Colors.white, foregroundColor: Colors.black87, elevation: 1, title: Text(tituloAppBar, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
-      floatingActionButton: _abaAtiva == 0 && _statusAulaHoje != 'NAO_INICIADA' && !_carregandoDiario ? FloatingActionButton.extended(onPressed: _statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? null : _reabrirAula) : _encerrarAula, backgroundColor: _statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? Colors.grey : Colors.orange) : corPrimaria, foregroundColor: Colors.white, icon: Icon(_statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? Icons.lock_rounded : Icons.lock_open_rounded) : Icons.check_circle_rounded), label: Text(_statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? 'Bloqueada' : 'Reabrir Aula') : 'Encerrar Aula', style: const TextStyle(fontWeight: FontWeight.bold))) : null,
-      body: estadoTurmas.when(
-        loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)), error: (e, s) => Center(child: Text('Erro: $e')),
-        data: (turmas) {
-          final turmaMap = turmas.where((t) => t['id'] == widget.turmaId).toList();
-          if (turmaMap.isEmpty) {
-            return const Center(child: Text('Turma não encontrada.'));
-          }
-          final turma = turmaMap.first;
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(widget.turmaId).snapshots(),
+      builder: (context, snapTurma) {
+        if (snapTurma.connectionState == ConnectionState.waiting) return Scaffold(body: Center(child: CircularProgressIndicator(color: corPrimaria)));
+        
+        if (!snapTurma.hasData || !snapTurma.data!.exists) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Diário de Classe')),
+            body: const Center(child: Text('Turma não encontrada no cadastro desta escola.')),
+          );
+        }
 
-          return estadoAlunos.when(
-            loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)), error: (e, s) => Center(child: Text('Erro: $e')),
-            data: (alunosRaw) {
-              var alunosDaTurma = alunosRaw.where((a) => (a['turmaId'] == widget.turmaId || a['turma'] == turma['nome'] || (a['turmasExtrasIds'] != null && (a['turmasExtrasIds'] as List).contains(widget.turmaId))) && a['status'] == 'Ativo').toList();
+        final turma = snapTurma.data!.data() as Map<String, dynamic>;
+        final tituloAppBar = turma['nome'] ?? 'Diário de Classe';
+
+        return Scaffold(
+          backgroundColor: Colors.grey.shade50,
+          appBar: AppBar(backgroundColor: Colors.white, foregroundColor: Colors.black87, elevation: 1, title: Text(tituloAppBar, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+          floatingActionButton: _abaAtiva == 0 && _statusAulaHoje != 'NAO_INICIADA' && !_carregandoDiario ? FloatingActionButton.extended(onPressed: _statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? null : _reabrirAula) : _encerrarAula, backgroundColor: _statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? Colors.grey : Colors.orange) : corPrimaria, foregroundColor: Colors.white, icon: Icon(_statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? Icons.lock_rounded : Icons.lock_open_rounded) : Icons.check_circle_rounded), label: Text(_statusAulaHoje == 'FINALIZADA' ? (_isDiaPassado ? 'Bloqueada' : 'Reabrir Aula') : 'Encerrar Aula', style: const TextStyle(fontWeight: FontWeight.bold))) : null,
+          body: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('alunos').where('status', isEqualTo: 'Ativo').snapshots(),
+            builder: (context, snapAlunos) {
+              if (snapAlunos.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: corPrimaria));
+              
+              final alunosRaw = snapAlunos.data?.docs.map((d) => d.data() as Map<String, dynamic>).toList() ?? [];
+
+              var alunosDaTurma = alunosRaw.where((a) => (a['turmaId'] == widget.turmaId || a['turma'] == turma['nome'] || (a['turmasExtrasIds'] != null && (a['turmasExtrasIds'] as List).contains(widget.turmaId)))).toList();
               alunosDaTurma.sort((a, b) => (a['nome'] ?? '').toString().toUpperCase().compareTo((b['nome'] ?? '').toString().toUpperCase()));
 
               int presentes = 0, faltas = 0;
@@ -2085,9 +2008,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 ],
               );
             }
-          );
-        }
-      ),
+          ),
+        );
+      }
     );
   }
 }
