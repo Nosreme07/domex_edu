@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
@@ -12,9 +13,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../estado/escola_provider.dart';
 
-// ============================================================================
-// PROVIDER GLOBAL PARA SOMAR TODOS OS ALUNOS DE TODAS AS ESCOLAS
-// ============================================================================
 final totalAlunosGlobalProvider = StreamProvider<int>((ref) {
   return FirebaseFirestore.instance
       .collectionGroup('alunos')
@@ -31,9 +29,6 @@ class SuperAdminDashboardTela extends ConsumerStatefulWidget {
 
 class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTela> {
   
-  // ==========================================================================
-  // LÓGICA DE ABERTURA E SALVAMENTO DE ESCOLA COM PROVISIONAMENTO BLINDADO
-  // ==========================================================================
   void _abrirFormularioEscola({Map<String, dynamic>? escolaEdicao, required int maiorIdAtual}) {
     showDialog(
       context: context,
@@ -52,7 +47,6 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
             );
 
             try {
-              // 1. Salva os dados básicos e faz o upload da logo
               await servico.salvarEscola(dadosEscola);
               
               if (escolaEdicao == null) {
@@ -61,9 +55,6 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                 final idEscola = dadosEscola['id'];
                 final db = FirebaseFirestore.instance;
 
-                // =============================================================
-                // 2. CRIA TODAS AS PASTAS VISUAIS IMEDIATAMENTE (O Segredo!)
-                // =============================================================
                 WriteBatch batchPastas = db.batch();
                 final colecoesVisuais = ['alunos', 'professores', 'responsaveis', 'turmas', 'secretaria', 'usuarios'];
                 for (String col in colecoesVisuais) {
@@ -73,11 +64,8 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                     'dataCriacao': DateTime.now().toIso8601String(),
                   });
                 }
-                await batchPastas.commit(); // Garante que as pastas apareçam no Console do Firebase
+                await batchPastas.commit(); 
 
-                // =============================================================
-                // 3. CRIA O LOGIN DO DIRETOR (Com tratamento de erro de e-mail)
-                // =============================================================
                 String? uidDiretor;
                 try {
                   FirebaseApp appSecundario = await Firebase.initializeApp(
@@ -92,20 +80,15 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                   await appSecundario.delete();
 
                 } on FirebaseAuthException catch (authError) {
-                  // Se o email já existir, joga o erro para a tela avisar o Super Admin
                   if (authError.code == 'email-already-in-use') {
                     throw 'O e-mail ($emailDiretor) já está em uso por outro usuário no sistema. Escolha um e-mail diferente para o diretor desta escola.';
                   }
                   throw 'Erro ao criar login: ${authError.message}';
                 }
 
-                // =============================================================
-                // 4. VINCULA AS PERMISSÕES (Se o login foi criado com sucesso)
-                // =============================================================
                 if (uidDiretor != null) {
                   WriteBatch batchPermissoes = db.batch();
 
-                  // Permissão Global
                   DocumentReference usuarioGlobalRef = db.collection('usuarios').doc(uidDiretor);
                   batchPermissoes.set(usuarioGlobalRef, {
                     'uid': uidDiretor, 'nome': nomeDiretor, 'email': emailDiretor,
@@ -113,7 +96,6 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                     'dataCadastro': DateTime.now().toIso8601String(),
                   });
 
-                  // Permissão Local (Dentro da aba de usuários da escola)
                   DocumentReference usuarioLocalRef = db.collection('tenants').doc(idEscola).collection('usuarios').doc(uidDiretor);
                   batchPermissoes.set(usuarioLocalRef, {
                     'id': uidDiretor, 'uid': uidDiretor, 'nome': nomeDiretor, 'email': emailDiretor,
@@ -121,7 +103,6 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                     'dataCadastro': DateTime.now().toIso8601String(),
                   });
 
-                  // Insere o Diretor na aba Secretária
                   DocumentReference diretorNaSecretariaRef = db.collection('tenants').doc(idEscola).collection('secretaria').doc('SEC-01');
                   batchPermissoes.set(diretorNaSecretariaRef, {
                     'id': 'SEC-01', 'nome': nomeDiretor, 'email': emailDiretor,
@@ -134,7 +115,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
               }
 
               if (!context.mounted) return;
-              Navigator.pop(context); // Fecha Modal de Carregamento
+              Navigator.pop(context); 
 
               if (escolaEdicao != null) {
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Dados da escola atualizados com sucesso!'), backgroundColor: Colors.green));
@@ -185,7 +166,7 @@ class _SuperAdminDashboardTelaState extends ConsumerState<SuperAdminDashboardTel
                 );
               }
             } catch (e) {
-              if (context.mounted) Navigator.pop(context); // Fecha Carregamento
+              if (context.mounted) Navigator.pop(context); 
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                 content: Text(e.toString(), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), 
                 backgroundColor: Colors.red,
@@ -457,9 +438,6 @@ class _SaaSMetricCard extends StatelessWidget {
   }
 }
 
-// ============================================================================
-// WIDGET DO FORMULÁRIO DE ESCOLA (PROVISIONAR E EDITAR)
-// ============================================================================
 class _FormularioEscolaDialog extends StatefulWidget {
   final int maiorIdAtual;
   final Map<String, dynamic>? escolaEdicao; 
@@ -488,7 +466,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
   final ImagePicker _picker = ImagePicker();
 
   final _nomeCtrl = TextEditingController();
-  final _subdominioCtrl = TextEditingController();
+  final _dominioCtrl = TextEditingController(); // MUDANÇA: de _subdominioCtrl para _dominioCtrl
   final _cnpjCtrl = TextEditingController();
   final _sloganCtrl = TextEditingController();
   final _responsavelCtrl = TextEditingController();
@@ -505,8 +483,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
   final _cidadeCtrl = TextEditingController();
 
   String _planoSelecionado = 'Básico';
-  Color _corPrimariaSelecionada = Colors.blue.shade800;
-  Color _corSecundariaSelecionada = Colors.blue.shade500;
+  Color _corPrimariaSelecionada = Colors.blue.shade800; // APENAS UMA COR AGORA
 
   @override
   void initState() {
@@ -514,7 +491,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
     if (widget.escolaEdicao != null) {
       final e = widget.escolaEdicao!;
       _nomeCtrl.text = e['nomeEscola'] ?? e['nome'] ?? '';
-      _subdominioCtrl.text = e['subdominio'] ?? '';
+      _dominioCtrl.text = e['dominio'] ?? e['subdominio'] ?? ''; 
       _cnpjCtrl.text = e['cnpj'] ?? '';
       _sloganCtrl.text = e['slogan'] ?? '';
       _responsavelCtrl.text = e['responsavel'] ?? '';
@@ -536,7 +513,6 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
       if (['Básico', 'Pro', 'Premium'].contains(e['plano'])) _planoSelecionado = e['plano'];
       
       _corPrimariaSelecionada = _converterHexParaColor(e['corPrimaria'] ?? e['corHex']);
-      _corSecundariaSelecionada = _converterHexParaColor(e['corSecundaria']);
       _logoUrlExistente = e['logoUrl'] ?? e['fotoUrl'] ?? e['logo'];
     }
   }
@@ -554,7 +530,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
 
   @override
   void dispose() {
-    _nomeCtrl.dispose(); _subdominioCtrl.dispose(); _cnpjCtrl.dispose(); _sloganCtrl.dispose();
+    _nomeCtrl.dispose(); _dominioCtrl.dispose(); _cnpjCtrl.dispose(); _sloganCtrl.dispose();
     _responsavelCtrl.dispose(); _emailCtrl.dispose(); _telefoneCtrl.dispose();
     _instaCtrl.dispose(); _faceCtrl.dispose(); _youtubeCtrl.dispose();
     _ruaCtrl.dispose(); _numeroCtrl.dispose(); _bairroCtrl.dispose(); _cidadeCtrl.dispose();
@@ -585,14 +561,14 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
     }
   }
 
-  void _abrirSeletorDeCores({required bool isPrimaria}) {
-    Color corTemporaria = isPrimaria ? _corPrimariaSelecionada : _corSecundariaSelecionada;
+  void _abrirSeletorDeCores() {
+    Color corTemporaria = _corPrimariaSelecionada;
 
     showDialog(
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(isPrimaria ? 'Selecione a Cor Primária' : 'Selecione a Cor Secundária'),
+          title: const Text('Selecione a Cor do Sistema'),
           content: SingleChildScrollView(
             child: ColorPicker(
               pickerColor: corTemporaria,
@@ -611,8 +587,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF080E1C), foregroundColor: Colors.white),
               onPressed: () {
                 setState(() {
-                  if (isPrimaria) _corPrimariaSelecionada = corTemporaria;
-                  else _corSecundariaSelecionada = corTemporaria;
+                  _corPrimariaSelecionada = corTemporaria;
                 });
                 Navigator.pop(ctx);
               },
@@ -624,7 +599,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
     );
   }
 
-  void _salvar() {
+  void _salvar() async {
     if (_formKey.currentState!.validate()) {
       final isEdicao = widget.escolaEdicao != null;
       
@@ -632,10 +607,40 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
       final idGerado = isEdicao ? widget.escolaEdicao!['id'] : 'ESC-${novoNumero.toString().padLeft(4, '0')}';
       const senhaPadrao = 'Domex@123';
 
+      final dominioDesejado = _dominioCtrl.text.replaceAll('@', '').trim().toLowerCase();
+
+      // ====================================================================
+      // TRAVA DE SEGURANÇA NO SUPER ADMIN: VERIFICA SE O DOMÍNIO JÁ EXISTE 
+      // ====================================================================
+      final dominioQuery = await FirebaseFirestore.instance
+          .collection('tenants')
+          .where('dominio', isEqualTo: dominioDesejado)
+          .get();
+
+      bool dominioEmUso = false;
+      for (var doc in dominioQuery.docs) {
+        if (doc.id != idGerado) {
+          dominioEmUso = true;
+          break;
+        }
+      }
+
+      if (dominioEmUso) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Este Código de Instituição já está sendo usado por outra escola. Escolha um diferente.'), 
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 6),
+          )
+        );
+        return; 
+      }
+
       final dadosEscola = {
         'id': idGerado,
         'nomeEscola': _nomeCtrl.text.trim(),
-        'subdominio': _subdominioCtrl.text.trim().toLowerCase(),
+        'dominio': dominioDesejado, 
         'cnpj': _cnpjCtrl.text.trim(),
         'slogan': _sloganCtrl.text.trim(),
         'responsavel': _responsavelCtrl.text.trim(),
@@ -646,8 +651,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
         'youtube': _youtubeCtrl.text.trim(),
         'plano': _planoSelecionado,
         'status': isEdicao ? widget.escolaEdicao!['status'] : 'Ativo',
-        'corPrimaria': '#${_corPrimariaSelecionada.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}', 
-        'corSecundaria': '#${_corSecundariaSelecionada.toARGB32().toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}', 
+        'corPrimaria': '#${_corPrimariaSelecionada.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}', 
         'dataCriacao': isEdicao ? widget.escolaEdicao!['dataCriacao'] : DateTime.now().toIso8601String(), 
         'quantidadeAlunos': isEdicao ? widget.escolaEdicao!['quantidadeAlunos'] ?? 0 : 0, 
         'logoUrl': isEdicao ? (widget.escolaEdicao!['logoUrl'] ?? widget.escolaEdicao!['fotoUrl'] ?? widget.escolaEdicao!['logo']) : null,
@@ -726,7 +730,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
                         children: [
                           Expanded(
                             child: InkWell(
-                              onTap: () => _abrirSeletorDeCores(isPrimaria: true),
+                              onTap: _abrirSeletorDeCores,
                               borderRadius: BorderRadius.circular(8),
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -736,27 +740,7 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
                                   children: [
                                     Container(width: 24, height: 24, decoration: BoxDecoration(color: _corPrimariaSelecionada, shape: BoxShape.circle, border: Border.all(color: Colors.black26))),
                                     const SizedBox(width: 8),
-                                    const Expanded(child: Text('Cor Primária', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)),
-                                    const Icon(Icons.colorize_rounded, size: 16, color: Colors.grey),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: InkWell(
-                              onTap: () => _abrirSeletorDeCores(isPrimaria: false),
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                decoration: BoxDecoration(color: Colors.grey.shade50, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Container(width: 24, height: 24, decoration: BoxDecoration(color: _corSecundariaSelecionada, shape: BoxShape.circle, border: Border.all(color: Colors.black26))),
-                                    const SizedBox(width: 8),
-                                    const Expanded(child: Text('Cor Secundária', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                                    const Expanded(child: Text('Cor do Sistema', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)),
                                     const Icon(Icons.colorize_rounded, size: 16, color: Colors.grey),
                                   ],
                                 ),
@@ -792,7 +776,24 @@ class _FormularioEscolaDialogState extends State<_FormularioEscolaDialog> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    Expanded(flex: 3, child: TextFormField(controller: _subdominioCtrl, decoration: const InputDecoration(labelText: 'Subdomínio', hintText: 'colegiogenesis', border: OutlineInputBorder(), prefixText: 'https://', suffixText: '.domexedu.com.br'), validator: (v) => v!.isEmpty || v.contains(' ') ? 'Sem espaços' : null)),
+                    Expanded(
+                      flex: 3, 
+                      child: TextFormField(
+                        controller: _dominioCtrl, 
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]'))],
+                        decoration: const InputDecoration(
+                          labelText: 'Domínio da Escola (Para Login dos Alunos)', 
+                          hintText: 'colegioconexaobr', 
+                          border: OutlineInputBorder(), 
+                          prefixText: '@ '
+                        ), 
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return 'Obrigatório';
+                          if (v.trim().length < 3) return 'Muito curto. No mínimo 3 caracteres.';
+                          return null;
+                        }
+                      )
+                    ),
                     const SizedBox(width: 16),
                     Expanded(flex: 2, child: DropdownButtonFormField<String>(value: _planoSelecionado, decoration: const InputDecoration(labelText: 'Plano Assinado', border: OutlineInputBorder()), items: ['Básico', 'Pro', 'Premium'].map((p) => DropdownMenuItem(value: p, child: Text(p))).toList(), onChanged: (v) => setState(() => _planoSelecionado = v!))),
                   ],

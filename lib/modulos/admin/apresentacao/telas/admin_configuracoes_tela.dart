@@ -41,8 +41,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
   XFile? _logoSelecionada;
   final ImagePicker _picker = ImagePicker();
 
-  Color _corPrimariaSelecionada = Colors.blue.shade800;
-  Color _corSecundariaSelecionada = Colors.blue.shade500;
+  Color _corPrimariaSelecionada = Colors.blue.shade800; // APENAS UMA COR AGORA
 
   // Controladores de Texto
   final _nomeInstCtrl = TextEditingController();
@@ -102,7 +101,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
         
         setState(() {
           _nomeInstCtrl.text = dados['nomeEscola'] ?? dados['nome'] ?? '';
-          _dominioCtrl.text = dados['dominio'] ?? ''; // Puxa o domínio limpo do banco
+          _dominioCtrl.text = dados['dominio'] ?? ''; 
           _cnpjCtrl.text = dados['cnpj'] ?? '';
           _sloganCtrl.text = dados['slogan'] ?? '';
           _responsavelCtrl.text = dados['responsavel'] ?? '';
@@ -114,7 +113,6 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
           _youtubeCtrl.text = dados['youtube'] ?? '';
           
           _corPrimariaSelecionada = _converterHexParaColor(dados['corPrimaria'] ?? dados['corHex'], Colors.blue.shade800);
-          _corSecundariaSelecionada = _converterHexParaColor(dados['corSecundaria'], Colors.blue.shade500);
           
           _logoUrlExistente = dados['logoUrl'] ?? dados['fotoUrl'] ?? dados['logo'];
 
@@ -143,6 +141,35 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
 
     if (usuario != null) {
       try {
+        final dominioDesejado = _dominioCtrl.text.replaceAll('@', '').trim().toLowerCase();
+
+        // VALIDAÇÃO DE DOMÍNIO ÚNICO
+        final dominioQuery = await FirebaseFirestore.instance
+            .collection('tenants')
+            .where('dominio', isEqualTo: dominioDesejado)
+            .get();
+
+        bool dominioEmUso = false;
+        for (var doc in dominioQuery.docs) {
+          if (doc.id != usuario.id) {
+            dominioEmUso = true;
+            break;
+          }
+        }
+
+        if (dominioEmUso) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⚠️ Este Código de Instituição já está sendo usado. Escolha um diferente.'), 
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 6),
+            )
+          );
+          setState(() => _salvando = false);
+          return; 
+        }
+
         String? linkLogoFinal = _logoUrlExistente;
 
         if (_logoSelecionada != null) {
@@ -154,8 +181,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
 
         final dadosParaSalvar = {
           'nomeEscola': _nomeInstCtrl.text.trim(),
-          // Garante que tira qualquer @ que tenha vindo por acidente e guarda só as letras minúsculas
-          'dominio': _dominioCtrl.text.replaceAll('@', '').trim().toLowerCase(), 
+          'dominio': dominioDesejado, 
           'cnpj': _cnpjCtrl.text.trim(),
           'slogan': _sloganCtrl.text.trim(),
           'responsavel': _responsavelCtrl.text.trim(),
@@ -165,7 +191,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
           'facebook': _faceCtrl.text.trim(),
           'youtube': _youtubeCtrl.text.trim(),
           'corPrimaria': '#${_corPrimariaSelecionada.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
-          'corSecundaria': '#${_corSecundariaSelecionada.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}',
+          // 'corSecundaria' REMOVIDO DO BANCO DE DADOS AQUI
           if (linkLogoFinal != null) 'logoUrl': linkLogoFinal,
           'endereco': {
             'rua': _ruaCtrl.text.trim(),
@@ -214,14 +240,14 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
     }
   }
 
-  void _abrirSeletorDeCores({required bool isPrimaria}) {
-    Color corTemporaria = isPrimaria ? _corPrimariaSelecionada : _corSecundariaSelecionada;
+  void _abrirSeletorDeCores() {
+    Color corTemporaria = _corPrimariaSelecionada;
 
     showDialog(
       context: context,
       builder: (ctx) {
         return AlertDialog(
-          title: Text(isPrimaria ? 'Selecione a Cor Primária' : 'Selecione a Cor Secundária'),
+          title: const Text('Selecione a Cor do Sistema'),
           content: SingleChildScrollView(
             child: ColorPicker(
               pickerColor: corTemporaria,
@@ -240,8 +266,7 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF080E1C), foregroundColor: Colors.white),
               onPressed: () {
                 setState(() {
-                  if (isPrimaria) _corPrimariaSelecionada = corTemporaria;
-                  else _corSecundariaSelecionada = corTemporaria;
+                  _corPrimariaSelecionada = corTemporaria;
                 });
                 Navigator.pop(ctx);
               },
@@ -318,48 +343,28 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('Cores do Sistema (Tema)', style: TextStyle(fontWeight: FontWeight.bold)),
+                                    const Text('Cor do Sistema (Tema)', style: TextStyle(fontWeight: FontWeight.bold)),
                                     const SizedBox(height: 16),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: InkWell(
-                                            onTap: () => _abrirSeletorDeCores(isPrimaria: true),
-                                            borderRadius: BorderRadius.circular(8),
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                              decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                                              child: Row(
-                                                children: [
-                                                  Container(width: 24, height: 24, decoration: BoxDecoration(color: _corPrimariaSelecionada, shape: BoxShape.circle, border: Border.all(color: Colors.black26))),
-                                                  const SizedBox(width: 12),
-                                                  const Expanded(child: Text('Cor Primária', style: TextStyle(fontWeight: FontWeight.w500))),
-                                                  const Icon(Icons.colorize_rounded, size: 20, color: Colors.grey),
-                                                ],
-                                              ),
-                                            ),
+                                    
+                                    // BOTAO DE COR ÚNICO (Ocupa tamanho razoável agora)
+                                    SizedBox(
+                                      width: 300,
+                                      child: InkWell(
+                                        onTap: _abrirSeletorDeCores,
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                          decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                                          child: Row(
+                                            children: [
+                                              Container(width: 24, height: 24, decoration: BoxDecoration(color: _corPrimariaSelecionada, shape: BoxShape.circle, border: Border.all(color: Colors.black26))),
+                                              const SizedBox(width: 12),
+                                              const Expanded(child: Text('Cor Principal do Sistema', style: TextStyle(fontWeight: FontWeight.w500))),
+                                              const Icon(Icons.colorize_rounded, size: 20, color: Colors.grey),
+                                            ],
                                           ),
                                         ),
-                                        const SizedBox(width: 16),
-                                        Expanded(
-                                          child: InkWell(
-                                            onTap: () => _abrirSeletorDeCores(isPrimaria: false),
-                                            borderRadius: BorderRadius.circular(8),
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                              decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                                              child: Row(
-                                                children: [
-                                                  Container(width: 24, height: 24, decoration: BoxDecoration(color: _corSecundariaSelecionada, shape: BoxShape.circle, border: Border.all(color: Colors.black26))),
-                                                  const SizedBox(width: 12),
-                                                  const Expanded(child: Text('Cor Secundária', style: TextStyle(fontWeight: FontWeight.w500))),
-                                                  const Icon(Icons.colorize_rounded, size: 20, color: Colors.grey),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -391,11 +396,11 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
                           ),
                           const SizedBox(height: 16),
                           
-                          // ================= NOVO CAMPO: DOMÍNIO COM MÁSCARA =================
+                          // ================= CAMPO: DOMÍNIO COM MÁSCARA =================
                           TextFormField(
                             controller: _dominioCtrl,
                             inputFormatters: [
-                              FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')), // Força apenas minúsculas e números
+                              FilteringTextInputFormatter.allow(RegExp(r'[a-z0-9]')), 
                             ],
                             decoration: InputDecoration(
                               labelText: 'Domínio da Escola (Para Login)',
@@ -404,7 +409,6 @@ class _AdminConfiguracoesTelaState extends ConsumerState<AdminConfiguracoesTela>
                               helperMaxLines: 3,
                               border: const OutlineInputBorder(),
                               prefixIcon: Icon(Icons.domain_verification, color: corPrimariaTema),
-                              // O Segredo está aqui:
                               prefixText: '@ ',
                               prefixStyle: TextStyle(color: corPrimariaTema, fontWeight: FontWeight.bold, fontSize: 16),
                             ),
