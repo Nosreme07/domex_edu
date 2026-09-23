@@ -87,7 +87,18 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
             onPressed: () async {
               final servico = ref.read(usuarioEscolaServiceProvider);
               if (servico != null) {
+                // 1. Exclui o login exato exibido na tela
                 await servico.excluirUsuario(u['login']);
+                
+                // 2. Exclui agressivamente todas as outras identidades que possam estar atreladas
+                final doc = u['rawDoc'];
+                if (doc != null) {
+                   if (doc['matricula'] != null) await servico.excluirUsuario(doc['matricula']);
+                   if (doc['id'] != null) await servico.excluirUsuario(doc['id']);
+                   if (doc['cpf'] != null) await servico.excluirUsuario(doc['cpf']);
+                   if (doc['email'] != null) await servico.excluirUsuario(doc['email']);
+                }
+
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credenciais de login excluídas. Cadastro base mantido.'), backgroundColor: Colors.green));
@@ -653,6 +664,9 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     final secretariaAsync = ref.watch(secretariaStreamProvider);
     final manuaisAsync = ref.watch(usuariosEscolaStreamProvider);
     final turmasAsync = ref.watch(turmasStreamProvider);
+    
+    final sessao = ref.read(authProvider).value;
+    final codigoEscola = sessao?.codigoEscola ?? 'domex';
 
     if (manuaisAsync.hasError) return _buildErro('Erro em Usuários', manuaisAsync.error);
     if (alunosAsync.hasError) return _buildErro('Erro em Alunos', alunosAsync.error);
@@ -692,39 +706,48 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     List<Map<String, dynamic>> todosUsuarios = [];
 
-    void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Color cor, String loginChave) {
-      String login = loginChave.toLowerCase().trim();
+    void _adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Color cor) {
+      String idBase = '';
+      if (perfil == 'ALUNO') idBase = (data['matricula'] ?? '').toString().toLowerCase().trim();
+      else if (perfil == 'RESPONSÁVEL') idBase = (data['cpf'] ?? '').toString().toLowerCase().trim();
+      else idBase = (data['id'] ?? '').toString().toLowerCase().trim();
+
+      String loginChave = (data['email']?.toString().trim().isNotEmpty == true) 
+          ? data['email'].toString().toLowerCase().trim() 
+          : idBase;
+
       String nome = (data['nome'] ?? '').toString().toLowerCase().trim();
       String status = data['status'] ?? 'Ativo';
       
-      String? matchedLogin;
+      // Recolhe todas as chaves que podem pertencer a esta mesma pessoa no banco de dados global
+      Set<String> chavesEncontradas = {};
 
-      // Tenta achar o registro global da pessoa (para ver se já tem senha e login de acesso)
-      if (manuaisMap.containsKey(login)) {
-        matchedLogin = login;
-      } else if (!login.contains('@') && manuaisMap.containsKey('$login@domex.com')) {
-        matchedLogin = '$login@domex.com'; // Captura os antigos sujos com @domex.com
-      } else if (nomeParaLogin.containsKey(nome)) {
-        matchedLogin = nomeParaLogin[nome];
-      }
+      if (manuaisMap.containsKey(loginChave)) chavesEncontradas.add(loginChave);
+      if (idBase.isNotEmpty && manuaisMap.containsKey(idBase)) chavesEncontradas.add(idBase);
+      if (idBase.isNotEmpty && manuaisMap.containsKey('$idBase@$codigoEscola.com')) chavesEncontradas.add('$idBase@$codigoEscola.com');
+      if (idBase.isNotEmpty && manuaisMap.containsKey('$idBase@domex.com')) chavesEncontradas.add('$idBase@domex.com');
+      if (nome.isNotEmpty && nomeParaLogin.containsKey(nome)) chavesEncontradas.add(nomeParaLogin[nome]!);
 
-      if (matchedLogin != null) {
-        status = manuaisMap[matchedLogin]!['status'] ?? status;
+      if (chavesEncontradas.isNotEmpty) {
+        String chavePrincipal = chavesEncontradas.first;
+        status = manuaisMap[chavePrincipal]!['status'] ?? status;
         
-        // CORREÇÃO: Limpamos visualmente a tela
-        // Se a chave original (ex: 20260007) não tiver '@', NÃO usamos o email antigo do banco, 
-        // e mostramos apenas a matrícula pura na lista!
-        if (loginChave.contains('@')) {
-           String emailAcesso = (manuaisMap[matchedLogin]!['email'] ?? '').toString().trim();
-           if (emailAcesso.isNotEmpty) login = emailAcesso.toLowerCase();
+        String emailAcesso = (manuaisMap[chavePrincipal]!['email'] ?? '').toString().trim().toLowerCase();
+        if (emailAcesso.isNotEmpty) {
+           loginChave = emailAcesso;
+        } else if (!loginChave.contains('@')) {
+           loginChave = manuaisMap[chavePrincipal]!['idLogin']?.toString().toLowerCase() ?? loginChave;
         }
         
-        manuaisMap.remove(matchedLogin); 
+        // Remove agressivamente TODAS as credenciais correspondentes para não sobrar nenhum "lixo" que gere um card manual duplicado
+        for (var chave in chavesEncontradas) {
+          manuaisMap.remove(chave); 
+        }
       }
 
       todosUsuarios.add({
         'nome': data['nome'] ?? 'Sem Nome',
-        'login': login, // Agora, para alunos sem email, vai ficar a matrícula pura
+        'login': loginChave, 
         'telefone': data['telefone'] ?? '',
         'perfil': perfil,
         'status': status,
@@ -736,32 +759,17 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
       });
     }
 
-    for (var a in alunos) {
-      String login = (a['email']?.toString().isNotEmpty == true) ? a['email'] : a['matricula'];
-      _adicionarAuto(a, 'ALUNO', Icons.school_rounded, Colors.blue, login);
-    }
-
-    for (var p in professores) {
-      String login = (p['email']?.toString().isNotEmpty == true) ? p['email'] : p['id'];
-      _adicionarAuto(p, 'PROFESSOR', Icons.assignment_ind_rounded, Colors.orange, login);
-    }
-
-    for (var r in responsaveis) {
-      String login = (r['email']?.toString().isNotEmpty == true) ? r['email'] : r['cpf'];
-      _adicionarAuto(r, 'RESPONSÁVEL', Icons.family_restroom_rounded, Colors.green, login);
-    }
-
-    for (var s in secretaria) {
-      String login = (s['email']?.toString().isNotEmpty == true) ? s['email'] : s['id'];
-      _adicionarAuto(s, 'SECRETARIA', Icons.support_agent_rounded, Colors.teal, login);
-    }
+    for (var a in alunos) _adicionarAuto(a, 'ALUNO', Icons.school_rounded, Colors.blue);
+    for (var p in professores) _adicionarAuto(p, 'PROFESSOR', Icons.assignment_ind_rounded, Colors.orange);
+    for (var r in responsaveis) _adicionarAuto(r, 'RESPONSÁVEL', Icons.family_restroom_rounded, Colors.green);
+    for (var s in secretaria) _adicionarAuto(s, 'SECRETARIA', Icons.support_agent_rounded, Colors.teal);
 
     for (var m in manuaisMap.values) {
       todosUsuarios.add({
         'nome': m['nome'] ?? 'Sem Nome',
         'login': m['idLogin'],
         'telefone': '',
-        'perfil': (m['perfil'] ?? 'ADMINISTRADOR').toString().toUpperCase(),
+        'perfil': (m['perfil'] ?? 'INDEFINIDO').toString().toUpperCase(),
         'status': m['status'] ?? 'Ativo',
         'fotoUrl': null,
         'origem': 'MANUAL',
@@ -816,7 +824,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                       DropdownMenuItem(value: 'PROFESSOR', child: Text('Professores', style: TextStyle(color: Colors.black87))),
                       DropdownMenuItem(value: 'RESPONSÁVEL', child: Text('Responsáveis', style: TextStyle(color: Colors.black87))),
                       DropdownMenuItem(value: 'SECRETARIA', child: Text('Secretaria', style: TextStyle(color: Colors.black87))),
-                      DropdownMenuItem(value: 'ADMINISTRADOR', child: Text('Administradores', style: TextStyle(color: Colors.black87))),
                     ],
                   ),
                 ),

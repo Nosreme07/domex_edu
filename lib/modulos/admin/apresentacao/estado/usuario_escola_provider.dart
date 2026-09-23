@@ -49,16 +49,12 @@ class UsuarioEscolaService {
   }
 
   Future<void> resetarSenhaEGerarAuth(Map<String, dynamic> u) async {
-    // Garante que pega a matrícula 100% limpa, ignorando erros antigos
     final idLogin = u['login'].toString().toLowerCase().trim();
-    
-    // Cria a credencial usando o domínio atualizado nas configurações
     final emailAuth = idLogin.contains('@') ? idLogin : '$idLogin@$codigoEscola.com';
     final senhaPadrao = 'Domex@123';
 
     await _garantirContaNoFirebaseAuth(emailAuth, senhaPadrao);
     
-    // Sobrescreve os dados no banco, atualizando o email para o domínio correto!
     await _db.doc(idLogin).set({
       'idLogin': idLogin,
       'email': emailAuth, 
@@ -71,8 +67,15 @@ class UsuarioEscolaService {
     }, SetOptions(merge: true));
   }
 
-  Future<void> excluirUsuario(String idLogin) async {
+  Future<void> excluirUsuario(String idLoginRaw) async {
+    // Exclui a versão padronizada
+    final idLogin = idLoginRaw.toLowerCase().trim();
     await _db.doc(idLogin).delete();
+    
+    // Exclui a versão exata que veio da interface (para garantir a remoção de resíduos)
+    if (idLogin != idLoginRaw) {
+      await _db.doc(idLoginRaw).delete(); 
+    }
   }
 }
 
