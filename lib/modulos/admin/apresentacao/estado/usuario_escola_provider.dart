@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
@@ -24,11 +25,11 @@ class UsuarioEscolaService {
         await authSecundario.createUserWithEmailAndPassword(email: email, password: senha);
       } on FirebaseAuthException catch (e) {
         if (e.code != 'email-already-in-use') {
-          print('Erro no Firebase Auth: ${e.message}');
+          debugPrint('Erro no Firebase Auth: ${e.message}');
         }
       }
     } catch (e) {
-      print('Erro ao inicializar App Secundário: $e');
+      debugPrint('Erro ao inicializar App Secundário: $e');
     }
   }
 
@@ -36,8 +37,15 @@ class UsuarioEscolaService {
     dadosUsuario['escolaId'] = escolaId;
     dadosUsuario['dataCriacao'] = FieldValue.serverTimestamp();
     
-    final idLogin = dadosUsuario['idLogin'].toString().toLowerCase().trim();
+    String idLogin = dadosUsuario['idLogin'].toString().toLowerCase().trim();
+    
+    if (idLogin.endsWith('@domex.com') || (codigoEscola.isNotEmpty && idLogin.endsWith('@$codigoEscola.com'))) {
+      idLogin = idLogin.split('@')[0];
+      dadosUsuario['idLogin'] = idLogin;
+    }
+
     final emailAuth = idLogin.contains('@') ? idLogin : '$idLogin@$codigoEscola.com';
+    dadosUsuario['email'] = emailAuth;
 
     if (dadosUsuario.containsKey('senha')) {
       await _garantirContaNoFirebaseAuth(emailAuth, dadosUsuario['senha']);
@@ -45,15 +53,34 @@ class UsuarioEscolaService {
       await _garantirContaNoFirebaseAuth(emailAuth, 'Domex@123');
     }
     
+    if (!idLogin.contains('@')) {
+      try {
+        final docAntigo = await _db.doc('$idLogin@domex.com').get();
+        if (docAntigo.exists) await docAntigo.reference.delete();
+      } catch (_) {}
+    }
+    
     await _db.doc(idLogin).set(dadosUsuario, SetOptions(merge: true));
   }
 
   Future<void> resetarSenhaEGerarAuth(Map<String, dynamic> u) async {
-    final idLogin = u['login'].toString().toLowerCase().trim();
+    String idLogin = u['login'].toString().toLowerCase().trim();
+
+    if (idLogin.endsWith('@domex.com') || (codigoEscola.isNotEmpty && idLogin.endsWith('@$codigoEscola.com'))) {
+      idLogin = idLogin.split('@')[0];
+    }
+
     final emailAuth = idLogin.contains('@') ? idLogin : '$idLogin@$codigoEscola.com';
-    final senhaPadrao = 'Domex@123';
+    const senhaPadrao = 'Domex@123';
 
     await _garantirContaNoFirebaseAuth(emailAuth, senhaPadrao);
+    
+    if (!idLogin.contains('@')) {
+      try {
+        final docAntigo = await _db.doc('$idLogin@domex.com').get();
+        if (docAntigo.exists) await docAntigo.reference.delete();
+      } catch (_) {}
+    }
     
     await _db.doc(idLogin).set({
       'idLogin': idLogin,
@@ -67,15 +94,52 @@ class UsuarioEscolaService {
     }, SetOptions(merge: true));
   }
 
-  Future<void> excluirUsuario(String idLoginRaw) async {
-    // Exclui a versão padronizada
-    final idLogin = idLoginRaw.toLowerCase().trim();
-    await _db.doc(idLogin).delete();
-    
-    // Exclui a versão exata que veio da interface (para garantir a remoção de resíduos)
-    if (idLogin != idLoginRaw) {
-      await _db.doc(idLoginRaw).delete(); 
+  // ==========================================================================
+  // EXCLUSÃO BLINDADA: Varre todo o banco garantindo a remoção do acesso
+  // ==========================================================================
+  Future<void> excluirAcessoCompleto({
+    required String login,
+    String? matricula,
+    String? id,
+    String? cpf,
+    String? email,
+  }) async {
+    try {
+      final Set<String> candidatos = {login.toLowerCase().trim()};
+      if (matricula != null) candidatos.add(matricula.toLowerCase().trim());
+      if (id != null) candidatos.add(id.toLowerCase().trim());
+      if (cpf != null) candidatos.add(cpf.toLowerCase().trim());
+      if (email != null) candidatos.add(email.toLowerCase().trim());
+
+      final Set<String> extras = {};
+      for (var c in candidatos) {
+         if (c.contains('@')) extras.add(c.split('@')[0]);
+      }
+      candidatos.addAll(extras);
+
+      final querySnap = await _db.where('escolaId', isEqualTo: escolaId).get();
+      for (final doc in querySnap.docs) {
+        final data = doc.data();
+        final docIdLogin = (data['idLogin'] ?? '').toString().toLowerCase().trim();
+        final docEmail = (data['email'] ?? '').toString().toLowerCase().trim();
+        
+        if (candidatos.contains(doc.id.toLowerCase().trim()) || 
+            candidatos.contains(docIdLogin) || 
+            candidatos.contains(docEmail)) {
+          try {
+            await doc.reference.delete();
+          } catch (e) {
+            debugPrint('Aviso exclusão: $e');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Erro geral na exclusão: $e');
     }
+  }
+
+  Future<void> excluirUsuario(String idLoginRaw) async {
+    await excluirAcessoCompleto(login: idLoginRaw);
   }
 }
 

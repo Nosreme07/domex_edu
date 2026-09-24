@@ -49,7 +49,7 @@ import '../../modulos/academico/apresentacao/telas/professor_calendario_tela.dar
 // ============================================================================
 import '../../modulos/alunos/layout/aluno_layout.dart';
 import '../../modulos/alunos/apresentacao/telas/aluno_dashboard_tela.dart';
-
+import '../../modulos/alunos/apresentacao/telas/aluno_calendario_tela.dart'; // <--- IMPORT DA NOVA TELA
 
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
@@ -256,6 +256,11 @@ class AppRotas {
           GoRoute(
             path: '/aluno',
             builder: (context, state) => const AlunoDashboardTela(),
+          ),
+          // <--- ROTA DO CALENDÁRIO ADICIONADA AQUI
+          GoRoute(
+            path: '/aluno/calendario',
+            builder: (context, state) => const AlunoCalendarioTela(),
           ),
         ],
       ),
