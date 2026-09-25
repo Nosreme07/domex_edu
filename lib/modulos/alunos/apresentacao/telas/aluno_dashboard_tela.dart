@@ -10,7 +10,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:intl/intl.dart';
 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
-import '../estado/aluno_dashboard_provider.dart'; // <--- O NOSSO NOVO PROVIDER
+import '../estado/aluno_dashboard_provider.dart'; 
 
 // ============================================================================
 // FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA 
@@ -54,9 +54,11 @@ class AlunoDashboardTela extends ConsumerStatefulWidget {
 
 class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
   bool _atualizandoFoto = false;
+  bool _muralExpandido = false;
+  bool _avaliacoesExpandidas = false;
 
   // ==========================================================================
-  // LÓGICA DE FOTO (CÂMERA, GALERIA E CORTE)
+  // LÓGICA DE FOTO (CÂMERA, GALERIA E CORTE 3X4)
   // ==========================================================================
   void _abrirOpcoesFoto(String tenantId, String alunoDocId, String urlAtual) {
     showDialog(
@@ -104,14 +106,19 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     final messenger = ScaffoldMessenger.of(context);
     try {
       final picker = ImagePicker();
-      final XFile? fotoOriginal = await picker.pickImage(source: source, imageQuality: 70);
+      final XFile? fotoOriginal = await picker.pickImage(
+        source: source, 
+        imageQuality: 70,
+        maxWidth: 1000,
+        maxHeight: 1000,
+      );
       
       if (fotoOriginal == null) return;
       if (!mounted) return;
 
       final croppedFile = await ImageCropper().cropImage(
         sourcePath: fotoOriginal.path,
-        aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4),
+        aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), 
         uiSettings: kIsWeb 
           ? [WebUiSettings(context: context)]
           : [
@@ -122,7 +129,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                 initAspectRatio: CropAspectRatioPreset.original,
                 lockAspectRatio: true,
               ),
-              IOSUiSettings(title: 'Enquadrar Foto'),
+              IOSUiSettings(title: 'Enquadrar Foto 3x4', aspectRatioLockEnabled: true),
             ],
       );
 
@@ -141,7 +148,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
 
         await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('alunos').doc(alunoDocId).update({'fotoUrl': novaUrl});
         
-        // Atualiza a tela automaticamente buscando os novos dados
         ref.invalidate(dadosAlunoProvider);
         
         messenger.showSnackBar(const SnackBar(content: Text('Foto de perfil atualizada com sucesso!'), backgroundColor: Colors.green));
@@ -187,7 +193,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
           initialChildSize: 0.8, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
           builder: (_, scrollController) {
             return FutureBuilder<List<dynamic>>(
-              future: ref.read(gradeAulasAlunoProvider(turmaId).future), // <--- USANDO O NOSSO PROVIDER
+              future: ref.read(gradeAulasAlunoProvider(turmaId).future),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return Center(child: CircularProgressIndicator(color: corPrimaria));
@@ -271,6 +277,347 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
+  // ==========================================================================
+  // BOLETIM CONSOLIDADO (AGRUPA NOTAS POR DISCIPLINA) - Correção de Cast
+  // ==========================================================================
+  void _abrirBoletim(String tenantId, String? turmaId, String alunoDocId, Color corPrimaria) {
+    if (turmaId == null || turmaId.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.8, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.analytics_rounded, color: corPrimaria)),
+                      const SizedBox(width: 16),
+                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Meu Boletim', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('Notas consolidadas por disciplina', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      ])),
+                      IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: FutureBuilder<QuerySnapshot>(
+                    future: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avaliacoes').get(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: corPrimaria));
+                      
+                      final avaliacoes = snapshot.data?.docs.map((d) => d.data() as Map<String, dynamic>).toList() ?? [];
+                      
+                      if (avaliacoes.isEmpty) {
+                        return Center(child: Text('Nenhuma nota registrada.', style: TextStyle(color: Colors.grey.shade500)));
+                      }
+
+                      Map<String, Map<String, double>> boletim = {};
+                      for (var aval in avaliacoes) {
+                        final disciplina = aval['disciplina'] ?? 'Geral';
+                        // Conversão segura de pontuacaoMaxima para double
+                        final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
+                        final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
+                        // Conversão segura da nota do aluno para double
+                        final notaAluno = double.tryParse(notasMap[alunoDocId]?.toString() ?? '0') ?? 0.0;
+
+                        if (!boletim.containsKey(disciplina)) {
+                          boletim[disciplina] = {'notaAluno': 0.0, 'maximo': 0.0};
+                        }
+                        boletim[disciplina]!['notaAluno'] = boletim[disciplina]!['notaAluno']! + notaAluno;
+                        boletim[disciplina]!['maximo'] = boletim[disciplina]!['maximo']! + maximo;
+                      }
+
+                      final disciplinasOrdem = boletim.keys.toList()..sort();
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(20),
+                        itemCount: disciplinasOrdem.length,
+                        separatorBuilder: (c, i) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final disciplina = disciplinasOrdem[index];
+                          final dados = boletim[disciplina]!;
+                          final notaAluno = dados['notaAluno']!;
+                          final maximo = dados['maximo']!;
+                          
+                          final bool acimaMedia = notaAluno >= (maximo * 0.6);
+                          final Color corNota = notaAluno == 0 && maximo == 0 ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
+
+                          return Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: Colors.grey.shade200),
+                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
+                                    const SizedBox(width: 12),
+                                    Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  ],
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                  decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                                  child: Text(
+                                    '${notaAluno.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)}', 
+                                    style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 15)
+                                  ),
+                                )
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                )
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
+  // ==========================================================================
+  // TODAS AS AVALIAÇÕES (HISTÓRICO COMPLETO) - Correção de Cast
+  // ==========================================================================
+  void _abrirTodasAvaliacoes(String tenantId, String? turmaId, String alunoDocId, Color corPrimaria) {
+    if (turmaId == null || turmaId.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.8, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.grading_rounded, color: corPrimaria)),
+                      const SizedBox(width: 16),
+                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Histórico de Avaliações', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('Todos os testes e trabalhos', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      ])),
+                      IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: FutureBuilder<QuerySnapshot>(
+                    future: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avaliacoes').orderBy('dataAvaliacao', descending: true).get(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: corPrimaria));
+                      
+                      final avaliacoes = snapshot.data?.docs.map((d) {
+                        final data = d.data() as Map<String, dynamic>;
+                        data['id'] = d.id;
+                        return data;
+                      }).toList() ?? [];
+                      
+                      if (avaliacoes.isEmpty) {
+                        return Center(child: Text('Nenhuma avaliação encontrada.', style: TextStyle(color: Colors.grey.shade500)));
+                      }
+
+                      return ListView.separated(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(20),
+                        itemCount: avaliacoes.length,
+                        separatorBuilder: (c, i) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final aval = avaliacoes[index];
+                          final notas = Map<String, dynamic>.from(aval['notas'] ?? {});
+                          final notaDoAluno = notas[alunoDocId];
+                          
+                          // Conversão segura do máximo
+                          final max = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
+                          
+                          Color corNota = Colors.grey.shade600;
+                          String textoNota = 'Valendo $max pts';
+                          
+                          if (notaDoAluno != null) {
+                            // Conversão segura da nota
+                            final double notaNum = double.tryParse(notaDoAluno.toString()) ?? 0.0;
+                            final bool acimaMedia = notaNum >= (max * 0.6);
+                            corNota = acimaMedia ? Colors.green.shade700 : Colors.red.shade700;
+                            textoNota = 'Nota: $notaDoAluno / $max';
+                          }
+
+                          return InkWell(
+                            onTap: () => _mostrarDetalhesAvaliacao(aval, notaDoAluno, max, corNota, corPrimaria),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.grey.shade200),
+                                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(color: Colors.blueGrey.shade50, shape: BoxShape.circle),
+                                    child: Icon(Icons.edit_document, color: Colors.blueGrey.shade400, size: 20),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(aval['nome'] ?? 'Avaliação', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        const SizedBox(height: 4),
+                                        Text('${aval['disciplina'] ?? 'Geral'} • ${_formatarDataDisplay(aval['dataAvaliacao'] ?? '')}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(color: notaDoAluno != null ? corNota.withAlpha(20) : Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                                    child: Text(textoNota, style: TextStyle(color: notaDoAluno != null ? corNota : Colors.grey.shade700, fontWeight: FontWeight.bold, fontSize: 13)),
+                                  )
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                )
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
+  void _mostrarDetalhesAvaliacao(Map<String, dynamic> aval, dynamic notaDoAluno, double max, Color corNota, Color corPrimaria) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(aval['nome'] ?? 'Detalhes', style: const TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Disciplina: ${aval['disciplina'] ?? 'Geral'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('Data: ${_formatarDataDisplay(aval['dataAvaliacao'] ?? '')}'),
+            const SizedBox(height: 8),
+            Text('Bimestre: ${aval['bimestre'] ?? ''}'),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            if (aval['descricao'] != null && aval['descricao'].toString().isNotEmpty) ...[
+              const Text('Descrição:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+              Text(aval['descricao']),
+              const SizedBox(height: 16),
+            ],
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: notaDoAluno != null ? corNota.withAlpha(20) : Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+              child: Column(
+                children: [
+                  Text('Sua Nota', style: TextStyle(fontSize: 12, color: notaDoAluno != null ? corNota : Colors.grey)),
+                  const SizedBox(height: 4),
+                  Text(
+                    notaDoAluno != null ? '$notaDoAluno / $max' : 'Aguardando Correção\n(Valendo $max pts)', 
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: notaDoAluno != null ? corNota : Colors.grey.shade700)
+                  ),
+                ],
+              ),
+            )
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
+        ],
+      )
+    );
+  }
+
+  // ==========================================================================
+  // HISTÓRICO COMPLETO DE AVISOS NO BOTTOM SHEET
+  // ==========================================================================
+  void _abrirHistoricoAvisos(List<dynamic> avisosAluno, String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.8, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Row(
+                    children: [
+                      Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.history_edu_rounded, color: corPrimaria)),
+                      const SizedBox(width: 16),
+                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('Histórico de Avisos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        Text('Todas as mensagens recebidas', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                      ])),
+                      IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                Expanded(
+                  child: ListView.separated(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(20),
+                    itemCount: avisosAluno.length,
+                    separatorBuilder: (c, i) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      return _buildAvisoCard(avisosAluno[index], tenantId, turmaId, alunoDocId, corPrimaria);
+                    },
+                  ),
+                )
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
+  // ==========================================================================
+  // WIDGETS REUTILIZÁVEIS
+  // ==========================================================================
   Widget _buildAtalho(String titulo, IconData icone, Color corPrimaria, VoidCallback onTap) {
     return Expanded(
       child: InkWell(
@@ -297,7 +644,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
               const SizedBox(height: 12),
               Text(
                 titulo,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black87),
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -305,6 +652,99 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAvisoCard(dynamic avisoData, String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
+    final aviso = avisoData as Map<String, dynamic>;
+    final dataEnvio = aviso['dataEnvio'];
+    final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
+    final isDireto = aviso['tipoDestinatario'] == 'ALUNO' || aviso['tipoDestinatario'] == 'RESPONSAVEL';
+    
+    final remetenteOriginal = (aviso['remetenteNome'] ?? 'Direção / Professor').toString();
+    bool isProfessor = remetenteOriginal.contains('Professor(a)');
+
+    final tagDestino = isDireto ? 'Apenas para você' : 'Para toda a turma';
+    final corDestino = isDireto ? Colors.red : Colors.blue;
+
+    final lidosPor = List<String>.from(aviso['lidosPor'] ?? []);
+    final isLido = lidosPor.contains(alunoDocId);
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDireto ? Colors.orange.shade50 : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDireto ? Colors.orange.shade200 : Colors.grey.shade200),
+        boxShadow: isDireto ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(isProfessor ? Icons.assignment_ind_rounded : Icons.admin_panel_settings_rounded, size: 16, color: isDireto ? Colors.orange.shade800 : corPrimaria),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        remetenteOriginal,
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? Colors.orange.shade900 : Colors.black87),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                  if (!isLido) ...[
+                    const SizedBox(height: 8),
+                    Tooltip(
+                      message: 'Marcar como lido',
+                      child: InkWell(
+                        onTap: () {
+                          FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').doc(aviso['id']).update({
+                            'lidosPor': FieldValue.arrayUnion([alunoDocId])
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle, border: Border.all(color: Colors.green.shade200)),
+                          child: Icon(Icons.remove_red_eye_rounded, size: 16, color: Colors.green.shade600),
+                        ),
+                      ),
+                    )
+                  ]
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: corDestino.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+            child: Text(tagDestino, style: TextStyle(color: corDestino, fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
+          Text(
+            aviso['mensagem'] ?? '',
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
+          )
+        ],
       ),
     );
   }
@@ -317,10 +757,8 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     if (usuarioLogado == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final tenantId = usuarioLogado.tenantId; 
-    final nomeEscola = usuarioLogado.nomeEscola ?? 'Escola Domex Edu';
     final corPrimaria = usuarioLogado.corPrimaria;
 
-    // Escutando o Provider do Perfil do Aluno
     final dadosAlunoAsync = ref.watch(dadosAlunoProvider);
 
     return Scaffold(
@@ -329,7 +767,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
         backgroundColor: corPrimaria,
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const SizedBox.shrink(),
+        title: const Text('Portal do Aluno', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         leading: isMobile 
             ? IconButton(
                 icon: const Icon(Icons.menu_rounded, color: Colors.white),
@@ -359,13 +797,12 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
           }
 
           final nomeCompleto = aluno['nome'] ?? 'Estudante';
-          final primeiroNome = nomeCompleto.split(' ').first;
           final turmaNome = aluno['turma'] ?? 'Sem Turma';
           final turmaId = aluno['turmaId']?.toString() ?? '';
           final fotoUrl = aluno['fotoUrl'] ?? '';
           final alunoDocId = aluno['docId'];
+          final nomeEscola = usuarioLogado.nomeEscola ?? 'Escola Domex Edu';
 
-          // Escutando Avaliações e Avisos através dos nossos Providers
           final avaliacoesAsync = ref.watch(avaliacoesAlunoStreamProvider(turmaId));
           final avisosAsync = ref.watch(avisosAlunoStreamProvider(turmaId));
 
@@ -374,89 +811,96 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ============================================================
-                // CABEÇALHO HERO ULTRA-COMPACTO E OTIMIZADO
+                // CABEÇALHO HERO COM NOME COMPLETO E FOTO 3x4 (ALINHADO)
                 // ============================================================
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.fromLTRB(isMobile ? 24 : 40, 0, isMobile ? 24 : 40, 32),
+                  padding: EdgeInsets.fromLTRB(isMobile ? 24 : 40, 16, isMobile ? 24 : 40, 32),
                   decoration: BoxDecoration(
                     color: corPrimaria,
                     borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
                     boxShadow: [BoxShadow(color: corPrimaria.withAlpha(60), blurRadius: 10, offset: const Offset(0, 4))]
                   ),
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  nomeEscola.toUpperCase(),
-                                  style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Olá, $primeiroNome 👋',
-                                  style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900),
-                                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Stack(
-                            alignment: Alignment.bottomRight,
-                            children: [
-                              InkWell(
-                                onTap: () => _abrirOpcoesFoto(tenantId, alunoDocId, fotoUrl),
-                                borderRadius: BorderRadius.circular(45),
-                                child: CircleAvatar(
-                                  radius: isMobile ? 35 : 45,
-                                  backgroundColor: Colors.white,
-                                  child: CircleAvatar(
-                                    radius: isMobile ? 32 : 42,
-                                    backgroundColor: Colors.grey.shade200,
-                                    backgroundImage: fotoUrl.isNotEmpty ? NetworkImage(fotoUrl) : null,
-                                    child: fotoUrl.isEmpty ? Icon(Icons.person, size: 40, color: corPrimaria) : null,
-                                  ),
-                                ),
-                              ),
-                              if (_atualizandoFoto)
-                                const Positioned.fill(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
-                              else
-                                Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                  child: Icon(Icons.camera_alt_rounded, color: corPrimaria, size: 14),
-                                )
-                            ],
-                          )
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(16)),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                      // LADO ESQUERDO: TEXTOS E TURMA
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(Icons.school_rounded, color: Colors.white, size: 14),
-                            const SizedBox(width: 6),
-                            Flexible(
-                              child: Text(
-                                turmaNome, 
-                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                                maxLines: 1, overflow: TextOverflow.ellipsis,
-                              ),
+                            Text(
+                              nomeEscola.toUpperCase(),
+                              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Olá,\n$nomeCompleto 👋',
+                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, height: 1.2),
+                              maxLines: 3, 
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(16)),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.school_rounded, color: Colors.white, size: 12),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      turmaNome, 
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
                           ],
                         ),
+                      ),
+                      const SizedBox(width: 16),
+                      // LADO DIREITO: FOTO ISOLADA
+                      Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          InkWell(
+                            onTap: () => _abrirOpcoesFoto(tenantId, alunoDocId, fotoUrl),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              width: 80,
+                              height: 106, 
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 4))],
+                              ),
+                              padding: const EdgeInsets.all(3),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(9),
+                                child: fotoUrl.isNotEmpty 
+                                  ? Image.network(fotoUrl, fit: BoxFit.cover) 
+                                  : Container(color: Colors.grey.shade200, child: Icon(Icons.person, size: 40, color: corPrimaria)),
+                              ),
+                            ),
+                          ),
+                          if (_atualizandoFoto)
+                            const Positioned.fill(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                          else
+                            Transform.translate(
+                              offset: const Offset(8, 8),
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]),
+                                child: Icon(Icons.camera_alt_rounded, color: corPrimaria, size: 14),
+                              ),
+                            )
+                        ],
                       )
                     ],
                   ),
@@ -477,7 +921,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                           }),
                           const SizedBox(width: 16),
                           _buildAtalho('Meu\nBoletim', Icons.analytics_rounded, corPrimaria, () {
-                            context.go('/aluno/boletim');
+                            _abrirBoletim(tenantId, turmaId, alunoDocId, corPrimaria);
                           }),
                           const SizedBox(width: 16),
                           _buildAtalho('Calendário\nEscolar', Icons.calendar_month_rounded, corPrimaria, () {
@@ -488,105 +932,167 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                       const SizedBox(height: 40),
 
                       // ============================================================
-                      // PRÓXIMAS AVALIAÇÕES
+                      // PRÓXIMAS AVALIAÇÕES (CASCATA COM CORREÇÃO DE CAST)
                       // ============================================================
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('Próximas Avaliações', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400)
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      avaliacoesAsync.when(
-                        loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
-                        error: (err, stack) => const Text('Erro ao carregar avaliações'),
-                        data: (avaliacoes) {
-                          if (avaliacoes.isEmpty) {
-                            return Container(
-                              width: double.infinity, padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-                              child: Column(
-                                children: [
-                                  Icon(Icons.event_available_rounded, size: 40, color: Colors.grey.shade300),
-                                  const SizedBox(height: 8),
-                                  Text('Nenhuma avaliação agendada.', style: TextStyle(color: Colors.grey.shade500)),
-                                ],
-                              ),
-                            );
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avaliacoes').snapshots(),
+                        builder: (context, snapAvaliacoes) {
+                          if (snapAvaliacoes.connectionState == ConnectionState.waiting && !snapAvaliacoes.hasData) {
+                            return Center(child: CircularProgressIndicator(color: corPrimaria));
                           }
+                          
+                          final todasAvaliacoes = snapAvaliacoes.data?.docs.map((d) {
+                            final data = d.data() as Map<String, dynamic>;
+                            data['id'] = d.id;
+                            return data;
+                          }).toList() ?? [];
 
-                          return SizedBox(
-                            height: 120,
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: avaliacoes.length,
-                              separatorBuilder: (context, index) => const SizedBox(width: 16),
-                              itemBuilder: (context, index) {
-                                final aval = avaliacoes[index];
-                                final notas = Map<String, dynamic>.from(aval['notas'] ?? {});
-                                final notaDoAluno = notas[alunoDocId];
-                                final max = aval['pontuacaoMaxima'] ?? 10.0;
+                          final hoje = DateTime.now();
+                          final dataCorte = DateTime(hoje.year, hoje.month, hoje.day).subtract(const Duration(days: 1)); 
+                          
+                          final proximasAvaliacoes = todasAvaliacoes.where((a) {
+                            final dataStr = a['dataAvaliacao']?.toString() ?? '';
+                            if (dataStr.isEmpty) return false;
+                            final partes = dataStr.split('-');
+                            if (partes.length == 3) {
+                              final dataAval = DateTime(int.parse(partes[0]), int.parse(partes[1]), int.parse(partes[2]));
+                              return dataAval.isAfter(dataCorte);
+                            }
+                            return false;
+                          }).toList();
+                          
+                          proximasAvaliacoes.sort((a, b) => (a['dataAvaliacao'] ?? '').toString().compareTo((b['dataAvaliacao'] ?? '').toString()));
 
-                                return Container(
-                                  width: 260,
+                          return Column(
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _avaliacoesExpandidas = !_avaliacoesExpandidas;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(color: Colors.grey.shade200),
-                                    boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                                    boxShadow: _avaliacoesExpandidas ? [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 8, offset: const Offset(0, 4))] : null,
                                   ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                  child: Row(
                                     children: [
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                            decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(6)),
-                                            child: Text(aval['bimestre'] ?? '', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: corPrimaria)),
-                                          ),
-                                          Text(aval['dataAvaliacao'] != null ? _formatarDataDisplay(aval['dataAvaliacao']) : '', style: TextStyle(fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.bold)),
-                                        ],
-                                      ),
+                                      Icon(Icons.edit_document, color: corPrimaria),
+                                      const SizedBox(width: 12),
+                                      const Text('Próximas Avaliações', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                      if (proximasAvaliacoes.isNotEmpty)
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 8),
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(12)),
+                                          child: Text('${proximasAvaliacoes.length}', style: TextStyle(color: Colors.orange.shade900, fontSize: 11, fontWeight: FontWeight.bold)),
+                                        ),
                                       const Spacer(),
-                                      Text(aval['nome'] ?? 'Avaliação', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                      const SizedBox(height: 8),
-                                      if (notaDoAluno != null)
-                                        Text('Sua Nota: $notaDoAluno / $max', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green.shade700, fontSize: 13))
-                                      else
-                                        Text('Valendo $max pontos', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                                      AnimatedRotation(
+                                        turns: _avaliacoesExpandidas ? 0.5 : 0.0,
+                                        duration: const Duration(milliseconds: 300),
+                                        child: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
+                                      )
                                     ],
                                   ),
-                                );
-                              },
-                            ),
+                                ),
+                              ),
+                              AnimatedCrossFade(
+                                firstChild: const SizedBox(width: double.infinity),
+                                secondChild: Column(
+                                  children: [
+                                    const SizedBox(height: 16),
+                                    if (proximasAvaliacoes.isEmpty)
+                                      Container(
+                                        width: double.infinity, padding: const EdgeInsets.all(24),
+                                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                                        child: Column(
+                                          children: [
+                                            Icon(Icons.event_available_rounded, size: 40, color: Colors.grey.shade300),
+                                            const SizedBox(height: 8),
+                                            Text('Nenhuma avaliação futura agendada.', style: TextStyle(color: Colors.grey.shade500)),
+                                          ],
+                                        ),
+                                      )
+                                    else ...[
+                                      ...proximasAvaliacoes.take(5).map((aval) {
+                                        // AQUI FICA A CORREÇÃO DE CAST
+                                        final max = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
+                                        return InkWell(
+                                          onTap: () => _mostrarDetalhesAvaliacao(aval, null, max, Colors.grey, corPrimaria),
+                                          child: Container(
+                                            margin: const EdgeInsets.only(bottom: 12),
+                                            padding: const EdgeInsets.all(16),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(16),
+                                              border: Border.all(color: Colors.grey.shade200),
+                                            ),
+                                            child: Row(
+                                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                              children: [
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(aval['nome'] ?? 'Avaliação', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                      const SizedBox(height: 4),
+                                                      Text('${aval['disciplina'] ?? 'Geral'} • ${_formatarDataDisplay(aval['dataAvaliacao'] ?? '')}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
+                                                    ],
+                                                  ),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                  decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+                                                  child: Text('Valendo $max pts', style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 11)),
+                                                )
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: TextButton.icon(
+                                        onPressed: () => _abrirTodasAvaliacoes(tenantId, turmaId, alunoDocId, corPrimaria), 
+                                        icon: Icon(Icons.format_list_bulleted_rounded, color: corPrimaria),
+                                        label: Text('Mostrar todas as avaliações e notas', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria)),
+                                      ),
+                                    )
+                                  ],
+                                ),
+                                crossFadeState: _avaliacoesExpandidas ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                                duration: const Duration(milliseconds: 300),
+                              )
+                            ],
                           );
-                        },
+                        }
                       ),
 
                       const SizedBox(height: 40),
 
                       // ============================================================
-                      // MURAL DE AVISOS
+                      // MURAL DE AVISOS (ACCORDION CASCATA COM LIMPEZA DE NOTIFICAÇÃO)
                       // ============================================================
-                      Row(
-                        children: [
-                          Icon(Icons.campaign_rounded, color: corPrimaria),
-                          const SizedBox(width: 8),
-                          const Text('Mural de Avisos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').orderBy('dataEnvio', descending: true).limit(10).snapshots(),
+                        builder: (context, snapAvisos) {
+                          if (snapAvisos.connectionState == ConnectionState.waiting && !snapAvisos.hasData) {
+                            return Center(child: CircularProgressIndicator(color: corPrimaria));
+                          }
 
-                      avisosAsync.when(
-                        loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
-                        error: (err, stack) => const Text('Erro ao carregar avisos'),
-                        data: (todosAvisos) {
+                          final todosAvisos = snapAvisos.data?.docs.map((d) {
+                            final data = d.data() as Map<String, dynamic>;
+                            data['id'] = d.id;
+                            return data;
+                          }).toList() ?? [];
+                          
                           final avisosAluno = todosAvisos.where((aviso) {
                             final tipoDest = aviso['tipoDestinatario'];
                             final alvoId = aviso['alunoId'];
@@ -597,82 +1103,83 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                             return false;
                           }).toList();
 
-                          if (avisosAluno.isEmpty) {
-                            return Container(
-                              width: double.infinity, padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-                              child: Column(
-                                children: [
-                                  Icon(Icons.notifications_off_rounded, size: 40, color: Colors.grey.shade300),
-                                  const SizedBox(height: 8),
-                                  Text('Nenhum aviso no mural.', style: TextStyle(color: Colors.grey.shade500)),
-                                ],
-                              ),
-                            );
-                          }
+                          int qtdNaoLidos = avisosAluno.where((a) => !(List<String>.from(a['lidosPor'] ?? [])).contains(alunoDocId)).length;
 
-                          return ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: avisosAluno.length,
-                            separatorBuilder: (c, i) => const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final aviso = avisosAluno[index];
-                              final dataEnvio = aviso['dataEnvio'];
-                              final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
-                              final isDireto = aviso['tipoDestinatario'] == 'ALUNO' || aviso['tipoDestinatario'] == 'RESPONSAVEL';
-                              
-                              final remetenteOriginal = (aviso['remetenteNome'] ?? 'Direção / Professor').toString();
-                              bool isProfessor = remetenteOriginal.contains('Professor(a)');
-
-                              return Container(
-                                padding: const EdgeInsets.all(20),
-                                decoration: BoxDecoration(
-                                  color: isDireto ? Colors.orange.shade50 : Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: isDireto ? Colors.orange.shade200 : Colors.grey.shade200),
-                                  boxShadow: isDireto ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Row(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Icon(isProfessor ? Icons.assignment_ind_rounded : Icons.admin_panel_settings_rounded, size: 16, color: isDireto ? Colors.orange.shade800 : corPrimaria),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
-                                                  remetenteOriginal,
-                                                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? Colors.orange.shade900 : Colors.black87),
-                                                  maxLines: 2,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
+                          return Column(
+                            children: [
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _muralExpandido = !_muralExpandido;
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: Colors.grey.shade200),
+                                    boxShadow: _muralExpandido ? [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 8, offset: const Offset(0, 4))] : null,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.campaign_rounded, color: corPrimaria),
+                                      const SizedBox(width: 12),
+                                      const Text('Mural de Avisos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                                      
+                                      if (qtdNaoLidos > 0)
+                                        Container(
+                                          margin: const EdgeInsets.only(left: 8),
+                                          padding: const EdgeInsets.all(6),
+                                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                          child: Text('$qtdNaoLidos', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
                                         ),
-                                        const SizedBox(width: 8),
-                                        Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
-                                      ],
-                                    ),
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(vertical: 12),
-                                      child: Divider(height: 1),
-                                    ),
-                                    Text(
-                                      aviso['mensagem'] ?? '',
-                                      style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
-                                    )
+                                      const Spacer(),
+                                      AnimatedRotation(
+                                        turns: _muralExpandido ? 0.5 : 0.0,
+                                        duration: const Duration(milliseconds: 300),
+                                        child: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey),
+                                      )
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              AnimatedCrossFade(
+                                firstChild: const SizedBox(width: double.infinity),
+                                secondChild: Column(
+                                  children: [
+                                    const SizedBox(height: 16),
+                                    if (avisosAluno.isEmpty)
+                                      Container(
+                                        width: double.infinity, padding: const EdgeInsets.all(24),
+                                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                                        child: Column(
+                                          children: [
+                                            Icon(Icons.notifications_off_rounded, size: 40, color: Colors.grey.shade300),
+                                            const SizedBox(height: 8),
+                                            Text('Nenhum aviso no mural.', style: TextStyle(color: Colors.grey.shade500)),
+                                          ],
+                                        ),
+                                      )
+                                    else ...[
+                                      ...avisosAluno.take(5).map((aviso) => _buildAvisoCard(aviso, tenantId, turmaId, alunoDocId, corPrimaria)),
+                                      if (avisosAluno.length > 5)
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 8.0),
+                                          child: TextButton.icon(
+                                            onPressed: () => _abrirHistoricoAvisos(avisosAluno, tenantId, turmaId, alunoDocId, corPrimaria), 
+                                            icon: Icon(Icons.history_rounded, color: corPrimaria),
+                                            label: Text('Ver todo o histórico', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria)),
+                                          ),
+                                        )
+                                    ]
                                   ],
                                 ),
-                              );
-                            },
+                                crossFadeState: _muralExpandido ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+                                duration: const Duration(milliseconds: 300),
+                              )
+                            ],
                           );
                         }
                       ),
@@ -692,9 +1199,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
   String _formatarDataDisplay(String dataBanco) {
     try {
       final partes = dataBanco.split('-');
-      if (partes.length == 3) {
-        return "${partes[2]}/${partes[1]}";
-      }
+      if (partes.length == 3) return "${partes[2]}/${partes[1]}";
     } catch (_) {}
     return dataBanco;
   }
@@ -729,7 +1234,6 @@ class _DiaGradeItemState extends State<_DiaGradeItem> {
     _expandido = widget.expandidoPorPadrao;
   }
 
-  // Gera uma cor consistente para cada disciplina
   Color _getCorDisciplina(String nome) {
     final cores = [
       Colors.blue, Colors.red, Colors.green, Colors.orange,

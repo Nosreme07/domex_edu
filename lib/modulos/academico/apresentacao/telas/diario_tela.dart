@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -100,6 +101,17 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     return '4º Bimestre';
   }
 
+  // ==========================================================================
+  // FUNÇÃO UTILITÁRIA DE DATA
+  // ==========================================================================
+  String _formatarDataDisplay(String dataBanco) {
+    try {
+      final partes = dataBanco.split('-');
+      if (partes.length == 3) return "${partes[2]}/${partes[1]}/${partes[0]}";
+    } catch (_) {}
+    return dataBanco.isNotEmpty ? dataBanco : 'Sem data';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -111,6 +123,45 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   void dispose() {
     _mensagemAvisoCtrl.dispose();
     super.dispose();
+  }
+
+  // ==========================================================================
+  // BUSCA INTELIGENTE DAS DISCIPLINAS DO PROFESSOR LOGADO
+  // ==========================================================================
+  Future<List<String>> _buscarDisciplinasDoProfessor() async {
+    final user = ref.read(authProvider).value;
+    if (user == null) return ['Geral'];
+    
+    try {
+      final tenantId = user.tenantId;
+      
+      // 1ª Tentativa: Busca direta pelo ID
+      var docProf = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('professores').doc(user.id).get();
+      if (docProf.exists && docProf.data() != null) {
+        final lista = List<String>.from(docProf.data()!['disciplinas'] ?? []);
+        if (lista.isNotEmpty) return lista;
+      }
+
+      // 2ª Tentativa: Busca pelo E-mail
+      final email = user.email.trim();
+      if (email.isNotEmpty && email.contains('@')) {
+        var snapEmail = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('professores').where('email', isEqualTo: email).limit(1).get();
+        if (snapEmail.docs.isNotEmpty) {
+          final lista = List<String>.from(snapEmail.docs.first.data()['disciplinas'] ?? []);
+          if (lista.isNotEmpty) return lista;
+        }
+      }
+      
+      // 3ª Tentativa: Busca pelo Nome
+      var snapNome = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('professores').where('nome', isEqualTo: user.nome).limit(1).get();
+      if (snapNome.docs.isNotEmpty) {
+        final lista = List<String>.from(snapNome.docs.first.data()['disciplinas'] ?? []);
+        if (lista.isNotEmpty) return lista;
+      }
+    } catch (e) {
+      debugPrint('Erro ao buscar disciplinas do professor: $e');
+    }
+    return ['Geral']; 
   }
 
   // ==========================================================================
@@ -874,9 +925,19 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
-  void _abrirModalEditarAvaliacao(Map<String, dynamic> avaliacao, String avaliacaoId, Color corPrimaria) {
+  void _abrirModalEditarAvaliacao(Map<String, dynamic> avaliacao, String avaliacaoId, Color corPrimaria, dynamic user) {
     final ctrlNome = TextEditingController(text: avaliacao['nome']);
     final ctrlPontos = TextEditingController(text: avaliacao['pontuacaoMaxima'].toString());
+    
+    String? disciplinaSelecionada = avaliacao['disciplina'];
+
+    String dataBancoAval = avaliacao['dataAvaliacao'] ?? _dataBanco;
+    String dataDisplayAval = '';
+    try {
+      final p = dataBancoAval.split('-');
+      if (p.length == 3) dataDisplayAval = "${p[2]}/${p[1]}/${p[0]}";
+    } catch (_) {}
+
     bool salvando = false;
 
     showDialog(
@@ -885,12 +946,73 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         builder: (context, setModalState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: Row(children: [Icon(Icons.edit_rounded, color: corPrimaria), const SizedBox(width: 8), const Text('Editar Avaliação', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))]),
-          content: Column(
-            mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextField(controller: ctrlNome, decoration: InputDecoration(labelText: 'Nome da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), const SizedBox(height: 16),
-              TextField(controller: ctrlPontos, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Pontuação Máxima', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)),
-            ],
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(controller: ctrlNome, decoration: InputDecoration(labelText: 'Nome da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), 
+                const SizedBox(height: 16),
+                
+                FutureBuilder<List<String>>(
+                  future: _buscarDisciplinasDoProfessor(),
+                  builder: (context, snapProf) {
+                    if (snapProf.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    
+                    List<String> disciplinasDoProf = snapProf.data ?? ['Geral'];
+
+                    if (disciplinaSelecionada == null) {
+                      disciplinaSelecionada = disciplinasDoProf.first;
+                    } else if (!disciplinasDoProf.contains(disciplinaSelecionada)) {
+                      disciplinasDoProf.add(disciplinaSelecionada!);
+                    }
+
+                    return DropdownButtonFormField<String>(
+                      value: disciplinaSelecionada,
+                      decoration: InputDecoration(
+                        labelText: 'Disciplina Associada', 
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
+                        filled: true, fillColor: Colors.grey.shade50
+                      ),
+                      items: disciplinasDoProf.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                      onChanged: (val) {
+                        setModalState(() => disciplinaSelecionada = val);
+                      },
+                    );
+                  }
+                ),
+                const SizedBox(height: 16),
+                
+                InkWell(
+                  onTap: () async {
+                    DateTime inicial = DateTime.now();
+                    try {
+                      final p = dataBancoAval.split('-');
+                      inicial = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+                    } catch (_) {}
+                    
+                    final date = await showDatePicker(
+                      context: context, initialDate: inicial, firstDate: DateTime(2020), lastDate: DateTime(2030),
+                      builder: (context, child) => Theme(data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: corPrimaria, onPrimary: Colors.white)), child: child!),
+                    );
+                    if (date != null) {
+                      setModalState(() {
+                        dataBancoAval = "${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}";
+                        dataDisplayAval = "${date.day.toString().padLeft(2,'0')}/${date.month.toString().padLeft(2,'0')}/${date.year}";
+                      });
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: InputDecoration(labelText: 'Data da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50),
+                    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(dataDisplayAval.isEmpty ? 'Selecionar Data' : dataDisplayAval), const Icon(Icons.calendar_month_rounded, color: Colors.grey)]),
+                  )
+                ),
+                const SizedBox(height: 16),
+                
+                TextField(controller: ctrlPontos, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Pontuação Máxima', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)),
+              ],
+            ),
           ),
           actions: [
             TextButton(onPressed: salvando ? null : () => Navigator.pop(ctx), child: const Text('Cancelar')),
@@ -899,14 +1021,17 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               onPressed: salvando ? null : () async {
                 if (ctrlNome.text.trim().isEmpty) return;
                 setModalState(() => salvando = true);
-                final user = ref.read(authProvider).value;
                 if (user != null) {
                   final messenger = ScaffoldMessenger.of(context);
                   final nav = Navigator.of(ctx);
+                  
                   await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').doc(avaliacaoId).update({
                     'nome': ctrlNome.text.trim(),
+                    'disciplina': disciplinaSelecionada ?? 'Geral', 
+                    'dataAvaliacao': dataBancoAval,
                     'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0,
                   });
+                  
                   nav.pop();
                   messenger.showSnackBar(const SnackBar(content: Text('Avaliação atualizada!'), backgroundColor: Colors.green));
                 }
@@ -919,10 +1044,16 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
-  void _abrirModalNovaAvaliacao(Color corPrimaria, List<Map<String, dynamic>> alunosTurma) {
+  void _abrirModalNovaAvaliacao(Color corPrimaria, List<Map<String, dynamic>> alunosTurma, dynamic user) {
     final ctrlNome = TextEditingController();
     final ctrlPontos = TextEditingController(text: '10.0');
+    
+    String? disciplinaSelecionada;
+    
     bool salvando = false;
+    
+    String dataBancoAval = _dataBanco;
+    String dataDisplayAval = _dataDisplay;
     
     bool isSegundaChamada = false;
     bool isRecuperacao = false;
@@ -943,7 +1074,65 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Vinculada ao: $bimestreAlvo', style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.bold)), const SizedBox(height: 12),
-                  TextField(controller: ctrlNome, decoration: InputDecoration(labelText: 'Nome da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), const SizedBox(height: 16),
+                  
+                  TextField(controller: ctrlNome, decoration: InputDecoration(labelText: 'Nome da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)), 
+                  const SizedBox(height: 16),
+                  
+                  FutureBuilder<List<String>>(
+                    future: _buscarDisciplinasDoProfessor(),
+                    builder: (context, snapProf) {
+                      if (snapProf.connectionState == ConnectionState.waiting) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      
+                      List<String> disciplinasDoProf = snapProf.data ?? ['Geral'];
+
+                      if (disciplinaSelecionada == null) {
+                        disciplinaSelecionada = disciplinasDoProf.first;
+                      }
+
+                      return DropdownButtonFormField<String>(
+                        value: disciplinaSelecionada,
+                        decoration: InputDecoration(
+                          labelText: 'Disciplina Associada', 
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), 
+                          filled: true, fillColor: Colors.grey.shade50
+                        ),
+                        items: disciplinasDoProf.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                        onChanged: (val) {
+                          setModalState(() => disciplinaSelecionada = val);
+                        },
+                      );
+                    }
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  InkWell(
+                    onTap: () async {
+                      DateTime inicial = DateTime.now();
+                      try {
+                        final p = dataBancoAval.split('-');
+                        inicial = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+                      } catch (_) {}
+                      
+                      final date = await showDatePicker(
+                        context: context, initialDate: inicial, firstDate: DateTime(2020), lastDate: DateTime(2030),
+                        builder: (context, child) => Theme(data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: corPrimaria, onPrimary: Colors.white)), child: child!),
+                      );
+                      if (date != null) {
+                        setModalState(() {
+                          dataBancoAval = "${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}";
+                          dataDisplayAval = "${date.day.toString().padLeft(2,'0')}/${date.month.toString().padLeft(2,'0')}/${date.year}";
+                        });
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: InputDecoration(labelText: 'Data da Avaliação', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(dataDisplayAval), const Icon(Icons.calendar_month_rounded, color: Colors.grey)]),
+                    )
+                  ),
+                  const SizedBox(height: 16),
+                  
                   TextField(controller: ctrlPontos, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Pontuação Máxima', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)),
                   
                   const Divider(height: 32),
@@ -1012,16 +1201,16 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               onPressed: salvando ? null : () async {
                 if (ctrlNome.text.trim().isEmpty) return;
                 setModalState(() => salvando = true);
-                final user = ref.read(authProvider).value;
                 if (user != null) {
                   final nav = Navigator.of(ctx);
                   List<String> ausentes = alunosTurma.where((a) => _obterStatusAluno((a['matricula'] ?? '').toString()) == 'A').map((a) => (a['matricula'] ?? '').toString()).toList();
                   
                   final novaAvaliacao = {
                     'nome': ctrlNome.text.trim(), 
+                    'disciplina': disciplinaSelecionada ?? 'Geral', 
                     'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0, 
                     'bimestre': bimestreAlvo, 
-                    'dataAvaliacao': _dataBanco, 
+                    'dataAvaliacao': dataBancoAval, 
                     'dataCriacao': FieldValue.serverTimestamp(), 
                     'matriculasAusentes': ausentes, 
                     'notas': {},
@@ -1079,6 +1268,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
           double mediaEsperada = (pontuacaoMaxima / 10.0) * _mediaEscola;
           bool turmaBem = mediaDaTurma >= mediaEsperada;
 
+          // Formatar data da avaliação para o header
+          final dataAvaliacaoStr = _formatarDataDisplay(avaliacao['dataAvaliacao'] ?? '');
+
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
             child: DraggableScrollableSheet(
@@ -1091,7 +1283,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                       children: [
                         Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.edit_note_rounded, color: corPrimaria)),
                         const SizedBox(width: 16),
-                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(avaliacao['nome'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text('Max: $pontuacaoMaxima pts | Média Escolar: ${_mediaEscola.toStringAsFixed(1)}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(avaliacao['nome'] ?? '', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Text('Data: $dataAvaliacaoStr • Max: $pontuacaoMaxima pts | Média Escolar: ${_mediaEscola.toStringAsFixed(1)}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12))])),
                         IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
                       ],
                     ),
@@ -1133,8 +1325,17 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                     controller: controladores[matricula], 
                                     keyboardType: const TextInputType.numberWithOptions(decimal: true), 
                                     textAlign: TextAlign.center, 
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.allow(RegExp(r'^\d*[\.,]?\d{0,2}')),
+                                    ],
                                     decoration: InputDecoration(hintText: '-', contentPadding: const EdgeInsets.symmetric(vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), filled: true, fillColor: Colors.white),
                                     onChanged: (val) {
+                                      String valLimpo = val.replaceAll(',', '.');
+                                      double? numValue = double.tryParse(valLimpo);
+                                      if (numValue != null && numValue > pontuacaoMaxima) {
+                                        controladores[matricula]!.text = pontuacaoMaxima.toStringAsFixed(1);
+                                        controladores[matricula]!.selection = TextSelection.fromPosition(TextPosition(offset: controladores[matricula]!.text.length));
+                                      }
                                       setModalState(() {});
                                     },
                                   )
@@ -1346,7 +1547,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                   }
                   var docs = snapAvisos.data?.docs.toList() ?? [];
                   if (docs.isEmpty) {
-                    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum aviso no histórico.', style: TextStyle(color: Colors.grey.shade500))]));
+                    return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhuma aviso no histórico.', style: TextStyle(color: Colors.grey.shade500))]));
                   }
                   
                   docs.sort((a, b) {
@@ -1542,7 +1743,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               Expanded(
                 child: OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14), side: BorderSide(color: corPrimaria, width: 2), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), 
-                  onPressed: () => _abrirModalNovaAvaliacao(corPrimaria, alunosTurma), 
+                  onPressed: () => _abrirModalNovaAvaliacao(corPrimaria, alunosTurma, user), 
                   icon: Icon(Icons.add_rounded, color: corPrimaria), 
                   label: Text('Criar Nova Avaliação', style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold))
                 )
@@ -1598,6 +1799,8 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                   final id = docs[index].id;
                   final notasMap = Map<String, dynamic>.from(avaliacao['notas'] ?? {});
                   
+                  final dataAvaliacaoStr = _formatarDataDisplay(avaliacao['dataAvaliacao'] ?? '');
+                  
                   int totalEsperado = avaliacao['isSegundaChamada'] == true 
                        ? (avaliacao['alunosPermitidos'] as List).length 
                        : alunosTurma.length;
@@ -1623,7 +1826,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                   if (avaliacao['isRecuperacao'] == true) 
                                     Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(4)), child: Text('Recuperação', style: TextStyle(fontSize: 10, color: Colors.purple.shade800))),
                                   const SizedBox(height: 4), 
-                                  Text('Max: ${avaliacao['pontuacaoMaxima']} pts', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))
+                                  Text('${avaliacao['disciplina'] ?? 'Geral'} • $dataAvaliacaoStr • Max: ${avaliacao['pontuacaoMaxima']} pts', style: TextStyle(color: Colors.grey.shade600, fontSize: 13))
                                 ]
                               )
                             ), 
@@ -1639,7 +1842,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                               icon: const Icon(Icons.more_vert, color: Colors.grey),
                               onSelected: (val) {
                                 if (val == 'editar') {
-                                  _abrirModalEditarAvaliacao(avaliacao, id, corPrimaria);
+                                  _abrirModalEditarAvaliacao(avaliacao, id, corPrimaria, user);
                                 }
                                 if (val == 'excluir') {
                                   _excluirAvaliacao(id);
@@ -1983,7 +2186,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                               onTap: _statusAulaHoje == 'FINALIZADA' ? null : _alternarDiaAvaliacao, borderRadius: BorderRadius.circular(12),
                               child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), child: Row(children: [Icon(Icons.assignment_late_rounded, color: _isDiaAvaliacao ? Colors.orange.shade700 : Colors.grey.shade400, size: 20), const SizedBox(width: 12), Expanded(child: Text('Marcar hoje como Dia de Avaliação', style: TextStyle(fontWeight: FontWeight.bold, color: _isDiaAvaliacao ? Colors.orange.shade900 : Colors.grey.shade700, fontSize: 13))), Switch(value: _isDiaAvaliacao, onChanged: _statusAulaHoje == 'FINALIZADA' ? null : (val) => _alternarDiaAvaliacao(), activeThumbColor: Colors.orange.shade300, materialTapTargetSize: MaterialTapTargetSize.shrinkWrap)])),
                             ),
-                            if (_isDiaAvaliacao && _statusAulaHoje != 'FINALIZADA') Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: SizedBox(width: double.infinity, height: 40, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0), onPressed: () => _abrirModalNovaAvaliacao(corPrimaria, alunosDaTurma), icon: const Icon(Icons.add_task_rounded, size: 16), label: const Text('Criar Prova/Atividade Agora', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))))),
+                            if (_isDiaAvaliacao && _statusAulaHoje != 'FINALIZADA') Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: SizedBox(width: double.infinity, height: 40, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0), onPressed: () => _abrirModalNovaAvaliacao(corPrimaria, alunosDaTurma, user), icon: const Icon(Icons.add_task_rounded, size: 16), label: const Text('Criar Prova/Atividade Agora', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13))))),
                           ],
                         ),
                       ),

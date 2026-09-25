@@ -69,6 +69,8 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
   }
 
   void _confirmarExclusaoAcesso(Map<String, dynamic> u) {
+    final bool isAutomatico = u['origem'] == 'AUTOMATICO';
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -98,7 +100,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                 try {
                   final doc = u['rawDoc'] as Map<String, dynamic>?;
                   
-                  // 1. Remove login e credenciais do banco global
                   await servico.excluirAcessoCompleto(
                     login: u['login']?.toString() ?? '',
                     matricula: doc?['matricula']?.toString(),
@@ -107,7 +108,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                     email: doc?['email']?.toString(),
                   );
 
-                  // 2. Muda o status na base local para 'Excluído' (Soft Delete)
                   final perfil = u['perfil'].toString().toUpperCase();
                   if (doc != null) {
                     if (perfil == 'ALUNO') {
@@ -208,7 +208,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
         return StatefulBuilder(
           builder: (context, setStateModal) {
             
-            // LÓGICA DE STATUS REFINADA PARA O MODAL
             final String statusAtualRaw = u['status'] ?? 'Ativo';
             String statusVisual = 'Ativo';
             if (statusAtualRaw == 'Excluído') {
@@ -358,6 +357,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                 ),
               ),
               actionsPadding: const EdgeInsets.all(16),
+              actionsAlignment: MainAxisAlignment.spaceBetween, // FIX DO ERRO DA TELA CINZA WEB (OVERFLOW BAR)
               actions: [
                 if (statusVisual != 'Excluído')
                   TextButton.icon(
@@ -407,25 +407,33 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                     },
                     icon: const Icon(Icons.lock_reset_rounded, color: Colors.orange),
                     label: const Text('Gerar Acesso / Resetar Senha', style: TextStyle(color: Colors.orange)),
-                  ),
-                const Spacer(),
-                if (u['origem'] != 'MANUAL') ...[
-                  TextButton.icon(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      if (perfil == 'ALUNO') context.push('/admin/cadastros/aluno/novo', extra: doc);
-                      else if (perfil == 'PROFESSOR') context.push('/admin/cadastros/professor/novo', extra: doc);
-                      else if (perfil == 'RESPONSÁVEL') context.push('/admin/cadastros/responsavel/novo', extra: doc);
-                      else if (perfil == 'SECRETARIA') context.push('/admin/cadastros/secretaria/novo', extra: doc);
-                    },
-                    icon: const Icon(Icons.edit_rounded, color: Colors.blue),
-                    label: const Text('Ver / Editar Cadastro', style: TextStyle(color: Colors.blue)),
-                  ),
-                ],
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Fechar'),
+                  )
+                else
+                  const SizedBox.shrink(),
+                
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (u['origem'] != 'MANUAL') ...[
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          if (perfil == 'ALUNO') context.push('/admin/cadastros/aluno/novo', extra: doc);
+                          else if (perfil == 'PROFESSOR') context.push('/admin/cadastros/professor/novo', extra: doc);
+                          else if (perfil == 'RESPONSÁVEL') context.push('/admin/cadastros/responsavel/novo', extra: doc);
+                          else if (perfil == 'SECRETARIA') context.push('/admin/cadastros/secretaria/novo', extra: doc);
+                        },
+                        icon: const Icon(Icons.edit_rounded, color: Colors.blue),
+                        label: const Text('Ver / Editar Cadastro', style: TextStyle(color: Colors.blue)),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Fechar'),
+                    ),
+                  ],
                 ),
               ],
             );
@@ -869,9 +877,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
       });
     }
 
-    // =========================================================================
-    // FILTRO QUE INCLUI "EXCLUÍDOS"
-    // =========================================================================
     final filtrados = todosUsuarios.where((u) {
       final busca = _termoBusca.toLowerCase();
       final nome = (u['nome'] ?? '').toString().toLowerCase();
@@ -996,7 +1001,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                     itemBuilder: (context, index) {
                       final u = filtrados[index];
                       
-                      // LÓGICA DE STATUS REFINADA PARA O CARD
                       final String statusAtualRaw = u['status'] ?? 'Ativo';
                       String statusVisual = 'Ativo';
                       if (statusAtualRaw == 'Excluído') {
