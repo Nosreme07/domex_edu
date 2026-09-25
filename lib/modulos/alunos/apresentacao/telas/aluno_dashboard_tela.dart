@@ -12,9 +12,6 @@ import 'package:intl/intl.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../estado/aluno_dashboard_provider.dart'; 
 
-// ============================================================================
-// FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA 
-// ============================================================================
 void _mostrarFotoAmpliadaGlobal(BuildContext context, String? url) {
   if (url == null || url.isEmpty) return;
   showDialog(
@@ -45,6 +42,20 @@ void _mostrarFotoAmpliadaGlobal(BuildContext context, String? url) {
   );
 }
 
+// ============================================================================
+// CONTROLLER GLOBAL PARA O MENU LATERAL ACESSAR OS POPUPS
+// ============================================================================
+class AlunoDashboardController {
+  static void Function(String tenantId, String turmaId, String alunoDocId, Color cor)? abrirBoletim;
+  static void Function(String tenantId, String turmaId, String matricula, Color cor)? abrirFrequencia;
+  
+  static String tenantId = '';
+  static String turmaId = '';
+  static String alunoDocId = '';
+  static String matricula = '';
+  static Color corPrimaria = Colors.blue;
+}
+
 class AlunoDashboardTela extends ConsumerStatefulWidget {
   const AlunoDashboardTela({super.key});
 
@@ -57,9 +68,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
   bool _muralExpandido = false;
   bool _avaliacoesExpandidas = false;
 
-  // ==========================================================================
-  // LÓGICA DE FOTO (CÂMERA, GALERIA E CORTE 3X4)
-  // ==========================================================================
   void _abrirOpcoesFoto(String tenantId, String alunoDocId, String urlAtual) {
     showDialog(
       context: context,
@@ -108,9 +116,9 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
       final picker = ImagePicker();
       final XFile? fotoOriginal = await picker.pickImage(
         source: source, 
-        imageQuality: 70,
-        maxWidth: 1000,
-        maxHeight: 1000,
+        imageQuality: 50,  
+        maxWidth: 600,     
+        maxHeight: 600,    
       );
       
       if (fotoOriginal == null) return;
@@ -118,7 +126,11 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
 
       final croppedFile = await ImageCropper().cropImage(
         sourcePath: fotoOriginal.path,
-        aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4), 
+        aspectRatio: const CropAspectRatio(ratioX: 3, ratioY: 4),
+        compressQuality: 50,
+        compressFormat: ImageCompressFormat.jpg,
+        maxWidth: 600,
+        maxHeight: 800,
         uiSettings: kIsWeb 
           ? [WebUiSettings(context: context)]
           : [
@@ -136,21 +148,19 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
       if (croppedFile != null) {
         setState(() => _atualizandoFoto = true);
         final bytes = await croppedFile.readAsBytes();
-        String extensao = croppedFile.path.split('.').last.toLowerCase();
-        if (extensao != 'png' && extensao != 'jpg' && extensao != 'jpeg') extensao = 'jpg';
+        
+        final nomeArquivo = 'aluno_portal_${alunoDocId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final refStorage = FirebaseStorage.instance.ref('tenants/$tenantId/alunos_fotos_portal/$nomeArquivo');
 
-        final nomeArquivo = 'aluno_${alunoDocId}_${DateTime.now().millisecondsSinceEpoch}.$extensao';
-        final refStorage = FirebaseStorage.instance.ref('tenants/$tenantId/alunos_fotos/$nomeArquivo');
-
-        final metadata = SettableMetadata(contentType: 'image/$extensao');
+        final metadata = SettableMetadata(contentType: 'image/jpeg');
         await refStorage.putData(bytes, metadata); 
         final novaUrl = await refStorage.getDownloadURL();
 
-        await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('alunos').doc(alunoDocId).update({'fotoUrl': novaUrl});
+        await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('alunos').doc(alunoDocId).update({'fotoPortalUrl': novaUrl});
         
         ref.invalidate(dadosAlunoProvider);
         
-        messenger.showSnackBar(const SnackBar(content: Text('Foto de perfil atualizada com sucesso!'), backgroundColor: Colors.green));
+        messenger.showSnackBar(const SnackBar(content: Text('Sua foto de perfil foi atualizada!'), backgroundColor: Colors.green));
       }
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Erro ao processar foto: $e'), backgroundColor: Colors.red));
@@ -159,9 +169,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     }
   }
 
-  // ==========================================================================
-  // LÓGICA DE GRADE DE AULAS COM CASCATA (ACCORDION)
-  // ==========================================================================
   String _obterDiaSemanaAtual() {
     switch (DateTime.now().weekday) {
       case 1: return 'SEGUNDA';
@@ -277,12 +284,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
-  // ==========================================================================
-  // BOLETIM CONSOLIDADO (AGRUPA NOTAS POR DISCIPLINA) - Correção de Cast
-  // ==========================================================================
-  void _abrirBoletim(String tenantId, String? turmaId, String alunoDocId, Color corPrimaria) {
-    if (turmaId == null || turmaId.isEmpty) return;
-
+  void _abrirBoletim(String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -290,104 +292,14 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) {
         return DraggableScrollableSheet(
-          initialChildSize: 0.8, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
           builder: (_, scrollController) {
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.analytics_rounded, color: corPrimaria)),
-                      const SizedBox(width: 16),
-                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Meu Boletim', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text('Notas consolidadas por disciplina', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                      ])),
-                      IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: FutureBuilder<QuerySnapshot>(
-                    future: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avaliacoes').get(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: corPrimaria));
-                      
-                      final avaliacoes = snapshot.data?.docs.map((d) => d.data() as Map<String, dynamic>).toList() ?? [];
-                      
-                      if (avaliacoes.isEmpty) {
-                        return Center(child: Text('Nenhuma nota registrada.', style: TextStyle(color: Colors.grey.shade500)));
-                      }
-
-                      Map<String, Map<String, double>> boletim = {};
-                      for (var aval in avaliacoes) {
-                        final disciplina = aval['disciplina'] ?? 'Geral';
-                        // Conversão segura de pontuacaoMaxima para double
-                        final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
-                        final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
-                        // Conversão segura da nota do aluno para double
-                        final notaAluno = double.tryParse(notasMap[alunoDocId]?.toString() ?? '0') ?? 0.0;
-
-                        if (!boletim.containsKey(disciplina)) {
-                          boletim[disciplina] = {'notaAluno': 0.0, 'maximo': 0.0};
-                        }
-                        boletim[disciplina]!['notaAluno'] = boletim[disciplina]!['notaAluno']! + notaAluno;
-                        boletim[disciplina]!['maximo'] = boletim[disciplina]!['maximo']! + maximo;
-                      }
-
-                      final disciplinasOrdem = boletim.keys.toList()..sort();
-
-                      return ListView.separated(
-                        controller: scrollController,
-                        padding: const EdgeInsets.all(20),
-                        itemCount: disciplinasOrdem.length,
-                        separatorBuilder: (c, i) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final disciplina = disciplinasOrdem[index];
-                          final dados = boletim[disciplina]!;
-                          final notaAluno = dados['notaAluno']!;
-                          final maximo = dados['maximo']!;
-                          
-                          final bool acimaMedia = notaAluno >= (maximo * 0.6);
-                          final Color corNota = notaAluno == 0 && maximo == 0 ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
-
-                          return Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: Colors.grey.shade200),
-                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
-                                    const SizedBox(width: 12),
-                                    Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  ],
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                                  child: Text(
-                                    '${notaAluno.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)}', 
-                                    style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 15)
-                                  ),
-                                )
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                )
-              ],
+            return _BoletimModal(
+              tenantId: tenantId,
+              turmaId: turmaId,
+              alunoDocId: alunoDocId,
+              corPrimaria: corPrimaria,
+              scrollController: scrollController,
             );
           }
         );
@@ -395,9 +307,29 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
-  // ==========================================================================
-  // TODAS AS AVALIAÇÕES (HISTÓRICO COMPLETO) - Correção de Cast
-  // ==========================================================================
+  void _abrirFrequencia(String tenantId, String turmaId, String matricula, Color corPrimaria) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return _FrequenciaModal(
+              tenantId: tenantId,
+              turmaId: turmaId,
+              alunoMatricula: matricula,
+              corPrimaria: corPrimaria,
+              scrollController: scrollController,
+            );
+          }
+        );
+      }
+    );
+  }
+
   void _abrirTodasAvaliacoes(String tenantId, String? turmaId, String alunoDocId, Color corPrimaria) {
     if (turmaId == null || turmaId.isEmpty) return;
 
@@ -453,14 +385,12 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                           final notas = Map<String, dynamic>.from(aval['notas'] ?? {});
                           final notaDoAluno = notas[alunoDocId];
                           
-                          // Conversão segura do máximo
                           final max = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
                           
                           Color corNota = Colors.grey.shade600;
                           String textoNota = 'Valendo $max pts';
                           
                           if (notaDoAluno != null) {
-                            // Conversão segura da nota
                             final double notaNum = double.tryParse(notaDoAluno.toString()) ?? 0.0;
                             final bool acimaMedia = notaNum >= (max * 0.6);
                             corNota = acimaMedia ? Colors.green.shade700 : Colors.red.shade700;
@@ -566,9 +496,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
-  // ==========================================================================
-  // HISTÓRICO COMPLETO DE AVISOS NO BOTTOM SHEET
-  // ==========================================================================
   void _abrirHistoricoAvisos(List<dynamic> avisosAluno, String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
     showModalBottomSheet(
       context: context,
@@ -615,9 +542,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
-  // ==========================================================================
-  // WIDGETS REUTILIZÁVEIS
-  // ==========================================================================
   Widget _buildAtalho(String titulo, IconData icone, Color corPrimaria, VoidCallback onTap) {
     return Expanded(
       child: InkWell(
@@ -799,20 +723,32 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
           final nomeCompleto = aluno['nome'] ?? 'Estudante';
           final turmaNome = aluno['turma'] ?? 'Sem Turma';
           final turmaId = aluno['turmaId']?.toString() ?? '';
-          final fotoUrl = aluno['fotoUrl'] ?? '';
+          
+          final fotoOficial = aluno['fotoUrl'] ?? '';
+          final fotoPortal = aluno['fotoPortalUrl'] ?? '';
+          final fotoUrl = fotoPortal.isNotEmpty ? fotoPortal : fotoOficial;
+          
           final alunoDocId = aluno['docId'];
+          final matricula = (aluno['matricula'] ?? '').toString();
           final nomeEscola = usuarioLogado.nomeEscola ?? 'Escola Domex Edu';
 
+          // Popula os dados no Controlador Global para o Menu Lateral acessar
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            AlunoDashboardController.tenantId = tenantId;
+            AlunoDashboardController.turmaId = turmaId;
+            AlunoDashboardController.alunoDocId = alunoDocId;
+            AlunoDashboardController.matricula = matricula;
+            AlunoDashboardController.corPrimaria = corPrimaria;
+            AlunoDashboardController.abrirBoletim = _abrirBoletim;
+            AlunoDashboardController.abrirFrequencia = _abrirFrequencia;
+          });
+
           final avaliacoesAsync = ref.watch(avaliacoesAlunoStreamProvider(turmaId));
-          final avisosAsync = ref.watch(avisosAlunoStreamProvider(turmaId));
 
           return SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ============================================================
-                // CABEÇALHO HERO COM NOME COMPLETO E FOTO 3x4 (ALINHADO)
-                // ============================================================
                 Container(
                   width: double.infinity,
                   padding: EdgeInsets.fromLTRB(isMobile ? 24 : 40, 16, isMobile ? 24 : 40, 32),
@@ -825,47 +761,48 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // LADO ESQUERDO: TEXTOS E TURMA
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              nomeEscola.toUpperCase(),
-                              style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                              maxLines: 1, overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Olá,\n$nomeCompleto 👋',
-                              style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, height: 1.2),
-                              maxLines: 3, 
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(16)),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.school_rounded, color: Colors.white, size: 12),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      turmaNome, 
-                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                nomeEscola.toUpperCase(),
+                                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                                maxLines: 1, overflow: TextOverflow.ellipsis,
                               ),
-                            )
-                          ],
+                              const SizedBox(height: 6),
+                              Text(
+                                'Olá,\n$nomeCompleto 👋',
+                                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, height: 1.2),
+                                maxLines: 3, 
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(16)),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.school_rounded, color: Colors.white, size: 12),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        turmaNome, 
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            ],
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
-                      // LADO DIREITO: FOTO ISOLADA
                       Stack(
                         alignment: Alignment.bottomRight,
                         children: [
@@ -911,9 +848,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ============================================================
-                      // ATALHOS RÁPIDOS
-                      // ============================================================
                       Row(
                         children: [
                           _buildAtalho('Grade de\nAulas', Icons.view_list_rounded, corPrimaria, () {
@@ -924,33 +858,44 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                             _abrirBoletim(tenantId, turmaId, alunoDocId, corPrimaria);
                           }),
                           const SizedBox(width: 16),
-                          _buildAtalho('Calendário\nEscolar', Icons.calendar_month_rounded, corPrimaria, () {
-                            context.go('/aluno/calendario');
+                          _buildAtalho('Frequência\nEscolar', Icons.fact_check_rounded, corPrimaria, () {
+                            _abrirFrequencia(tenantId, turmaId, matricula, corPrimaria);
                           }),
                         ],
                       ),
                       const SizedBox(height: 40),
 
-                      // ============================================================
-                      // PRÓXIMAS AVALIAÇÕES (CASCATA COM CORREÇÃO DE CAST)
-                      // ============================================================
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avaliacoes').snapshots(),
-                        builder: (context, snapAvaliacoes) {
-                          if (snapAvaliacoes.connectionState == ConnectionState.waiting && !snapAvaliacoes.hasData) {
-                            return Center(child: CircularProgressIndicator(color: corPrimaria));
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Próximas Avaliações', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+                          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400)
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      avaliacoesAsync.when(
+                        loading: () => Center(child: CircularProgressIndicator(color: corPrimaria)),
+                        error: (err, stack) => const Text('Erro ao carregar avaliações'),
+                        data: (avaliacoes) {
+                          if (avaliacoes.isEmpty) {
+                            return Container(
+                              width: double.infinity, padding: const EdgeInsets.all(24),
+                              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
+                              child: Column(
+                                children: [
+                                  Icon(Icons.event_available_rounded, size: 40, color: Colors.grey.shade300),
+                                  const SizedBox(height: 8),
+                                  Text('Nenhuma avaliação agendada.', style: TextStyle(color: Colors.grey.shade500)),
+                                ],
+                              ),
+                            );
                           }
-                          
-                          final todasAvaliacoes = snapAvaliacoes.data?.docs.map((d) {
-                            final data = d.data() as Map<String, dynamic>;
-                            data['id'] = d.id;
-                            return data;
-                          }).toList() ?? [];
 
                           final hoje = DateTime.now();
                           final dataCorte = DateTime(hoje.year, hoje.month, hoje.day).subtract(const Duration(days: 1)); 
                           
-                          final proximasAvaliacoes = todasAvaliacoes.where((a) {
+                          final proximasAvaliacoes = avaliacoes.where((a) {
                             final dataStr = a['dataAvaliacao']?.toString() ?? '';
                             if (dataStr.isEmpty) return false;
                             final partes = dataStr.split('-');
@@ -1021,10 +966,23 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                                       )
                                     else ...[
                                       ...proximasAvaliacoes.take(5).map((aval) {
-                                        // AQUI FICA A CORREÇÃO DE CAST
                                         final max = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
+                                        
+                                        final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
+                                        final notaDoAluno = notasMap[alunoDocId];
+                                        
+                                        Color corNota = Colors.grey.shade600;
+                                        String textoNota = 'Valendo $max pts';
+                                        
+                                        if (notaDoAluno != null) {
+                                          final double notaNum = double.tryParse(notaDoAluno.toString()) ?? 0.0;
+                                          final bool acimaMedia = notaNum >= (max * 0.6); 
+                                          corNota = acimaMedia ? Colors.green.shade700 : Colors.red.shade700;
+                                          textoNota = 'Nota: $notaDoAluno / $max';
+                                        }
+
                                         return InkWell(
-                                          onTap: () => _mostrarDetalhesAvaliacao(aval, null, max, Colors.grey, corPrimaria),
+                                          onTap: () => _mostrarDetalhesAvaliacao(aval, notaDoAluno, max, corNota, corPrimaria),
                                           child: Container(
                                             margin: const EdgeInsets.only(bottom: 12),
                                             padding: const EdgeInsets.all(16),
@@ -1048,8 +1006,8 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                                                 ),
                                                 Container(
                                                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                  decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
-                                                  child: Text('Valendo $max pts', style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 11)),
+                                                  decoration: BoxDecoration(color: notaDoAluno != null ? corNota.withAlpha(20) : Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+                                                  child: Text(textoNota, style: TextStyle(color: notaDoAluno != null ? corNota : Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 11)),
                                                 )
                                               ],
                                             ),
@@ -1077,9 +1035,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
 
                       const SizedBox(height: 40),
 
-                      // ============================================================
-                      // MURAL DE AVISOS (ACCORDION CASCATA COM LIMPEZA DE NOTIFICAÇÃO)
-                      // ============================================================
                       StreamBuilder<QuerySnapshot>(
                         stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').orderBy('dataEnvio', descending: true).limit(10).snapshots(),
                         builder: (context, snapAvisos) {
@@ -1205,9 +1160,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
   }
 }
 
-// ============================================================================
-// WIDGET INTERNO: ITEM DA GRADE DE AULAS (ACCORDION COM CORES DINÂMICAS)
-// ============================================================================
 class _DiaGradeItem extends StatefulWidget {
   final String dia;
   final List<Map<String, dynamic>> aulas;
@@ -1350,6 +1302,389 @@ class _DiaGradeItemState extends State<_DiaGradeItem> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _BoletimModal extends StatefulWidget {
+  final String tenantId;
+  final String turmaId;
+  final String alunoDocId;
+  final Color corPrimaria;
+  final ScrollController scrollController;
+
+  const _BoletimModal({
+    required this.tenantId,
+    required this.turmaId,
+    required this.alunoDocId,
+    required this.corPrimaria,
+    required this.scrollController,
+  });
+
+  @override
+  State<_BoletimModal> createState() => _BoletimModalState();
+}
+
+class _BoletimModalState extends State<_BoletimModal> {
+  String _bimestreAtivo = '1º Bimestre';
+
+  String _calcularBimestre(DateTime data) {
+    int mes = data.month;
+    if (mes >= 2 && mes <= 4) return '1º Bimestre';
+    if (mes >= 5 && mes <= 6) return '2º Bimestre';
+    if (mes >= 7 && mes <= 9) return '3º Bimestre';
+    return '4º Bimestre';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _bimestreAtivo = _calcularBimestre(DateTime.now());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.analytics_rounded, color: widget.corPrimaria)),
+              const SizedBox(width: 16),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Meu Boletim', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Notas consolidadas por disciplina', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '1º Bimestre', label: Text('1º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '2º Bimestre', label: Text('2º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '3º Bimestre', label: Text('3º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '4º Bimestre', label: Text('4º Bim', style: TextStyle(fontSize: 12)))
+              ],
+              selected: {_bimestreAtivo}, 
+              onSelectionChanged: (s) => setState(() => _bimestreAtivo = s.first),
+              style: SegmentedButton.styleFrom(selectedBackgroundColor: widget.corPrimaria.withAlpha(40), selectedForegroundColor: widget.corPrimaria),
+            ),
+          ),
+        ),
+
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<QuerySnapshot>(
+            future: FirebaseFirestore.instance.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').where('bimestre', isEqualTo: _bimestreAtivo).get(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
+              
+              final avaliacoes = snapshot.data?.docs.map((d) => d.data() as Map<String, dynamic>).toList() ?? [];
+              
+              if (avaliacoes.isEmpty) {
+                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.assignment_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhuma nota neste bimestre.', style: TextStyle(color: Colors.grey.shade500))]));
+              }
+
+              Map<String, List<Map<String, dynamic>>> avaliacoesPorDisciplina = {};
+              
+              for (var aval in avaliacoes) {
+                final disciplina = aval['disciplina'] ?? 'Geral';
+                final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
+                final isRecuperacao = aval['isRecuperacao'] == true;
+                final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
+                final notaAluno = double.tryParse(notasMap[widget.alunoDocId]?.toString() ?? '0') ?? 0.0;
+
+                if (!avaliacoesPorDisciplina.containsKey(disciplina)) {
+                  avaliacoesPorDisciplina[disciplina] = [];
+                }
+                
+                avaliacoesPorDisciplina[disciplina]!.add({
+                  'nota': notaAluno,
+                  'maximo': maximo,
+                  'isRecuperacao': isRecuperacao,
+                  'valida': true
+                });
+              }
+
+              Map<String, Map<String, double>> boletim = {};
+
+              for (var disciplina in avaliacoesPorDisciplina.keys) {
+                var notasDaDisciplina = avaliacoesPorDisciplina[disciplina]!;
+                
+                var recuperacoes = notasDaDisciplina.where((n) => n['isRecuperacao'] == true).toList();
+                var normais = notasDaDisciplina.where((n) => n['isRecuperacao'] != true).toList();
+
+                for (var rec in recuperacoes) {
+                  if (normais.isEmpty) continue;
+                  
+                  normais.sort((a, b) => ((a['nota'] / a['maximo']).compareTo(b['nota'] / b['maximo'])));
+                  var piorNormal = normais.first;
+
+                  double aproveitamentoRec = rec['nota'] / rec['maximo'];
+                  double aproveitamentoPiorNormal = piorNormal['nota'] / piorNormal['maximo'];
+
+                  if (aproveitamentoRec > aproveitamentoPiorNormal) {
+                    piorNormal['valida'] = false; 
+                  } else {
+                    rec['valida'] = false; 
+                  }
+                }
+
+                double somaNotas = 0.0;
+                for (var n in notasDaDisciplina) {
+                  if (n['valida'] == true) {
+                    somaNotas += n['nota'];
+                  }
+                }
+                
+                if (somaNotas > 10.0) somaNotas = 10.0;
+
+                boletim[disciplina] = {'notaAluno': somaNotas, 'maximo': 10.0};
+              }
+
+              final disciplinasOrdem = boletim.keys.toList()..sort();
+
+              return ListView.separated(
+                controller: widget.scrollController,
+                padding: const EdgeInsets.all(20),
+                itemCount: disciplinasOrdem.length,
+                separatorBuilder: (c, i) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final disciplina = disciplinasOrdem[index];
+                  final dados = boletim[disciplina]!;
+                  final notaAluno = dados['notaAluno']!;
+                  
+                  final bool acimaMedia = notaAluno >= 6.0; 
+                  final Color corNota = notaAluno == 0 ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
+
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.shade200),
+                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
+                            const SizedBox(width: 12),
+                            Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          ],
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                          child: Text(
+                            '${notaAluno.toStringAsFixed(1)} / 10.0', 
+                            style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 16)
+                          ),
+                        )
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        )
+      ],
+    );
+  }
+}
+
+class _FrequenciaModal extends StatefulWidget {
+  final String tenantId;
+  final String turmaId;
+  final String alunoMatricula;
+  final Color corPrimaria;
+  final ScrollController scrollController;
+
+  const _FrequenciaModal({
+    required this.tenantId,
+    required this.turmaId,
+    required this.alunoMatricula,
+    required this.corPrimaria,
+    required this.scrollController,
+  });
+
+  @override
+  State<_FrequenciaModal> createState() => _FrequenciaModalState();
+}
+
+class _FrequenciaModalState extends State<_FrequenciaModal> {
+  String _bimestreAtivo = '1º Bimestre';
+
+  String _calcularBimestre(DateTime data) {
+    int mes = data.month;
+    if (mes >= 2 && mes <= 4) return '1º Bimestre';
+    if (mes >= 5 && mes <= 6) return '2º Bimestre';
+    if (mes >= 7 && mes <= 9) return '3º Bimestre';
+    return '4º Bimestre';
+  }
+
+  bool _isDataNoBimestre(String dataStr, String bimestreAlvo) {
+    try {
+      final partes = dataStr.split('-');
+      final data = DateTime(int.parse(partes[0]), int.parse(partes[1]), int.parse(partes[2]));
+      return _calcularBimestre(data) == bimestreAlvo;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _bimestreAtivo = _calcularBimestre(DateTime.now());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.fact_check_rounded, color: widget.corPrimaria)),
+              const SizedBox(width: 16),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Frequência Escolar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Acompanhamento de faltas', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '1º Bimestre', label: Text('1º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '2º Bimestre', label: Text('2º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '3º Bimestre', label: Text('3º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '4º Bimestre', label: Text('4º Bim', style: TextStyle(fontSize: 12)))
+              ],
+              selected: {_bimestreAtivo}, 
+              onSelectionChanged: (s) => setState(() => _bimestreAtivo = s.first),
+              style: SegmentedButton.styleFrom(selectedBackgroundColor: widget.corPrimaria.withAlpha(40), selectedForegroundColor: widget.corPrimaria),
+            ),
+          ),
+        ),
+
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<QuerySnapshot>(
+            future: FirebaseFirestore.instance.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').get(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
+              
+              List<Map<String, String>> frequenciaBimestre = [];
+
+              if (snapshot.hasData) {
+                for (var doc in snapshot.data!.docs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  if (data['status'] != 'NAO_INICIADA' && _isDataNoBimestre(doc.id, _bimestreAtivo)) {
+                    final freq = Map<String, String>.from(data['frequencia'] ?? {});
+                    final st = freq[widget.alunoMatricula] ?? 'P';
+                    
+                    final p = doc.id.split('-');
+                    frequenciaBimestre.add({
+                      'idSort': doc.id,
+                      'data': "${p[2]}/${p[1]}/${p[0]}", 
+                      'status': st 
+                    });
+                  }
+                }
+              }
+
+              frequenciaBimestre.sort((a,b) => b['idSort']!.compareTo(a['idSort']!));
+              
+              final int aulasBimestre = frequenciaBimestre.length;
+              final int faltas = frequenciaBimestre.where((f) => f['status'] == 'A' || f['status'] == 'J').length;
+
+              return Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(color: faltas > 0 ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: faltas > 0 ? Colors.red.shade200 : Colors.green.shade200)),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Total de Faltas no $_bimestreAtivo:', style: TextStyle(fontWeight: FontWeight.bold, color: faltas > 0 ? Colors.red.shade900 : Colors.green.shade900)),
+                        Text('$faltas / $aulasBimestre', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: faltas > 0 ? Colors.red.shade900 : Colors.green.shade900)),
+                      ],
+                    ),
+                  ),
+
+                  if (frequenciaBimestre.isEmpty)
+                    Expanded(child: Center(child: Text('Nenhuma aula registrada neste bimestre.', style: TextStyle(color: Colors.grey.shade500))))
+                  else
+                    Expanded(
+                      child: ListView.separated(
+                        controller: widget.scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        itemCount: frequenciaBimestre.length,
+                        separatorBuilder: (c, i) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final f = frequenciaBimestre[index];
+                          final status = f['status'];
+                          
+                          Color corStatus = Colors.green;
+                          String textoStatus = 'Presente';
+                          IconData iconeStatus = Icons.check_circle_rounded;
+
+                          if (status == 'A') {
+                            corStatus = Colors.red;
+                            textoStatus = 'Falta';
+                            iconeStatus = Icons.cancel_rounded;
+                          } else if (status == 'J') {
+                            corStatus = Colors.orange;
+                            textoStatus = 'Falta Justificada';
+                            iconeStatus = Icons.info_rounded;
+                          }
+
+                          return ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400),
+                            title: Text(f['data'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
+                              decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8)), 
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(iconeStatus, color: corStatus, size: 14),
+                                  const SizedBox(width: 4),
+                                  Text(textoStatus, style: TextStyle(color: corStatus, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              )
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        )
+      ],
     );
   }
 }

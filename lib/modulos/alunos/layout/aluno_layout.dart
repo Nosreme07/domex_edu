@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../autenticacao/apresentacao/estado/auth_provider.dart';
 
+import '../apresentacao/telas/aluno_dashboard_tela.dart'; // <--- Import da tela para aceder ao Controller
+
 class AlunoLayout extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -20,14 +22,10 @@ class _AlunoLayoutState extends ConsumerState<AlunoLayout> {
     final usuario = ref.watch(authProvider).value;
     final bool isMobile = MediaQuery.of(context).size.width < 800;
     
-    // Cor dinâmica da escola!
     final corPrimaria = usuario?.corPrimaria ?? Theme.of(context).primaryColor;
     final nomeEscola = usuario?.nomeEscola ?? 'ESCOLA DOMEX';
     final tenantId = usuario?.tenantId;
 
-    // =========================================================================
-    // WIDGET INTELIGENTE DA LOGO (Busca a imagem da escola no Banco de Dados)
-    // =========================================================================
     final logoWidget = tenantId == null 
       ? _buildLogoPadrao() 
       : FutureBuilder<DocumentSnapshot>(
@@ -35,7 +33,6 @@ class _AlunoLayoutState extends ConsumerState<AlunoLayout> {
           builder: (context, snapshot) {
             if (snapshot.hasData && snapshot.data!.exists) {
               final data = snapshot.data!.data() as Map<String, dynamic>;
-              // Busca os nomes comuns de campos de logo que usamos no sistema
               final String? logoUrl = data['logoUrl'] ?? data['fotoUrl'] ?? data['logo'];
               
               if (logoUrl != null && logoUrl.isNotEmpty) {
@@ -55,7 +52,6 @@ class _AlunoLayoutState extends ConsumerState<AlunoLayout> {
                 );
               }
             }
-            // Se a escola ainda não fez upload de logo, mostra o chapéu padrão
             return _buildLogoPadrao();
           },
         );
@@ -81,7 +77,6 @@ class _AlunoLayoutState extends ConsumerState<AlunoLayout> {
     );
   }
 
-  // Chapéu de formatura caso não haja imagem
   Widget _buildLogoPadrao() {
     return Container(
       width: 60,
@@ -105,7 +100,7 @@ class _AlunoLayoutState extends ConsumerState<AlunoLayout> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                logoWidget, // A logo carregada entra aqui!
+                logoWidget,
                 Text(
                   nomeEscola.toUpperCase(),
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 1),
@@ -118,9 +113,55 @@ class _AlunoLayoutState extends ConsumerState<AlunoLayout> {
           ),
         ),
         _buildMenuItem(context, Icons.dashboard_rounded, 'Painel Inicial', '/aluno'),
-        _buildMenuItem(context, Icons.analytics_rounded, 'Meu Boletim', '/aluno/boletim'),
-        _buildMenuItem(context, Icons.fact_check_rounded, 'Frequência Escolar', '/aluno/frequencia'),
-        _buildMenuItem(context, Icons.calendar_month_rounded, 'Calendário de Aulas', '/aluno/calendario'),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: ListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            leading: const Icon(Icons.analytics_rounded, color: Colors.white, size: 22),
+            title: const Text('Meu Boletim', style: TextStyle(color: Colors.white, fontSize: 14)),
+            onTap: () {
+              if (MediaQuery.of(context).size.width < 800) Navigator.pop(context);
+              
+              if (AlunoDashboardController.abrirBoletim != null && AlunoDashboardController.turmaId.isNotEmpty) {
+                AlunoDashboardController.abrirBoletim!(
+                  AlunoDashboardController.tenantId,
+                  AlunoDashboardController.turmaId,
+                  AlunoDashboardController.alunoDocId,
+                  AlunoDashboardController.corPrimaria
+                );
+              } else {
+                context.go('/aluno'); 
+              }
+            },
+          ),
+        ),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: ListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            leading: const Icon(Icons.fact_check_rounded, color: Colors.white, size: 22),
+            title: const Text('Frequência Escolar', style: TextStyle(color: Colors.white, fontSize: 14)),
+            onTap: () {
+              if (MediaQuery.of(context).size.width < 800) Navigator.pop(context);
+              
+              if (AlunoDashboardController.abrirFrequencia != null && AlunoDashboardController.turmaId.isNotEmpty) {
+                AlunoDashboardController.abrirFrequencia!(
+                  AlunoDashboardController.tenantId,
+                  AlunoDashboardController.turmaId,
+                  AlunoDashboardController.matricula,
+                  AlunoDashboardController.corPrimaria
+                );
+              } else {
+                context.go('/aluno');
+              }
+            },
+          ),
+        ),
+        
+        _buildMenuItem(context, Icons.calendar_month_rounded, 'Calendário Escolar', '/aluno/calendario'),
+        
         const Spacer(),
         ListTile(
           leading: const Icon(Icons.exit_to_app_rounded, color: Colors.white),
