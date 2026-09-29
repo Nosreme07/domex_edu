@@ -12,6 +12,20 @@ import 'package:intl/intl.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../estado/aluno_dashboard_provider.dart'; 
 
+// ============================================================================
+// CONTROLLER GLOBAL PARA O MENU LATERAL ACESSAR OS POPUPS
+// ============================================================================
+class AlunoDashboardController {
+  static void Function(String tenantId, String turmaId, String alunoDocId, Color cor)? abrirBoletim;
+  static void Function(String tenantId, String turmaId, String matricula, Color cor)? abrirFrequencia;
+  
+  static String tenantId = '';
+  static String turmaId = '';
+  static String alunoDocId = '';
+  static String matricula = '';
+  static Color corPrimaria = Colors.blue;
+}
+
 void _mostrarFotoAmpliadaGlobal(BuildContext context, String? url) {
   if (url == null || url.isEmpty) return;
   showDialog(
@@ -40,20 +54,6 @@ void _mostrarFotoAmpliadaGlobal(BuildContext context, String? url) {
       ),
     ),
   );
-}
-
-// ============================================================================
-// CONTROLLER GLOBAL PARA O MENU LATERAL ACESSAR OS POPUPS
-// ============================================================================
-class AlunoDashboardController {
-  static void Function(String tenantId, String turmaId, String alunoDocId, Color cor)? abrirBoletim;
-  static void Function(String tenantId, String turmaId, String matricula, Color cor)? abrirFrequencia;
-  
-  static String tenantId = '';
-  static String turmaId = '';
-  static String alunoDocId = '';
-  static String matricula = '';
-  static Color corPrimaria = Colors.blue;
 }
 
 class AlunoDashboardTela extends ConsumerStatefulWidget {
@@ -398,7 +398,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                           }
 
                           return InkWell(
-                            onTap: () => _mostrarDetalhesAvaliacao(aval, notaDoAluno, max, corNota, corPrimaria),
+                            onTap: () => _mostrarDetalhesAvaliacao(aval, notaDoAluno, max, corNota, corPrimaria, alunoDocId),
                             borderRadius: BorderRadius.circular(16),
                             child: Container(
                               padding: const EdgeInsets.all(16),
@@ -448,46 +448,106 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
-  void _mostrarDetalhesAvaliacao(Map<String, dynamic> aval, dynamic notaDoAluno, double max, Color corNota, Color corPrimaria) {
+  // ==========================================================================
+  // EXIBIÇÃO DE DETALHES DA AVALIAÇÃO (INCLUINDO FEEDBACK DO PROFESSOR)
+  // ==========================================================================
+  void _mostrarDetalhesAvaliacao(Map<String, dynamic> aval, dynamic notaDoAluno, double max, Color corNota, Color corPrimaria, String alunoDocId) {
+    final tipoAvaliacao = aval['tipo'] ?? 'Prova';
+    
+    final observacoesMap = Map<String, dynamic>.from(aval['observacoes'] ?? {});
+    final anexosMap = Map<String, dynamic>.from(aval['anexos'] ?? {});
+    
+    final obs = observacoesMap[alunoDocId]?.toString().trim() ?? '';
+    
+    List<String> fotos = [];
+    if (anexosMap[alunoDocId] is String && anexosMap[alunoDocId].toString().isNotEmpty) {
+       fotos = [anexosMap[alunoDocId]];
+    } else if (anexosMap[alunoDocId] is List) {
+       fotos = List<String>.from(anexosMap[alunoDocId]);
+    }
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(aval['nome'] ?? 'Detalhes', style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Disciplina: ${aval['disciplina'] ?? 'Geral'}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text('Data: ${_formatarDataDisplay(aval['dataAvaliacao'] ?? '')}'),
-            const SizedBox(height: 8),
-            Text('Bimestre: ${aval['bimestre'] ?? ''}'),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            if (aval['descricao'] != null && aval['descricao'].toString().isNotEmpty) ...[
-              const Text('Descrição:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
-              Text(aval['descricao']),
-              const SizedBox(height: 16),
-            ],
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: notaDoAluno != null ? corNota.withAlpha(20) : Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
-              child: Column(
-                children: [
-                  Text('Sua Nota', style: TextStyle(fontSize: 12, color: notaDoAluno != null ? corNota : Colors.grey)),
-                  const SizedBox(height: 4),
-                  Text(
-                    notaDoAluno != null ? '$notaDoAluno / $max' : 'Aguardando Correção\n(Valendo $max pts)', 
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: notaDoAluno != null ? corNota : Colors.grey.shade700)
-                  ),
-                ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+                child: Text(tipoAvaliacao, style: TextStyle(color: corPrimaria, fontSize: 10, fontWeight: FontWeight.bold)),
               ),
-            )
-          ],
+              const SizedBox(height: 12),
+              Text('Disciplina: ${aval['disciplina'] ?? 'Geral'}', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('Data: ${_formatarDataDisplay(aval['dataAvaliacao'] ?? '')}'),
+              const SizedBox(height: 8),
+              Text('Bimestre: ${aval['bimestre'] ?? ''}'),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              
+              if (aval['descricao'] != null && aval['descricao'].toString().isNotEmpty) ...[
+                const Text('Descrição:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                Text(aval['descricao']),
+                const SizedBox(height: 16),
+              ],
+
+              // LÓGICA DE FEEDBACK (OBSERVAÇÕES E FOTOS DO PROFESSOR)
+              if (obs.isNotEmpty || fotos.isNotEmpty) ...[
+                const Text('Feedback do Professor:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.amber.shade200)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (obs.isNotEmpty) 
+                        Text('"$obs"', style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Colors.amber.shade900)),
+                      if (obs.isNotEmpty && fotos.isNotEmpty) 
+                        const SizedBox(height: 12),
+                      if (fotos.isNotEmpty)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: fotos.map((url) => InkWell(
+                            onTap: () => _mostrarFotoAmpliadaGlobal(context, url),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8), 
+                              child: Image.network(url, width: 60, height: 60, fit: BoxFit.cover)
+                            )
+                          )).toList(),
+                        )
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: notaDoAluno != null ? corNota.withAlpha(20) : Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                child: Column(
+                  children: [
+                    Text('Sua Nota', style: TextStyle(fontSize: 12, color: notaDoAluno != null ? corNota : Colors.grey)),
+                    const SizedBox(height: 4),
+                    Text(
+                      notaDoAluno != null ? '$notaDoAluno / $max' : 'Aguardando Correção\n(Valendo $max pts)', 
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: notaDoAluno != null ? corNota : Colors.grey.shade700)
+                    ),
+                  ],
+                ),
+              )
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
@@ -732,7 +792,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
           final matricula = (aluno['matricula'] ?? '').toString();
           final nomeEscola = usuarioLogado.nomeEscola ?? 'Escola Domex Edu';
 
-          // Popula os dados no Controlador Global para o Menu Lateral acessar
           WidgetsBinding.instance.addPostFrameCallback((_) {
             AlunoDashboardController.tenantId = tenantId;
             AlunoDashboardController.turmaId = turmaId;
@@ -982,7 +1041,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                                         }
 
                                         return InkWell(
-                                          onTap: () => _mostrarDetalhesAvaliacao(aval, notaDoAluno, max, corNota, corPrimaria),
+                                          onTap: () => _mostrarDetalhesAvaliacao(aval, notaDoAluno, max, corNota, corPrimaria, alunoDocId),
                                           child: Container(
                                             margin: const EdgeInsets.only(bottom: 12),
                                             padding: const EdgeInsets.all(16),
@@ -1424,11 +1483,11 @@ class _BoletimModalState extends State<_BoletimModal> {
                 for (var rec in recuperacoes) {
                   if (normais.isEmpty) continue;
                   
-                  normais.sort((a, b) => ((a['nota'] / a['maximo']).compareTo(b['nota'] / b['maximo'])));
+                  normais.sort((a, b) => ((a['nota'] / a['maxima']).compareTo(b['nota'] / b['maxima'])));
                   var piorNormal = normais.first;
 
-                  double aproveitamentoRec = rec['nota'] / rec['maximo'];
-                  double aproveitamentoPiorNormal = piorNormal['nota'] / piorNormal['maximo'];
+                  double aproveitamentoRec = rec['maximo'] > 0 ? rec['nota'] / rec['maximo'] : 0.0;
+                  double aproveitamentoPiorNormal = piorNormal['maximo'] > 0 ? piorNormal['nota'] / piorNormal['maximo'] : 0.0;
 
                   if (aproveitamentoRec > aproveitamentoPiorNormal) {
                     piorNormal['valida'] = false; 
@@ -1438,15 +1497,18 @@ class _BoletimModalState extends State<_BoletimModal> {
                 }
 
                 double somaNotas = 0.0;
+                double somaMaximos = 0.0;
                 for (var n in notasDaDisciplina) {
                   if (n['valida'] == true) {
                     somaNotas += n['nota'];
+                    somaMaximos += n['maximo'];
                   }
                 }
                 
-                if (somaNotas > 10.0) somaNotas = 10.0;
+                double notaBoletim = somaNotas;
+                if (notaBoletim > 10.0) notaBoletim = 10.0;
 
-                boletim[disciplina] = {'notaAluno': somaNotas, 'maximo': 10.0};
+                boletim[disciplina] = {'notaAluno': notaBoletim, 'maximo': somaMaximos, 'somaBruta': somaNotas};
               }
 
               final disciplinasOrdem = boletim.keys.toList()..sort();
@@ -1460,6 +1522,8 @@ class _BoletimModalState extends State<_BoletimModal> {
                   final disciplina = disciplinasOrdem[index];
                   final dados = boletim[disciplina]!;
                   final notaAluno = dados['notaAluno']!;
+                  final maximo = dados['maximo']!;
+                  final somaBruta = dados['somaBruta']!;
                   
                   final bool acimaMedia = notaAluno >= 6.0; 
                   final Color corNota = notaAluno == 0 ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
@@ -1475,12 +1539,22 @@ class _BoletimModalState extends State<_BoletimModal> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
-                            const SizedBox(width: 12),
-                            Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                          ],
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                    Text('Pontos: ${somaBruta.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)} distribuídos', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                                  ]
+                                )
+                              ),
+                            ],
+                          ),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
