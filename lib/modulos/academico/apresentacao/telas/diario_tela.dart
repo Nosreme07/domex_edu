@@ -124,7 +124,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     
     try {
       final tenantId = user.tenantId;
-      
       var docProf = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('professores').doc(user.id).get();
       if (docProf.exists && docProf.data() != null) {
         final lista = List<String>.from(docProf.data()!['disciplinas'] ?? []);
@@ -146,7 +145,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
         if (lista.isNotEmpty) return lista;
       }
     } catch (e) {
-      debugPrint('Erro ao buscar disciplinas do professor: $e');
+      debugPrint('Erro ao buscar disciplinas: $e');
     }
     return ['Geral']; 
   }
@@ -462,7 +461,156 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   }
 
   // ==========================================================================
-  // ESTATÍSTICAS E RESUMO DO ALUNO
+  // FEEDBACK INDIVIDUAL DO ALUNO (COM LISTA DE FOTOS E MINIATURAS)
+  // ==========================================================================
+  void _abrirModalFeedbackAluno(Map<String, dynamic> aluno, String matricula, Map<String, dynamic> observacoesAtuais, Map<String, dynamic> anexosAtuais, StateSetter setMainModalState, Color corPrimaria) {
+    final ctrlObs = TextEditingController(text: observacoesAtuais[matricula]?.toString() ?? '');
+    bool fazendoUpload = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          
+          List<String> urls = [];
+          if (anexosAtuais[matricula] is String) {
+            if ((anexosAtuais[matricula] as String).isNotEmpty) {
+               urls = [anexosAtuais[matricula]];
+            }
+          } else if (anexosAtuais[matricula] is List) {
+            urls = List<String>.from(anexosAtuais[matricula]);
+          }
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Icon(Icons.assignment_turned_in_rounded, color: corPrimaria),
+                const SizedBox(width: 8),
+                Expanded(child: Text('Feedback: ${aluno['nome']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ],
+            ),
+            content: SizedBox(
+              width: 500, 
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('Observações', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: ctrlObs,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: 'Escreva um comentário sobre o desempenho do aluno nesta avaliação...', 
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        filled: true, fillColor: Colors.grey.shade50
+                      ),
+                      onChanged: (v) {
+                        observacoesAtuais[matricula] = v;
+                        setMainModalState((){}); 
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Anexos (Provas/Trabalhos)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
+                        if (fazendoUpload)
+                          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    
+                    if (urls.isNotEmpty)
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: urls.asMap().entries.map((e) {
+                          int idx = e.key;
+                          String url = e.value;
+                          return Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              InkWell(
+                                onTap: () => _mostrarFotoAmpliadaGlobal(context, url),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.network(url, width: 80, height: 80, fit: BoxFit.cover),
+                                ),
+                              ),
+                              Positioned(
+                                top: -8,
+                                right: -8,
+                                child: InkWell(
+                                  onTap: () {
+                                    urls.removeAt(idx);
+                                    anexosAtuais[matricula] = urls;
+                                    setDialogState((){});
+                                    setMainModalState((){});
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                    child: const Icon(Icons.close, size: 12, color: Colors.white),
+                                  ),
+                                ),
+                              )
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                    
+                    if (urls.isNotEmpty) const SizedBox(height: 16),
+                    
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                      onPressed: fazendoUpload ? null : () async {
+                        final picker = ImagePicker();
+                        final foto = await picker.pickImage(source: ImageSource.camera, imageQuality: 60);
+                        if (foto == null) return;
+                        
+                        setDialogState(() => fazendoUpload = true);
+                        try {
+                          final user = ref.read(authProvider).value;
+                          if (user != null) {
+                            final refStorage = FirebaseStorage.instance.ref('tenants/${user.tenantId}/turmas/${widget.turmaId}/avaliacoes_anexos/${matricula}_${DateTime.now().millisecondsSinceEpoch}.jpg');
+                            await refStorage.putFile(File(foto.path));
+                            final url = await refStorage.getDownloadURL();
+                            
+                            urls.add(url);
+                            anexosAtuais[matricula] = urls;
+                            
+                            setDialogState(() {
+                              fazendoUpload = false;
+                            });
+                            setMainModalState((){});
+                          }
+                        } catch (e) {
+                          setDialogState(() => fazendoUpload = false);
+                        }
+                      },
+                      icon: Icon(Icons.camera_alt_rounded, color: corPrimaria),
+                      label: Text('Fotografar Prova', style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold))
+                    )
+                  ]
+                )
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Concluído', style: TextStyle(fontWeight: FontWeight.bold)))
+            ]
+          );
+        }
+      )
+    );
+  }
+
+  // ==========================================================================
+  // ESTATÍSTICAS E MENSAGENS PARA ALUNOS
   // ==========================================================================
   void _mostrarDetalhesFrequencia(String nomeAluno, List<Map<String, String>> frequenciaMes, Color corPrimaria) {
     showDialog(
@@ -532,7 +680,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     double somaTotalNotaAluno = 0.0;
     
     for (var n in notas) {
-      if (n['validaParaMedia'] == true) {
+      if (n['validaParaMedia'] == true && n['contaParaMedia'] != false) {
         somaTotalMaximoValido += (n['maxima'] as num).toDouble();
         somaTotalNotaAluno += (n['nota'] as num).toDouble();
       }
@@ -600,6 +748,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           
                           bool isValida = n['validaParaMedia'] == true;
                           bool isRecuperacao = n['isRecuperacao'] == true;
+                          bool contaParaMedia = n['contaParaMedia'] ?? true;
 
                           String subTexto = n['bimestre'];
                           if (!isValida && !isRecuperacao) {
@@ -611,6 +760,9 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           if (isValida && isRecuperacao) {
                             subTexto += ' • (Nota Substituta)';
                           }
+                          if (!contaParaMedia) {
+                            subTexto += ' • (Não conta para a média)';
+                          }
 
                           return ListTile(
                             contentPadding: EdgeInsets.zero,
@@ -618,12 +770,12 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                               backgroundColor: isValida ? Colors.green.shade50 : Colors.grey.shade200, 
                               child: Icon(isValida ? Icons.check_rounded : Icons.block_rounded, color: isValida ? Colors.green : Colors.grey)
                             ),
-                            title: Text(n['nome'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, decoration: isValida ? TextDecoration.none : TextDecoration.lineThrough, color: isValida ? Colors.black : Colors.grey)),
+                            title: Text(n['nome'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, decoration: (isValida && contaParaMedia) ? TextDecoration.none : TextDecoration.lineThrough, color: (isValida && contaParaMedia) ? Colors.black : Colors.grey)),
                             subtitle: Text(subTexto, style: TextStyle(color: isValida && isRecuperacao ? Colors.purple.shade700 : Colors.grey.shade600, fontSize: 12, fontWeight: isValida && isRecuperacao ? FontWeight.bold : FontWeight.normal)),
                             trailing: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6), 
-                              decoration: BoxDecoration(color: isValida ? Colors.green.shade600 : Colors.grey.shade400, borderRadius: BorderRadius.circular(8)), 
-                              child: Text('${valorNota.toStringAsFixed(1)} / ${valorMax.toStringAsFixed(1)}', style: TextStyle(color: isValida ? Colors.white : Colors.white70, fontWeight: FontWeight.bold, fontSize: 13, decoration: isValida ? TextDecoration.none : TextDecoration.lineThrough))
+                              decoration: BoxDecoration(color: (isValida && contaParaMedia) ? Colors.green.shade600 : Colors.grey.shade400, borderRadius: BorderRadius.circular(8)), 
+                              child: Text('${valorNota.toStringAsFixed(1)} / ${valorMax.toStringAsFixed(1)}', style: TextStyle(color: (isValida && contaParaMedia) ? Colors.white : Colors.white70, fontWeight: FontWeight.bold, fontSize: 13, decoration: (isValida && contaParaMedia) ? TextDecoration.none : TextDecoration.lineThrough))
                             ),
                           );
                         }
@@ -693,6 +845,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
             'nota': notas[matricula], 
             'maxima': data['pontuacaoMaxima'] ?? 10.0,
             'isRecuperacao': data['isRecuperacao'] ?? false,
+            'contaParaMedia': data['contaParaMedia'] ?? true,
             'validaParaMedia': true,
           };
           agrupadoPorBimestre.putIfAbsent(item['bimestre'], () => []).add(item);
@@ -1094,9 +1247,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
-  // ==========================================================================
-  // MODAIS DE AVALIAÇÃO E FEEDBACK
-  // ==========================================================================
   void _excluirAvaliacao(String id) {
     showDialog(
       context: context,
@@ -1139,6 +1289,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     
     String? disciplinaSelecionada = avaliacao['disciplina'];
     String? tipoSelecionado = avaliacao['tipo'] ?? 'Prova'; 
+    bool contaParaMedia = avaliacao['contaParaMedia'] ?? true; 
 
     String dataBancoAval = avaliacao['dataAvaliacao'] ?? _dataBanco;
     String dataDisplayAval = '';
@@ -1245,6 +1396,16 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                 const SizedBox(height: 16),
                 
                 TextField(controller: ctrlPontos, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: 'Pontuação Máxima', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.grey.shade50)),
+                const SizedBox(height: 16),
+                
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Contabiliza para a Média?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                  subtitle: const Text('Se desmarcado, a nota não soma no boletim do bimestre.', style: TextStyle(fontSize: 11)),
+                  value: contaParaMedia,
+                  activeColor: corPrimaria,
+                  onChanged: (val) => setModalState(() => contaParaMedia = val),
+                ),
               ],
             ),
           ),
@@ -1255,10 +1416,10 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               onPressed: salvando ? null : () async {
                 if (ctrlNome.text.trim().isEmpty) return;
 
-                if (avaliacao['isRecuperacao'] != true && avaliacao['isSegundaChamada'] != true) {
+                if (contaParaMedia && avaliacao['isRecuperacao'] != true && avaliacao['isSegundaChamada'] != true) {
                   double somaAtual = 0.0;
                   for (var a in avaliacoesDoBimestre) {
-                    if (a['id'] != avaliacaoId && a['disciplina'] == (disciplinaSelecionada ?? 'Geral') && a['isRecuperacao'] != true && a['isSegundaChamada'] != true) {
+                    if (a['id'] != avaliacaoId && a['disciplina'] == (disciplinaSelecionada ?? 'Geral') && a['isRecuperacao'] != true && a['isSegundaChamada'] != true && a['contaParaMedia'] != false) {
                       somaAtual += (a['pontuacaoMaxima'] as num).toDouble();
                     }
                   }
@@ -1281,6 +1442,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     'tipo': tipoSelecionado ?? 'Prova', 
                     'dataAvaliacao': dataBancoAval,
                     'pontuacaoMaxima': double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0,
+                    'contaParaMedia': contaParaMedia,
                   });
                   
                   if (!ctx.mounted) return;
@@ -1299,15 +1461,12 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
   void _abrirModalNovaAvaliacao(Color corPrimaria, List<Map<String, dynamic>> alunosTurma, dynamic user, List<Map<String, dynamic>> avaliacoesDoBimestre) {
     final ctrlNome = TextEditingController();
     final ctrlPontos = TextEditingController(text: '10.0');
-    
     String? disciplinaSelecionada;
     String? tipoSelecionado = 'Prova'; 
-    
+    bool contaParaMedia = true;
     bool salvando = false;
-    
     String dataBancoAval = _dataBanco;
     String dataDisplayAval = _dataDisplay;
-    
     bool isSegundaChamada = false;
     bool isRecuperacao = false;
     List<String> alunosSelecionados = [];
@@ -1415,10 +1574,19 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                   
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
+                    title: const Text('Contabiliza para a Média?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    subtitle: const Text('Se desmarcado, a nota não soma no boletim do bimestre.', style: TextStyle(fontSize: 11)),
+                    value: contaParaMedia,
+                    activeColor: corPrimaria,
+                    onChanged: (val) => setModalState(() => contaParaMedia = val),
+                  ),
+
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
                     title: const Text('É uma prova de Recuperação?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     subtitle: const Text('Substitui automaticamente a menor nota do bimestre.', style: TextStyle(fontSize: 11)),
                     value: isRecuperacao,
-                    activeThumbColor: Colors.purple,
+                    activeColor: Colors.purple,
                     onChanged: (val) {
                       setModalState(() {
                         isRecuperacao = val;
@@ -1431,7 +1599,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     title: const Text('É uma prova de 2ª Chamada?', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                     subtitle: const Text('Apenas os alunos selecionados receberão nota.', style: TextStyle(fontSize: 11)),
                     value: isSegundaChamada,
-                    activeThumbColor: corPrimaria,
+                    activeColor: corPrimaria,
                     onChanged: (val) {
                       setModalState(() {
                         isSegundaChamada = val;
@@ -1477,16 +1645,16 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
               onPressed: salvando ? null : () async {
                 if (ctrlNome.text.trim().isEmpty) return;
 
-                if (!isRecuperacao && !isSegundaChamada) {
+                if (contaParaMedia && !isRecuperacao && !isSegundaChamada) {
                   double somaAtual = 0.0;
                   for (var a in avaliacoesDoBimestre) {
-                    if (a['disciplina'] == (disciplinaSelecionada ?? 'Geral') && a['isRecuperacao'] != true && a['isSegundaChamada'] != true) {
+                    if (a['disciplina'] == (disciplinaSelecionada ?? 'Geral') && a['isRecuperacao'] != true && a['isSegundaChamada'] != true && a['contaParaMedia'] != false) {
                       somaAtual += (a['pontuacaoMaxima'] as num).toDouble();
                     }
                   }
                   double novaP = double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0;
                   if (somaAtual + novaP > 10.0) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('A soma das avaliações desta disciplina (${(somaAtual + novaP).toStringAsFixed(1)}) ultrapassa o limite de 10.0 pontos no bimestre!'), backgroundColor: Colors.red));
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('A soma ultrapassa o limite de 10.0 pontos no bimestre!'), backgroundColor: Colors.red));
                     return;
                   }
                 }
@@ -1512,6 +1680,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                     'isSegundaChamada': isSegundaChamada,
                     'alunosPermitidos': isSegundaChamada ? alunosSelecionados : [],
                     'isRecuperacao': isRecuperacao,
+                    'contaParaMedia': contaParaMedia,
                   };
 
                   final docRef = await FirebaseFirestore.instance.collection('tenants').doc(user.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').add(novaAvaliacao);
@@ -1529,162 +1698,13 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     );
   }
 
-  void _abrirModalFeedbackAluno(Map<String, dynamic> aluno, String matricula, Map<String, dynamic> observacoesAtuais, Map<String, dynamic> anexosAtuais, StateSetter setMainModalState, Color corPrimaria) {
-    final ctrlObs = TextEditingController(text: observacoesAtuais[matricula]?.toString() ?? '');
-    bool fazendoUpload = false;
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          
-          List<String> urls = [];
-          if (anexosAtuais[matricula] is String) {
-            if ((anexosAtuais[matricula] as String).isNotEmpty) {
-               urls = [anexosAtuais[matricula]];
-            }
-          } else if (anexosAtuais[matricula] is List) {
-            urls = List<String>.from(anexosAtuais[matricula]);
-          }
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(
-              children: [
-                Icon(Icons.assignment_turned_in_rounded, color: corPrimaria),
-                const SizedBox(width: 8),
-                Expanded(child: Text('Feedback: ${aluno['nome']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis)),
-              ],
-            ),
-            content: SizedBox(
-              width: 500, 
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const Text('Observações', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: ctrlObs,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        hintText: 'Escreva um comentário sobre o desempenho do aluno nesta avaliação...', 
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        filled: true, fillColor: Colors.grey.shade50
-                      ),
-                      onChanged: (v) {
-                        observacoesAtuais[matricula] = v;
-                        setMainModalState((){}); 
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Anexos (Provas/Trabalhos)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
-                        if (fazendoUpload)
-                          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    
-                    if (urls.isNotEmpty)
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: urls.asMap().entries.map((e) {
-                          int idx = e.key;
-                          String url = e.value;
-                          return Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              InkWell(
-                                onTap: () => _mostrarFotoAmpliadaGlobal(context, url),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: Image.network(url, width: 80, height: 80, fit: BoxFit.cover),
-                                ),
-                              ),
-                              Positioned(
-                                top: -8,
-                                right: -8,
-                                child: InkWell(
-                                  onTap: () {
-                                    urls.removeAt(idx);
-                                    anexosAtuais[matricula] = urls;
-                                    setDialogState((){});
-                                    setMainModalState((){});
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    child: const Icon(Icons.close, size: 12, color: Colors.white),
-                                  ),
-                                ),
-                              )
-                            ],
-                          );
-                        }).toList(),
-                      ),
-                    
-                    if (urls.isNotEmpty) const SizedBox(height: 16),
-                    
-                    OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                      onPressed: fazendoUpload ? null : () async {
-                        final picker = ImagePicker();
-                        final foto = await picker.pickImage(source: ImageSource.camera, imageQuality: 60);
-                        if (foto == null) return;
-                        
-                        setDialogState(() => fazendoUpload = true);
-                        try {
-                          final user = ref.read(authProvider).value;
-                          if (user != null) {
-                            final refStorage = FirebaseStorage.instance.ref('tenants/${user.tenantId}/turmas/${widget.turmaId}/avaliacoes_anexos/${matricula}_${DateTime.now().millisecondsSinceEpoch}.jpg');
-                            await refStorage.putFile(File(foto.path));
-                            final url = await refStorage.getDownloadURL();
-                            
-                            urls.add(url);
-                            anexosAtuais[matricula] = urls;
-                            
-                            setDialogState(() {
-                              fazendoUpload = false;
-                            });
-                            setMainModalState((){});
-                          }
-                        } catch (e) {
-                          setDialogState(() => fazendoUpload = false);
-                        }
-                      },
-                      icon: Icon(Icons.camera_alt_rounded, color: corPrimaria),
-                      label: Text('Fotografar Prova', style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold))
-                    )
-                  ]
-                )
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Concluído', style: TextStyle(fontWeight: FontWeight.bold)))
-            ]
-          );
-        }
-      )
-    );
-  }
-
   void _abrirModalLancarNotas(Map<String, dynamic> avaliacao, String avaliacaoId, List<Map<String, dynamic>> alunosTurmaOriginal, Color corPrimaria) {
     final Map<String, TextEditingController> controladores = {};
     final notasAtuais = Map<String, dynamic>.from(avaliacao['notas'] ?? {});
-    
     final observacoesAtuais = Map<String, dynamic>.from(avaliacao['observacoes'] ?? {});
     final anexosAtuais = Map<String, dynamic>.from(avaliacao['anexos'] ?? {});
-    
     final pontuacaoMaxima = (avaliacao['pontuacaoMaxima'] ?? 10.0) as double;
     final List ausentes = avaliacao['matriculasAusentes'] ?? [];
-    
     final bool isSegundaChamada = avaliacao['isSegundaChamada'] ?? false;
     final List permitidos = avaliacao['alunosPermitidos'] ?? [];
 
@@ -1780,8 +1800,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                               children: [
                                 Row(
                                   children: [
-                                    CircleAvatar(radius: 18, backgroundColor: corPrimaria.withAlpha(30), backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null, child: aluno['fotoUrl'] == null ? Icon(Icons.person, color: corPrimaria, size: 20) : null), 
-                                    const SizedBox(width: 12),
+                                    CircleAvatar(radius: 18, backgroundColor: corPrimaria.withAlpha(30), backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null, child: aluno['fotoUrl'] == null ? Icon(Icons.person, color: corPrimaria, size: 20) : null), const SizedBox(width: 12),
                                     Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(aluno['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)), if (faltou) Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: const Text('Faltou neste dia', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))])),
                                     
                                     IconButton(
@@ -1861,7 +1880,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           onPressed: () async {
                             final user = ref.read(authProvider).value;
                             if (user == null) return;
-                            
                             if (!ctx.mounted) return;
                             final messenger = ScaffoldMessenger.of(ctx);
                             final nav = Navigator.of(ctx);
@@ -1934,7 +1952,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
           });
           
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado!'), backgroundColor: Colors.green)); 
+      messenger.showSnackBar(const SnackBar(content: Text('Aviso enviado!'), backgroundColor: Colors.green)); 
       _mensagemAvisoCtrl.clear(); 
       setState(() { 
         _alunoAvisoSelecionado = null; 
@@ -1942,7 +1960,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
       }); 
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); 
+      messenger.showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red)); 
     } finally {
       if (mounted) {
         setState(() => _enviandoAviso = false);
@@ -1950,9 +1968,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     }
   }
 
-  // ==========================================================================
-  // WIDGETS DE ABAS PRINCIPAIS E RECONSTRUÇÃO DA TELA
-  // ==========================================================================
   Widget _buildAbaControle(int indice, String titulo, IconData icone) {
     final isAtiva = _abaAtiva == indice;
     return Expanded(
@@ -2103,6 +2118,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           
                           final dataAvaliacaoStr = _formatarDataDisplay(avaliacao['dataAvaliacao'] ?? '');
                           final tipoAvaliacao = avaliacao['tipo'] ?? 'Prova';
+                          final bool contaParaMedia = avaliacao['contaParaMedia'] ?? true;
                           
                           int totalEsperado = avaliacao['isSegundaChamada'] == true 
                                ? (avaliacao['alunosPermitidos'] as List).length 
@@ -2124,10 +2140,17 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                         crossAxisAlignment: CrossAxisAlignment.start, 
                                         children: [
                                           Text(avaliacao['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), 
-                                          if (avaliacao['isSegundaChamada'] == true) 
-                                            Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: corPrimaria.withAlpha(30), borderRadius: BorderRadius.circular(4)), child: Text('2ª Chamada', style: TextStyle(fontSize: 10, color: corPrimaria))),
-                                          if (avaliacao['isRecuperacao'] == true) 
-                                            Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(4)), child: Text('Recuperação', style: TextStyle(fontSize: 10, color: Colors.purple.shade800))),
+                                          Wrap(
+                                            spacing: 6,
+                                            children: [
+                                              if (avaliacao['isSegundaChamada'] == true) 
+                                                Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: corPrimaria.withAlpha(30), borderRadius: BorderRadius.circular(4)), child: Text('2ª Chamada', style: TextStyle(fontSize: 10, color: corPrimaria))),
+                                              if (avaliacao['isRecuperacao'] == true) 
+                                                Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.purple.shade100, borderRadius: BorderRadius.circular(4)), child: Text('Recuperação', style: TextStyle(fontSize: 10, color: Colors.purple.shade800))),
+                                              if (!contaParaMedia)
+                                                Container(margin: const EdgeInsets.only(top: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4)), child: Text('Não conta p/ Média', style: TextStyle(fontSize: 10, color: Colors.grey.shade800))),
+                                            ],
+                                          ),
                                           const SizedBox(height: 4), 
                                           Text('$tipoAvaliacao • ${avaliacao['disciplina'] ?? 'Geral'} • $dataAvaliacaoStr • Max: ${avaliacao['pontuacaoMaxima']} pts', style: TextStyle(color: Colors.grey.shade600, fontSize: 11))
                                         ]
