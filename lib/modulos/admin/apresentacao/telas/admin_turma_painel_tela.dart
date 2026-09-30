@@ -16,6 +16,7 @@ import '../estado/turma_provider.dart';
 import '../estado/professor_provider.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
+// Importação da tela do Calendário da Turma
 import '../../../academico/apresentacao/telas/turma_calendario_tela.dart';
 
 // ============================================================================
@@ -48,7 +49,7 @@ class UpperCaseTextFormatter extends TextInputFormatter {
 }
 
 // ============================================================================
-// FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA (Para qualquer avatar da página)
+// FUNÇÃO GLOBAL: ABRIR FOTO EM TELA CHEIA
 // ============================================================================
 void _mostrarFotoAmpliada(BuildContext context, String url) {
   showDialog(
@@ -121,10 +122,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
     return true;
   }
 
-  void _abrirFichaAlunoRapida(
-    BuildContext context,
-    Map<String, dynamic> aluno,
-  ) {
+  void _abrirFichaAlunoRapida(BuildContext context, Map<String, dynamic> aluno) {
     final telefoneAluno = (aluno['telefone'] ?? '').toString();
     final numAlunoLimpo = telefoneAluno.replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -169,11 +167,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                   Uri.parse('https://wa.me/55$numeroLimpo'),
                   mode: LaunchMode.externalApplication,
                 ),
-                child: Image.asset(
-                  'assets/whatsapp.png',
-                  width: 28,
-                  height: 28,
-                ),
+                child: Image.asset('assets/whatsapp.png', width: 28, height: 28),
               ),
             ),
             const SizedBox(width: 16),
@@ -217,11 +211,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                           ? NetworkImage(aluno['fotoUrl'])
                           : null,
                       child: aluno['fotoUrl'] == null
-                          ? const Icon(
-                              Icons.person,
-                              size: 35,
-                              color: Colors.grey,
-                            )
+                          ? const Icon(Icons.person, size: 35, color: Colors.grey)
                           : null,
                     ),
                   ),
@@ -232,27 +222,16 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                       children: [
                         Text(
                           aluno['nome'] ?? '',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 18,
-                          ),
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          'Matrícula: ${aluno['matricula']}',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
-                          ),
-                        ),
+                        Text('Matrícula: ${aluno['matricula']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                         Text(
                           'Status: ${aluno['status'] ?? 'Ativo'}',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: aluno['status'] == 'Inadimplente'
-                                ? Colors.red
-                                : Colors.green,
+                            color: aluno['status'] == 'Inadimplente' ? Colors.red : Colors.green,
                           ),
                         ),
                       ],
@@ -261,57 +240,24 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                 ],
               ),
               const Divider(height: 32),
-              const Text(
-                'Vínculo Acadêmico',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: Colors.deepPurple,
-                ),
-              ),
+              const Text('Vínculo Acadêmico', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple)),
               const SizedBox(height: 8),
-              Text(
-                'Turma Principal: ${aluno['turma'] ?? 'Não informada'}',
-                style: const TextStyle(fontSize: 13),
-              ),
+              Text('Turma Principal: ${aluno['turma'] ?? 'Não informada'}', style: const TextStyle(fontSize: 13)),
               const Divider(height: 32),
-              const Text(
-                'Contato do Aluno',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: Colors.deepPurple,
-                ),
-              ),
+              const Text('Contato do Aluno', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple)),
               const SizedBox(height: 8),
               buildLinhaContatoModal(telefoneAluno, numAlunoLimpo),
               const Divider(height: 32),
-              const Text(
-                'Responsável Principal',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 13,
-                  color: Colors.deepPurple,
-                ),
-              ),
+              const Text('Responsável Principal', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple)),
               const SizedBox(height: 8),
-              Text(
-                nomeResp,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(nomeResp, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               buildLinhaContatoModal(telResp, numRespLimpo),
             ],
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Fechar'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
         ],
       ),
     );
@@ -324,13 +270,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
     );
   }
 
-  Widget _buildCardAcao(
-    String titulo,
-    String subtitulo,
-    IconData icone,
-    Color cor,
-    VoidCallback onTap,
-  ) {
+  Widget _buildCardAcao(String titulo, String subtitulo, IconData icone, Color cor, VoidCallback onTap) {
     return Expanded(
       child: Card(
         elevation: 0,
@@ -342,7 +282,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(16.0), // Ajustado para 16 para caberem 4 cards
+            padding: const EdgeInsets.all(16.0),
             child: Row(
               children: [
                 Container(
@@ -351,7 +291,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                     color: cor.withAlpha(30),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icone, color: cor, size: 24), // Ícone menor para caberem 4
+                  child: Icon(icone, color: cor, size: 24),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -360,21 +300,14 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                     children: [
                       Text(
                         titulo,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 15,
-                          color: Colors.black87,
-                        ),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         subtitulo,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontSize: 12,
-                        ),
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -390,23 +323,16 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
     );
   }
 
-  void _abrirModalVincularAlunos(
-    BuildContext context,
-    WidgetRef ref,
-    List<Map<String, dynamic>> todosAlunos,
-  ) {
+  void _abrirModalVincularAlunos(BuildContext context, WidgetRef ref, List<Map<String, dynamic>> todosAlunos) {
     final idTurma = _turmaAtual['id'].toString();
     final turnoFormatado = _turmaAtual['turno'] ?? '';
-    final turmaNomeOficial =
-        '${_turmaAtual['nome']} (${_turmaAtual['anoLetivo']}) - $turnoFormatado'
-            .toUpperCase();
+    final turmaNomeOficial = '${_turmaAtual['nome']} (${_turmaAtual['anoLetivo']}) - $turnoFormatado'.toUpperCase();
     final isExtra = _isTurmaExtra(_turmaAtual['nome'] ?? '');
 
     final alunosDisponiveis = todosAlunos.where((a) {
       if (a['status'] == 'Transferido' || a['status'] == 'Inativo') {
         return false;
       }
-
       final turmaIdAluno = (a['turmaId'] ?? '').toString().trim();
       final turmasExtrasIds = List<String>.from(a['turmasExtrasIds'] ?? []);
 
@@ -417,10 +343,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
       }
     }).toList();
 
-    alunosDisponiveis.sort(
-      (a, b) =>
-          (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()),
-    );
+    alunosDisponiveis.sort((a, b) => (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()));
     List<String> matriculasSelecionadas = [];
 
     showDialog(
@@ -430,59 +353,37 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
           final corPrimaria = Theme.of(context).primaryColor;
 
           return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(
               children: [
                 Icon(Icons.group_add_rounded, color: corPrimaria),
                 const SizedBox(width: 8),
-                const Text(
-                  'Puxar Alunos para a Turma',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+                const Text('Puxar Alunos para a Turma', style: TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
             content: SizedBox(
               width: 500,
               height: 400,
               child: alunosDisponiveis.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Todos os alunos ativos já estão nesta turma.',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
+                  ? const Center(child: Text('Todos os alunos ativos já estão nesta turma.', style: TextStyle(color: Colors.grey)))
                   : Column(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: isExtra
-                                ? Colors.purple.shade50
-                                : Colors.blue.shade50,
+                            color: isExtra ? Colors.purple.shade50 : Colors.blue.shade50,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.info_outline,
-                                color: isExtra ? Colors.purple : Colors.blue,
-                                size: 20,
-                              ),
+                              Icon(Icons.info_outline, color: isExtra ? Colors.purple : Colors.blue, size: 20),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   isExtra
                                       ? 'Esta é uma turma EXTRACURRICULAR. Os alunos adicionados NÃO serão removidos de suas turmas regulares.'
                                       : 'Selecione os alunos. Se eles estiverem em outra turma regular, serão transferidos para cá.',
-                                  style: TextStyle(
-                                    color: isExtra
-                                        ? Colors.purple
-                                        : Colors.blue,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                  style: TextStyle(color: isExtra ? Colors.purple : Colors.blue, fontSize: 13, fontWeight: FontWeight.bold),
                                 ),
                               ),
                             ],
@@ -497,39 +398,24 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                             ),
                             child: ListView.separated(
                               itemCount: alunosDisponiveis.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(height: 1),
+                              separatorBuilder: (context, index) => const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final a = alunosDisponiveis[index];
-                                final isChecked = matriculasSelecionadas
-                                    .contains(a['matricula'].toString());
+                                final isChecked = matriculasSelecionadas.contains(a['matricula'].toString());
                                 return CheckboxListTile(
                                   activeColor: corPrimaria,
-                                  title: Text(
-                                    a['nome'] ?? '',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
+                                  title: Text(a['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                                   subtitle: Text(
                                     'Matrícula: ${a['matricula']} | Turma Atual: ${a['turma'] == null || a['turma'].toString().isEmpty ? 'Nenhuma' : a['turma']}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
+                                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                                   ),
                                   value: isChecked,
                                   onChanged: (val) {
                                     setStateModal(() {
                                       if (val == true) {
-                                        matriculasSelecionadas.add(
-                                          a['matricula'].toString(),
-                                        );
+                                        matriculasSelecionadas.add(a['matricula'].toString());
                                       } else {
-                                        matriculasSelecionadas.remove(
-                                          a['matricula'].toString(),
-                                        );
+                                        matriculasSelecionadas.remove(a['matricula'].toString());
                                       }
                                     });
                                   },
@@ -543,46 +429,24 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
             ),
             actionsPadding: const EdgeInsets.all(24),
             actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text(
-                  'Cancelar',
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
               ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: corPrimaria,
-                  foregroundColor: Colors.white,
-                ),
+                style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
                 onPressed: matriculasSelecionadas.isEmpty
                     ? null
                     : () async {
                         showDialog(
-                          context: ctx,
-                          barrierDismissible: false,
-                          builder: (_) => const Center(
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                            ),
-                          ),
+                          context: ctx, barrierDismissible: false,
+                          builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
                         );
 
                         for (String matricula in matriculasSelecionadas) {
-                          final alunoOriginal = todosAlunos.firstWhere(
-                            (a) => a['matricula'].toString() == matricula,
-                          );
-                          final alunoAtualizado = Map<String, dynamic>.from(
-                            alunoOriginal,
-                          );
+                          final alunoOriginal = todosAlunos.firstWhere((a) => a['matricula'].toString() == matricula);
+                          final alunoAtualizado = Map<String, dynamic>.from(alunoOriginal);
 
                           if (isExtra) {
-                            final extrasIds = List<String>.from(
-                              alunoAtualizado['turmasExtrasIds'] ?? [],
-                            );
-                            final extrasNomes = List<String>.from(
-                              alunoAtualizado['turmasExtrasNomes'] ?? [],
-                            );
+                            final extrasIds = List<String>.from(alunoAtualizado['turmasExtrasIds'] ?? []);
+                            final extrasNomes = List<String>.from(alunoAtualizado['turmasExtrasNomes'] ?? []);
 
                             if (!extrasIds.contains(idTurma)) {
                               extrasIds.add(idTurma);
@@ -596,22 +460,13 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                             alunoAtualizado['turmaId'] = idTurma;
                           }
 
-                          await ref
-                              .read(alunoServiceProvider)
-                              .salvarAluno(alunoAtualizado);
+                          await ref.read(alunoServiceProvider).salvarAluno(alunoAtualizado);
                         }
 
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
                           Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                '${matriculasSelecionadas.length} aluno(s) vinculados!',
-                              ),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${matriculasSelecionadas.length} aluno(s) vinculados!'), backgroundColor: Colors.green));
                         }
                       },
                 icon: const Icon(Icons.check),
@@ -645,44 +500,18 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
           children: [
             Row(
               children: [
-                Text(
-                  'Painel da Turma: ${_turmaAtual['nome']}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
+                Text('Painel da Turma: ${_turmaAtual['nome']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 if (isExtra) ...[
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.purple,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'EXTRACURRICULAR',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.purple, borderRadius: BorderRadius.circular(4)),
+                    child: const Text('EXTRACURRICULAR', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ],
             ),
-            Text(
-              'Ano Letivo: ${_turmaAtual['anoLetivo']} | Turno: $turnoFormatado | Sala: ${_turmaAtual['sala'] ?? 'N/A'}',
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 13,
-                fontWeight: FontWeight.normal,
-              ),
-            ),
+            Text('Ano Letivo: ${_turmaAtual['anoLetivo']} | Turno: $turnoFormatado | Sala: ${_turmaAtual['sala'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade600, fontSize: 13, fontWeight: FontWeight.normal)),
           ],
         ),
       ),
@@ -702,8 +531,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                     context: context,
                     builder: (ctx) => _ModalGerenciadorCorpoDocente(
                       turma: _turmaAtual,
-                      aoAtualizar: (novaTurma) =>
-                          setState(() => _turmaAtual = novaTurma),
+                      aoAtualizar: (novaTurma) => setState(() => _turmaAtual = novaTurma),
                     ),
                   ),
                 ),
@@ -717,8 +545,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                     context: context,
                     builder: (ctx) => _ModalGerenciadorHorarios(
                       turma: _turmaAtual,
-                      aoAtualizar: (novaTurma) =>
-                          setState(() => _turmaAtual = novaTurma),
+                      aoAtualizar: (novaTurma) => setState(() => _turmaAtual = novaTurma),
                     ),
                   ),
                 ),
@@ -752,53 +579,31 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
             // LISTAGEM DE ALUNOS
             // ================================================================
             estadoAlunos.when(
-              loading: () => const Expanded(
-                child: Center(child: CircularProgressIndicator()),
-              ),
+              loading: () => const Expanded(child: Center(child: CircularProgressIndicator())),
               error: (e, s) => Expanded(child: Center(child: Text('Erro: $e'))),
               data: (alunos) {
                 final idTurma = _turmaAtual['id'].toString();
-                final turmaNomeOficial =
-                    '${_turmaAtual['nome']} (${_turmaAtual['anoLetivo']}) - $turnoFormatado'
-                        .toUpperCase();
-                final turmaNomeAntigo =
-                    '${_turmaAtual['nome']} (${_turmaAtual['anoLetivo']})'
-                        .toUpperCase();
+                final turmaNomeOficial = '${_turmaAtual['nome']} (${_turmaAtual['anoLetivo']}) - $turnoFormatado'.toUpperCase();
+                final turmaNomeAntigo = '${_turmaAtual['nome']} (${_turmaAtual['anoLetivo']})'.toUpperCase();
 
                 final matriculadosRaw = alunos.where((a) {
-                  if (a['status'] == 'Transferido' ||
-                      a['status'] == 'Inativo') {
-                    return false;
-                  }
-                  final turmaAluno = (a['turma'] ?? '')
-                      .toString()
-                      .trim()
-                      .toUpperCase();
+                  if (a['status'] == 'Transferido' || a['status'] == 'Inativo') return false;
+                  
+                  final turmaAluno = (a['turma'] ?? '').toString().trim().toUpperCase();
                   final turmaIdAluno = (a['turmaId'] ?? '').toString().trim();
-                  final turmasExtrasIds = List<String>.from(
-                    a['turmasExtrasIds'] ?? [],
-                  );
+                  final turmasExtrasIds = List<String>.from(a['turmasExtrasIds'] ?? []);
 
-                  return turmaAluno == turmaNomeOficial ||
-                      turmaAluno == turmaNomeAntigo ||
-                      turmaIdAluno == idTurma ||
-                      turmasExtrasIds.contains(idTurma);
+                  return turmaAluno == turmaNomeOficial || turmaAluno == turmaNomeAntigo || turmaIdAluno == idTurma || turmasExtrasIds.contains(idTurma);
                 }).toList();
 
                 final matriculadosFiltrados = matriculadosRaw.where((a) {
                   final busca = _termoBusca.toLowerCase();
                   final nome = (a['nome'] ?? '').toString().toLowerCase();
-                  final matricula = (a['matricula'] ?? '')
-                      .toString()
-                      .toLowerCase();
+                  final matricula = (a['matricula'] ?? '').toString().toLowerCase();
                   return nome.contains(busca) || matricula.contains(busca);
                 }).toList();
 
-                matriculadosFiltrados.sort(
-                  (a, b) => (a['nome'] ?? '').toString().compareTo(
-                    b['nome']?.toString() ?? '',
-                  ),
-                );
+                matriculadosFiltrados.sort((a, b) => (a['nome'] ?? '').toString().compareTo(b['nome']?.toString() ?? ''));
 
                 return Expanded(
                   child: Column(
@@ -807,56 +612,29 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Alunos Matriculados (${matriculadosRaw.length})',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                          Text('Alunos Matriculados (${matriculadosRaw.length})', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                           Row(
                             children: [
                               SizedBox(
                                 width: 250,
                                 height: 40,
                                 child: TextField(
-                                  onChanged: (value) =>
-                                      setState(() => _termoBusca = value),
+                                  onChanged: (value) => setState(() => _termoBusca = value),
                                   decoration: InputDecoration(
                                     hintText: 'Pesquisar aluno...',
-                                    prefixIcon: const Icon(
-                                      Icons.search_rounded,
-                                      size: 20,
-                                      color: Colors.grey,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      vertical: 0,
-                                    ),
+                                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
                                     filled: true,
                                     fillColor: Colors.white,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: BorderSide(
-                                        color: Colors.grey.shade300,
-                                      ),
-                                    ),
+                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
                                   ),
                                 ),
                               ),
                               const SizedBox(width: 16),
                               ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: corPrimaria,
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: () => _abrirModalVincularAlunos(
-                                  context,
-                                  ref,
-                                  alunos,
-                                ),
-                                icon: const Icon(
-                                  Icons.person_add_alt_1_rounded,
-                                ),
+                                style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
+                                onPressed: () => _abrirModalVincularAlunos(context, ref, alunos),
+                                icon: const Icon(Icons.person_add_alt_1_rounded),
                                 label: const Text('Puxar Alunos'),
                               ),
                             ],
@@ -870,35 +648,17 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  Icons.people_alt_outlined,
-                                  size: 64,
-                                  color: Colors.grey.shade300,
-                                ),
+                                Icon(Icons.people_alt_outlined, size: 64, color: Colors.grey.shade300),
                                 const SizedBox(height: 16),
                                 Text(
-                                  _termoBusca.isEmpty
-                                      ? 'Nenhum aluno matriculado nesta turma.'
-                                      : 'Nenhum aluno encontrado na pesquisa.',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 16,
-                                  ),
+                                  _termoBusca.isEmpty ? 'Nenhum aluno matriculado nesta turma.' : 'Nenhum aluno encontrado na pesquisa.',
+                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
                                 ),
                                 if (_termoBusca.isEmpty) ...[
                                   const SizedBox(height: 8),
                                   TextButton(
-                                    onPressed: () => _abrirModalVincularAlunos(
-                                      context,
-                                      ref,
-                                      alunos,
-                                    ),
-                                    child: const Text(
-                                      'Clique aqui para puxar alunos',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
+                                    onPressed: () => _abrirModalVincularAlunos(context, ref, alunos),
+                                    child: const Text('Clique aqui para puxar alunos', style: TextStyle(fontWeight: FontWeight.bold)),
                                   ),
                                 ],
                               ],
@@ -909,152 +669,64 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                         Expanded(
                           child: Card(
                             elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              side: BorderSide(color: Colors.grey.shade300),
-                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)),
                             child: ListView.separated(
                               itemCount: matriculadosFiltrados.length,
-                              separatorBuilder: (context, index) =>
-                                  const Divider(height: 1),
+                              separatorBuilder: (context, index) => const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final aluno = matriculadosFiltrados[index];
                                 return ListTile(
                                   leading: InkWell(
                                     borderRadius: BorderRadius.circular(24),
-                                    onTap: aluno['fotoUrl'] != null
-                                        ? () => _mostrarFotoAmpliada(
-                                            context,
-                                            aluno['fotoUrl'],
-                                          )
-                                        : null,
+                                    onTap: aluno['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, aluno['fotoUrl']) : null,
                                     child: CircleAvatar(
                                       backgroundColor: Colors.blue.shade50,
-                                      backgroundImage: aluno['fotoUrl'] != null
-                                          ? NetworkImage(aluno['fotoUrl'])
-                                          : null,
-                                      child: aluno['fotoUrl'] == null
-                                          ? const Icon(
-                                              Icons.person,
-                                              color: Colors.blue,
-                                            )
-                                          : null,
+                                      backgroundImage: aluno['fotoUrl'] != null ? NetworkImage(aluno['fotoUrl']) : null,
+                                      child: aluno['fotoUrl'] == null ? const Icon(Icons.person, color: Colors.blue) : null,
                                     ),
                                   ),
-                                  title: Text(
-                                    aluno['nome'] ?? '',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  subtitle: Text(
-                                    'Matrícula: ${aluno['matricula']} | Status: ${aluno['status'] ?? 'Ativo'}',
-                                  ),
+                                  title: Text(aluno['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  subtitle: Text('Matrícula: ${aluno['matricula']} | Status: ${aluno['status'] ?? 'Ativo'}'),
                                   trailing: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       IconButton(
                                         tooltip: 'Visualizar Ficha Rápida',
-                                        icon: const Icon(
-                                          Icons.visibility_rounded,
-                                          color: Colors.blueGrey,
-                                        ),
-                                        onPressed: () => _abrirFichaAlunoRapida(
-                                          context,
-                                          aluno,
-                                        ),
+                                        icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
+                                        onPressed: () => _abrirFichaAlunoRapida(context, aluno),
                                       ),
                                       IconButton(
-                                        tooltip: isExtra
-                                            ? 'Remover da Turma Extra'
-                                            : 'Remover da Turma',
-                                        icon: const Icon(
-                                          Icons.person_remove_rounded,
-                                          color: Colors.red,
-                                        ),
+                                        tooltip: isExtra ? 'Remover da Turma Extra' : 'Remover da Turma',
+                                        icon: const Icon(Icons.person_remove_rounded, color: Colors.red),
                                         onPressed: () {
                                           showDialog(
                                             context: context,
                                             builder: (ctx) => AlertDialog(
-                                              title: const Row(
-                                                children: [
-                                                  Icon(
-                                                    Icons.warning_rounded,
-                                                    color: Colors.red,
-                                                  ),
-                                                  SizedBox(width: 8),
-                                                  Text('Remover da Turma'),
-                                                ],
-                                              ),
-                                              content: Text(
-                                                'Deseja retirar o(a) aluno(a) ${aluno['nome']} desta turma?',
-                                              ),
+                                              title: const Row(children: [Icon(Icons.warning_rounded, color: Colors.red), SizedBox(width: 8), Text('Remover da Turma')]),
+                                              content: Text('Deseja retirar o(a) aluno(a) ${aluno['nome']} desta turma?'),
                                               actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(ctx),
-                                                  child: const Text(
-                                                    'Cancelar',
-                                                    style: TextStyle(
-                                                      color: Colors.grey,
-                                                    ),
-                                                  ),
-                                                ),
+                                                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
                                                 ElevatedButton(
-                                                  style:
-                                                      ElevatedButton.styleFrom(
-                                                    backgroundColor:
-                                                        Colors.red,
-                                                    foregroundColor:
-                                                        Colors.white,
-                                                  ),
+                                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
                                                   onPressed: () async {
-                                                    final alunoRemover =
-                                                        Map<
-                                                          String,
-                                                          dynamic
-                                                        >.from(aluno);
+                                                    final alunoRemover = Map<String, dynamic>.from(aluno);
 
                                                     if (isExtra) {
-                                                      final extrasIds =
-                                                          List<String>.from(
-                                                        alunoRemover['turmasExtrasIds'] ??
-                                                            [],
-                                                      );
-                                                      final extrasNomes =
-                                                          List<String>.from(
-                                                        alunoRemover['turmasExtrasNomes'] ??
-                                                            [],
-                                                      );
+                                                      final extrasIds = List<String>.from(alunoRemover['turmasExtrasIds'] ?? []);
+                                                      final extrasNomes = List<String>.from(alunoRemover['turmasExtrasNomes'] ?? []);
                                                       extrasIds.remove(idTurma);
-                                                      extrasNomes.remove(
-                                                        turmaNomeOficial,
-                                                      );
-                                                      alunoRemover['turmasExtrasIds'] =
-                                                          extrasIds;
-                                                      alunoRemover['turmasExtrasNomes'] =
-                                                          extrasNomes;
+                                                      extrasNomes.remove(turmaNomeOficial);
+                                                      alunoRemover['turmasExtrasIds'] = extrasIds;
+                                                      alunoRemover['turmasExtrasNomes'] = extrasNomes;
                                                     } else {
-                                                      alunoRemover['turma'] =
-                                                          '';
-                                                      alunoRemover['turmaId'] =
-                                                          '';
+                                                      alunoRemover['turma'] = '';
+                                                      alunoRemover['turmaId'] = '';
                                                     }
 
-                                                    await ref
-                                                        .read(
-                                                          alunoServiceProvider,
-                                                        )
-                                                        .salvarAluno(
-                                                          alunoRemover,
-                                                        );
-                                                    if (ctx.mounted) {
-                                                      Navigator.pop(ctx);
-                                                    }
+                                                    await ref.read(alunoServiceProvider).salvarAluno(alunoRemover);
+                                                    if (ctx.mounted) Navigator.pop(ctx);
                                                   },
-                                                  child: const Text(
-                                                    'Sim, Remover',
-                                                  ),
+                                                  child: const Text('Sim, Remover'),
                                                 ),
                                               ],
                                             ),
@@ -1102,7 +774,6 @@ class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
   int _limiteAvisos = 15;
   final _debouncer = Debouncer(milliseconds: 400);
 
-  // Inteligência de Resolução de Nomes
   String _resolverNomeRemetente(Map<String, dynamic> data, List<Map<String, dynamic>> profs, String? currentUserId) {
     String nomeSalvo = (data['remetenteNome'] ?? data['nomeRemetente'] ?? data['professorNome'] ?? data['nomeProfessor'] ?? data['nome'] ?? '').toString().trim();
     
@@ -1332,7 +1003,7 @@ class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
                     child: Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
-                        color: Colors.blue.shade50.withOpacity(0.5),
+                        color: Colors.blue.shade50.withAlpha(128),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.blue.shade100),
                       ),
@@ -1359,35 +1030,41 @@ class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                           ),
                           const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            value: _tipoDestinatario,
+                          InputDecorator(
                             decoration: const InputDecoration(
                               filled: true,
                               fillColor: Colors.white,
                               border: OutlineInputBorder(),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                             ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'TURMA',
-                                child: Text('Toda a Turma (Alunos e Responsáveis)'),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                value: _tipoDestinatario,
+                                isExpanded: true,
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'TURMA',
+                                    child: Text('Toda a Turma (Alunos e Responsáveis)'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'PROFESSORES',
+                                    child: Text('Apenas Professores da Turma'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'ALUNO',
+                                    child: Text('Aluno Específico'),
+                                  ),
+                                ],
+                                onChanged: (v) {
+                                  setState(() {
+                                    _tipoDestinatario = v!;
+                                    if (v != 'ALUNO') {
+                                      _alunoId = null;
+                                    }
+                                  });
+                                },
                               ),
-                              DropdownMenuItem(
-                                value: 'PROFESSORES',
-                                child: Text('Apenas Professores da Turma'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'ALUNO',
-                                child: Text('Aluno Específico'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              setState(() {
-                                _tipoDestinatario = v!;
-                                if (v != 'ALUNO') {
-                                  _alunoId = null;
-                                }
-                              });
-                            },
+                            ),
                           ),
                           if (_tipoDestinatario == 'ALUNO') ...[
                             const SizedBox(height: 16),
@@ -1396,27 +1073,32 @@ class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
                               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                             ),
                             const SizedBox(height: 8),
-                            DropdownButtonFormField<String>(
-                              value: _alunoId,
-                              isExpanded: true,
+                            InputDecorator(
                               decoration: const InputDecoration(
                                 filled: true,
                                 fillColor: Colors.white,
                                 border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                               ),
-                              hint: const Text('Selecione...'),
-                              items: alunosDaTurma
-                                  .map(
-                                    (a) => DropdownMenuItem(
-                                      value: a['matricula'].toString(),
-                                      child: Text(
-                                        a['nome'] ?? '',
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (v) => setState(() => _alunoId = v),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String>(
+                                  value: _alunoId,
+                                  isExpanded: true,
+                                  hint: const Text('Selecione...'),
+                                  items: alunosDaTurma
+                                      .map(
+                                        (a) => DropdownMenuItem(
+                                          value: a['matricula'].toString(),
+                                          child: Text(
+                                            a['nome'] ?? '',
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (v) => setState(() => _alunoId = v),
+                                ),
+                              ),
                             ),
                           ],
                           const SizedBox(height: 16),
@@ -1507,7 +1189,9 @@ class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
                                     icon: const Icon(Icons.filter_alt_rounded, color: Colors.deepPurple, size: 20),
                                     style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 13),
                                     onChanged: (v) {
-                                      if (v != null) setState(() => _filtroPublico = v);
+                                      if (v != null) {
+                                        setState(() => _filtroPublico = v);
+                                      }
                                     },
                                     items: const [
                                       DropdownMenuItem(value: 'TODOS', child: Text('Todos os Avisos', style: TextStyle(color: Colors.black87))),
@@ -2611,16 +2295,22 @@ class _ModalGerenciadorHorariosState
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                DropdownButtonFormField<String>(
-                  value: diaSelecionado,
+                InputDecorator(
                   decoration: const InputDecoration(
                     labelText: 'Dia da Semana',
                     border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   ),
-                  items: _diasDaSemana
-                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                      .toList(),
-                  onChanged: (v) => diaSelecionado = v!,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      isExpanded: true,
+                      value: diaSelecionado,
+                      items: _diasDaSemana
+                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                          .toList(),
+                      onChanged: (v) => diaSelecionado = v!,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -2671,25 +2361,30 @@ class _ModalGerenciadorHorariosState
                   ],
                 ),
                 const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  value: disciplinaSelecionada,
-                  isExpanded: true,
+                InputDecorator(
                   decoration: const InputDecoration(
                     labelText: 'Disciplina / Professor',
                     border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   ),
-                  items: opcoesSelect
-                      .map(
-                        (p) => DropdownMenuItem(
-                          value: p['disciplina'].toString(),
-                          child: Text(
-                            '${p['disciplina']} - ${p['professorNome']}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => disciplinaSelecionada = v!,
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: disciplinaSelecionada,
+                      isExpanded: true,
+                      items: opcoesSelect
+                          .map(
+                            (p) => DropdownMenuItem(
+                              value: p['disciplina'].toString(),
+                              child: Text(
+                                '${p['disciplina']} - ${p['professorNome']}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) => disciplinaSelecionada = v!,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -3018,7 +2713,7 @@ class _ModalGerenciadorHorariosState
                                         Ink(
                                           width: 140, 
                                           decoration: BoxDecoration(
-                                            color: Colors.blue.shade50.withOpacity(0.5),
+                                            color: Colors.blue.shade50.withAlpha(128),
                                             borderRadius: BorderRadius.circular(4),
                                             border: Border.all(color: Colors.blue.shade100, style: BorderStyle.solid)
                                           ),
@@ -3094,10 +2789,10 @@ class _ModalGerenciadorHorariosState
       return _horariosLocal.any((h) => h['dia'] == dia);
     }).toList();
 
-    // Extrair o RGBA da cor usando o método moderno para não gerar erros no Flutter novo
-    final r = corPrimaria.red / 255.0;
-    final g = corPrimaria.green / 255.0;
-    final b = corPrimaria.blue / 255.0;
+    // Extrair o RGBA da cor de maneira moderna e segura
+    final r = corPrimaria.r;
+    final g = corPrimaria.g;
+    final b = corPrimaria.b;
     final pdfCorPrimaria = PdfColor(r, g, b, 1.0);
     
     final turno = widget.turma['turno'] ?? '';
