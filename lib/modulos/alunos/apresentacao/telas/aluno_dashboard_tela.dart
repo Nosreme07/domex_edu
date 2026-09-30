@@ -448,9 +448,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
-  // ==========================================================================
-  // EXIBIÇÃO DE DETALHES DA AVALIAÇÃO (INCLUINDO FEEDBACK DO PROFESSOR)
-  // ==========================================================================
   void _mostrarDetalhesAvaliacao(Map<String, dynamic> aval, dynamic notaDoAluno, double max, Color corNota, Color corPrimaria, String alunoDocId) {
     final tipoAvaliacao = aval['tipo'] ?? 'Prova';
     
@@ -1401,6 +1398,71 @@ class _BoletimModalState extends State<_BoletimModal> {
     _bimestreAtivo = _calcularBimestre(DateTime.now());
   }
 
+  Future<Map<String, dynamic>> _buscarDadosBoletim() async {
+    final db = FirebaseFirestore.instance;
+    final turmaRef = db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId);
+    
+    final turmaSnap = await turmaRef.get();
+    final avaliacoesSnap = await turmaRef.collection('avaliacoes').where('bimestre', isEqualTo: _bimestreAtivo).get();
+    
+    List<String> disciplinas = [];
+    if (turmaSnap.exists) {
+      final data = turmaSnap.data() as Map<String, dynamic>;
+      if (data.containsKey('disciplinas') && data['disciplinas'] is List) {
+        disciplinas = List<String>.from(data['disciplinas']);
+      }
+    }
+    
+    return {
+      'disciplinas': disciplinas,
+      'avaliacoes': avaliacoesSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList(),
+    };
+  }
+
+  void _mostrarDetalhesDisciplina(String disciplina, List<Map<String, dynamic>> avaliacoes) {
+    final avaliacoesFiltradas = avaliacoes.where((a) => a['contaParaMedia'] != false).toList();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(disciplina, style: TextStyle(fontWeight: FontWeight.bold, color: widget.corPrimaria)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: avaliacoesFiltradas.isEmpty 
+            ? const Text('Nenhuma avaliação lançada para a média nesta disciplina.')
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: avaliacoesFiltradas.length,
+                separatorBuilder: (_, __) => const Divider(),
+                itemBuilder: (context, index) {
+                  final a = avaliacoesFiltradas[index];
+                  final double nota = a['nota'];
+                  final double max = a['maximo'];
+                  final bool valida = a['valida'];
+                  final bool isRec = a['isRecuperacao'];
+                  
+                  String sub = '';
+                  if (isRec && valida) sub = 'Nota Substituta (Recuperação)';
+                  if (isRec && !valida) sub = 'Descartada (Recuperação)';
+                  if (!isRec && !valida) sub = 'Substituída';
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(a['nome'] ?? 'Avaliação', style: TextStyle(decoration: valida ? null : TextDecoration.lineThrough, color: valida ? Colors.black : Colors.grey)),
+                    subtitle: sub.isNotEmpty ? Text(sub, style: TextStyle(color: valida ? Colors.purple : Colors.grey)) : null,
+                    trailing: Text('${nota.toStringAsFixed(1)} / ${max.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.bold, decoration: valida ? null : TextDecoration.lineThrough, color: valida ? widget.corPrimaria : Colors.grey)),
+                  );
+                }
+            )
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar'))
+        ]
+      )
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1440,23 +1502,26 @@ class _BoletimModalState extends State<_BoletimModal> {
 
         const Divider(height: 1),
         Expanded(
-          child: FutureBuilder<QuerySnapshot>(
-            future: FirebaseFirestore.instance.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').where('bimestre', isEqualTo: _bimestreAtivo).get(),
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _buscarDadosBoletim(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
               
-              final avaliacoes = snapshot.data?.docs.map((d) => d.data() as Map<String, dynamic>).toList() ?? [];
-              
-              if (avaliacoes.isEmpty) {
-                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.assignment_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhuma nota neste bimestre.', style: TextStyle(color: Colors.grey.shade500))]));
-              }
+              final dados = snapshot.data ?? {};
+              final List<String> disciplinasTurma = dados['disciplinas'] ?? [];
+              final List<Map<String, dynamic>> avaliacoes = dados['avaliacoes'] ?? [];
 
               Map<String, List<Map<String, dynamic>>> avaliacoesPorDisciplina = {};
+              
+              for (var d in disciplinasTurma) {
+                avaliacoesPorDisciplina[d] = [];
+              }
               
               for (var aval in avaliacoes) {
                 final disciplina = aval['disciplina'] ?? 'Geral';
                 final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
                 final isRecuperacao = aval['isRecuperacao'] == true;
+                final contaParaMedia = aval['contaParaMedia'] ?? true;
                 final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
                 final notaAluno = double.tryParse(notasMap[widget.alunoDocId]?.toString() ?? '0') ?? 0.0;
 
@@ -1465,25 +1530,31 @@ class _BoletimModalState extends State<_BoletimModal> {
                 }
                 
                 avaliacoesPorDisciplina[disciplina]!.add({
+                  'nome': aval['nome'] ?? 'Avaliação',
                   'nota': notaAluno,
                   'maximo': maximo,
                   'isRecuperacao': isRecuperacao,
+                  'contaParaMedia': contaParaMedia,
                   'valida': true
                 });
               }
 
-              Map<String, Map<String, double>> boletim = {};
+              if (avaliacoesPorDisciplina.isEmpty) {
+                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.assignment_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhuma disciplina ou nota neste bimestre.', style: TextStyle(color: Colors.grey.shade500))]));
+              }
+
+              Map<String, Map<String, dynamic>> boletim = {};
 
               for (var disciplina in avaliacoesPorDisciplina.keys) {
                 var notasDaDisciplina = avaliacoesPorDisciplina[disciplina]!;
                 
-                var recuperacoes = notasDaDisciplina.where((n) => n['isRecuperacao'] == true).toList();
-                var normais = notasDaDisciplina.where((n) => n['isRecuperacao'] != true).toList();
+                var recuperacoes = notasDaDisciplina.where((n) => n['isRecuperacao'] == true && n['contaParaMedia'] != false).toList();
+                var normais = notasDaDisciplina.where((n) => n['isRecuperacao'] != true && n['contaParaMedia'] != false).toList();
 
                 for (var rec in recuperacoes) {
                   if (normais.isEmpty) continue;
                   
-                  normais.sort((a, b) => ((a['nota'] / a['maxima']).compareTo(b['nota'] / b['maxima'])));
+                  normais.sort((a, b) => ((a['nota'] / a['maximo']).compareTo(b['nota'] / b['maxima'])));
                   var piorNormal = normais.first;
 
                   double aproveitamentoRec = rec['maximo'] > 0 ? rec['nota'] / rec['maximo'] : 0.0;
@@ -1499,7 +1570,7 @@ class _BoletimModalState extends State<_BoletimModal> {
                 double somaNotas = 0.0;
                 double somaMaximos = 0.0;
                 for (var n in notasDaDisciplina) {
-                  if (n['valida'] == true) {
+                  if (n['contaParaMedia'] != false && n['valida'] == true) {
                     somaNotas += n['nota'];
                     somaMaximos += n['maximo'];
                   }
@@ -1508,7 +1579,12 @@ class _BoletimModalState extends State<_BoletimModal> {
                 double notaBoletim = somaNotas;
                 if (notaBoletim > 10.0) notaBoletim = 10.0;
 
-                boletim[disciplina] = {'notaAluno': notaBoletim, 'maximo': somaMaximos, 'somaBruta': somaNotas};
+                boletim[disciplina] = {
+                  'notaAluno': notaBoletim, 
+                  'maximo': somaMaximos, 
+                  'somaBruta': somaNotas,
+                  'avaliacoes': notasDaDisciplina
+                };
               }
 
               final disciplinasOrdem = boletim.keys.toList()..sort();
@@ -1521,50 +1597,55 @@ class _BoletimModalState extends State<_BoletimModal> {
                 itemBuilder: (context, index) {
                   final disciplina = disciplinasOrdem[index];
                   final dados = boletim[disciplina]!;
-                  final notaAluno = dados['notaAluno']!;
-                  final maximo = dados['maximo']!;
-                  final somaBruta = dados['somaBruta']!;
+                  final notaAluno = dados['notaAluno'] as double;
+                  final maximo = dados['maximo'] as double;
+                  final somaBruta = dados['somaBruta'] as double;
+                  final listaAvals = dados['avaliacoes'] as List<Map<String, dynamic>>;
                   
                   final bool acimaMedia = notaAluno >= 6.0; 
                   final Color corNota = notaAluno == 0 ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
 
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade200),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                    Text('Pontos: ${somaBruta.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)} distribuídos', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-                                  ]
-                                )
-                              ),
-                            ],
+                  return InkWell(
+                    onTap: () => _mostrarDetalhesDisciplina(disciplina, listaAvals),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      Text('Pontos: ${somaBruta.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)} distribuídos', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                                    ]
+                                  )
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                          child: Text(
-                            '${notaAluno.toStringAsFixed(1)} / 10.0', 
-                            style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 16)
-                          ),
-                        )
-                      ],
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                            child: Text(
+                              '${notaAluno.toStringAsFixed(1)} / 10.0', 
+                              style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 16)
+                            ),
+                          )
+                        ],
+                      ),
                     ),
                   );
                 },
