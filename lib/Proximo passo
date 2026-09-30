@@ -1,3 +1,5 @@
+-----------------------------------------------------------
+  **GESTÃO MASTER**
 
 -----------------------------------------------------------
 ***CENTRAL DE CADASTRO***
@@ -23,12 +25,7 @@ evento semanal e o que tem no diário.
 
 
 
------------------------------------------------------------
-*** GESTÃO DO ALUNO ***
-- 
------------------------------------------------------------
 
-**GESTÃO MASTER**
 
 -----------------------------------------------------------
 ***CALENDÁRIO ESCOLAR***
@@ -40,20 +37,42 @@ evento semanal e o que tem no diário.
 ** LOGIN **
 
 -----------------------------------------------------------
+avaliar os calendários
+
+retirar o nome dos professores do botão de periodos de prova 
+semanas de provas (periodos)
+
+colocar cor para diferenciar matéria do professor.
+
+
+
+-----------------------------------------------------------
 *** AMBIENTE DO ALUNO***
 
-- Colocar o tipo de avaliação na tela do aluno no boletim 
+- ajustar o calendário do aluno
 
 -----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
 
-**NOTAS DOS ALUNOS**
+- ajustar o calendário do professor 
 
-- 
+-----------------------------------------------------------
+*** AMBIENTE DO RESPONSÁVEL ***
 
+-----------------------------------------------------------
+*** AMBIENTE DA SECRETARIA ***
 
 
 -----------------------------------------------------------
+
+
+
+
+
+
+
+
+
 
 Quando um pai tem filhos em escolas diferentes com o mesmo sistema como o sistema se comporta-rá????
 -----------------------------------------------------------
