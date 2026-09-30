@@ -16,6 +16,8 @@ import '../estado/turma_provider.dart';
 import '../estado/professor_provider.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
+import '../../../academico/apresentacao/telas/turma_calendario_tela.dart';
+
 // ============================================================================
 // DEBOUNCER
 // ============================================================================
@@ -340,7 +342,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(20.0),
+            padding: const EdgeInsets.all(16.0), // Ajustado para 16 para caberem 4 cards
             child: Row(
               children: [
                 Container(
@@ -349,9 +351,9 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                     color: cor.withAlpha(30),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icone, color: cor, size: 28),
+                  child: Icon(icone, color: cor, size: 24), // Ícone menor para caberem 4
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -360,17 +362,21 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                         titulo,
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 15,
                           color: Colors.black87,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
                         subtitulo,
                         style: TextStyle(
                           color: Colors.grey.shade600,
-                          fontSize: 13,
+                          fontSize: 12,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -689,7 +695,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
               children: [
                 _buildCardAcao(
                   'Corpo Docente',
-                  '${profs.length} professores vinculados',
+                  '${profs.length} professores',
                   Icons.assignment_ind_rounded,
                   Colors.blue,
                   () => showDialog(
@@ -701,7 +707,7 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 _buildCardAcao(
                   'Quadro de Horários',
                   '${horarios.length} aulas cadastradas',
@@ -716,13 +722,27 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 _buildCardAcao(
                   'Mural de Avisos',
                   'Notificar pais e alunos',
                   Icons.campaign_rounded,
                   Colors.deepPurple,
                   _abrirModalAvisos,
+                ),
+                const SizedBox(width: 12),
+                
+                // NOVO BOTÃO: CALENDÁRIO DA TURMA
+                _buildCardAcao(
+                  'Calendário da Turma',
+                  'Provas e Eventos',
+                  Icons.event_available_rounded,
+                  Colors.green,
+                  () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (context) => TurmaCalendarioTela(turma: _turmaAtual),
+                    ));
+                  },
                 ),
               ],
             ),
@@ -1721,7 +1741,7 @@ class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
                                                     ),
                                                   ]
                                                 )
-                                              )
+                                              ),
                                             );
                                           },
                                         );
@@ -2592,7 +2612,6 @@ class _ModalGerenciadorHorariosState
               mainAxisSize: MainAxisSize.min,
               children: [
                 DropdownButtonFormField<String>(
-                  // ignore: deprecated_member_use
                   value: diaSelecionado,
                   decoration: const InputDecoration(
                     labelText: 'Dia da Semana',
@@ -2653,7 +2672,6 @@ class _ModalGerenciadorHorariosState
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  // ignore: deprecated_member_use
                   value: disciplinaSelecionada,
                   isExpanded: true,
                   decoration: const InputDecoration(
@@ -2871,8 +2889,7 @@ class _ModalGerenciadorHorariosState
                           child: DataTable(
                             dataRowMinHeight: 50,
                             dataRowMaxHeight: 85, 
-                            // ignore: deprecated_member_use
-                            headingRowColor: MaterialStateProperty.all(Colors.blue.shade50),
+                            headingRowColor: WidgetStateProperty.all(Colors.blue.shade50),
                             border: TableBorder.all(
                               color: Colors.grey.shade300,
                               width: 0.5,
@@ -3001,7 +3018,6 @@ class _ModalGerenciadorHorariosState
                                         Ink(
                                           width: 140, 
                                           decoration: BoxDecoration(
-                                            // ignore: deprecated_member_use
                                             color: Colors.blue.shade50.withOpacity(0.5),
                                             borderRadius: BorderRadius.circular(4),
                                             border: Border.all(color: Colors.blue.shade100, style: BorderStyle.solid)
@@ -3413,7 +3429,6 @@ class _ModalGerenciadorHorariosState
                             : Text(
                                 'Prof. ${aula['professorNome']}',
                                 style: TextStyle(
-                                  // ignore: deprecated_member_use
                                   color: _getTextColor(
                                     aula['disciplina'],
                                   ).withOpacity(0.7),
