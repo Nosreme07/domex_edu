@@ -38,11 +38,23 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
 
   final List<String> _mesesNomes = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   final List<String> _diasSemanaAbrev = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
+  final List<String> _diasSemanaCompleto = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
+
+  final List<Color> _bgColors = [Colors.blue.shade50, Colors.green.shade50, Colors.purple.shade50, Colors.orange.shade50, Colors.teal.shade50, Colors.pink.shade50];
+  final List<Color> _textColors = [Colors.blue.shade900, Colors.green.shade900, Colors.purple.shade900, Colors.orange.shade900, Colors.teal.shade900, Colors.pink.shade900];
 
   @override
   void initState() {
     super.initState();
     initializeDateFormatting('pt_BR', null);
+  }
+
+  Color _getCorMateria(String nome, bool isTexto) {
+    if (nome.isEmpty) return Colors.grey;
+    int hash = 0;
+    for (int i = 0; i < nome.length; i++) hash = nome.codeUnitAt(i) + ((hash << 5) - hash);
+    int index = hash.abs() % _bgColors.length;
+    return isTexto ? _textColors[index] : _bgColors[index];
   }
 
   List<Map<String, dynamic>> _obterFeriadosNacionais(int ano) {
@@ -131,16 +143,43 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
     for (var doc in eventosTurmaRaw) {
       var ev = doc.data() as Map<String, dynamic>;
       if (ev['tipo'] == 'Semana de Prova') {
-        Map<String, dynamic> crono = ev['cronograma'] ?? {};
-        crono.forEach((dataStr, disciplinasRaw) {
-          for (var disc in List<String>.from(disciplinasRaw)) {
-            list.add({
-              'id': doc.id, 'titulo': ev['titulo'] ?? 'Prova', 'data': dataStr, 'tipo': 'Prova', 'descricao': ev['descricao'] ?? '',
-              'disciplina': disc, 'autorNome': ev['autorNome'] ?? '', 'autorId': ev['autorId'] ?? '',
-              'isGeral': false, 'fixo': false, 'isSemanaProva': true, 'originalDoc': {...ev, 'id': doc.id},
-            });
+        try {
+          DateTime dIni = DateTime.parse(ev['dataInicio']);
+          DateTime dFim = DateTime.parse(ev['dataFim']);
+          Map<String, dynamic> crono = ev['cronograma'] ?? {};
+          
+          int diff = dFim.difference(dIni).inDays;
+          for (int i = 0; i <= diff; i++) {
+            DateTime current = dIni.add(Duration(days: i));
+            if (current.weekday == DateTime.sunday) continue;
+            String dataStr = _formatarData(current);
+            
+            var blocosRaw = crono[dataStr];
+            if (blocosRaw is Map && blocosRaw.isNotEmpty) {
+              blocosRaw.forEach((tempo, disc) {
+                list.add({
+                  'id': doc.id, 'titulo': ev['titulo'] ?? 'Prova', 'data': dataStr, 'tipo': 'Prova', 'descricao': ev['descricao'] ?? '',
+                  'disciplina': disc, 'autorNome': ev['autorNome'] ?? '', 'autorId': ev['autorId'] ?? '', 'horario': tempo,
+                  'isGeral': false, 'fixo': false, 'isSemanaProva': true, 'originalDoc': {...ev, 'id': doc.id},
+                });
+              });
+            } else if (blocosRaw is List && blocosRaw.isNotEmpty) {
+              for (var disc in List<String>.from(blocosRaw)) {
+                list.add({
+                  'id': doc.id, 'titulo': ev['titulo'] ?? 'Prova', 'data': dataStr, 'tipo': 'Prova', 'descricao': ev['descricao'] ?? '',
+                  'disciplina': disc, 'autorNome': ev['autorNome'] ?? '', 'autorId': ev['autorId'] ?? '',
+                  'isGeral': false, 'fixo': false, 'isSemanaProva': true, 'originalDoc': {...ev, 'id': doc.id},
+                });
+              }
+            } else {
+              list.add({
+                'id': doc.id, 'titulo': ev['titulo'] ?? 'Semana de Prova', 'data': dataStr, 'tipo': 'Semana de Prova', 'descricao': ev['descricao'] ?? '',
+                'disciplina': 'Período de Provas', 'autorNome': ev['autorNome'] ?? '', 'autorId': ev['autorId'] ?? '',
+                'isGeral': false, 'fixo': false, 'isSemanaProva': true, 'originalDoc': {...ev, 'id': doc.id},
+              });
+            }
           }
-        });
+        } catch (_) {}
       } else {
         String dataStr = ev['dataEvento'] ?? ev['data'] ?? '';
         if (dataStr.contains('-')) { final p = dataStr.split('-'); if (p.length == 3) dataStr = '${p[2]}/${p[1]}/${p[0]}'; }
@@ -206,8 +245,18 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
            bool temFeriado = false;
            for(var ev in evDia) {
              if (ev['tipo'].toString().toLowerCase().contains('feriado') || ev['tipo'].toString().toLowerCase().contains('recesso')) temFeriado = true;
+             
              String tituloPdf = ev['titulo'] ?? '';
-             if (ev['disciplina'] != null && ev['disciplina'].toString().isNotEmpty) tituloPdf += ' (${ev['disciplina']})';
+             bool isProva = ev['tipo'].toString().toLowerCase().contains('prova');
+             
+             if (isProva && ev['disciplina'] != null && ev['disciplina'].toString().isNotEmpty && ev['disciplina'] != 'Período de Provas') {
+               String mat = ev['disciplina'].toString();
+               if (mat.contains(' - Prof.')) mat = mat.split(' - Prof.')[0].trim();
+               tituloPdf = 'PROVA: $mat';
+             } else if (ev['disciplina'] != null && ev['disciplina'].toString().isNotEmpty && ev['disciplina'] != 'Período de Provas') {
+               tituloPdf += ' (${ev['disciplina']})';
+             }
+             
              legendasRodape.add("${dia.toString().padLeft(2, '0')}.${mes.toString().padLeft(2, '0')} - $tituloPdf");
            }
            if (temFeriado) { corFundoCelula = PdfColors.red600; corTextoCelula = PdfColors.white; } else { corFundoCelula = PdfColor.fromHex('#FFF59D'); }
@@ -310,7 +359,7 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(children: [Icon(Icons.date_range_rounded, color: Theme.of(context).primaryColor), const SizedBox(width: 8), const Text('Semanas de Provas (Períodos)', style: TextStyle(fontWeight: FontWeight.bold))]),
         content: SizedBox(
-          width: 600, height: 400,
+          width: 700, height: 500,
           child: semanasProva.isEmpty
             ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.event_busy, size: 48, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum período de prova cadastrado.', style: TextStyle(color: Colors.grey.shade600))]))
             : ListView.separated(
@@ -336,10 +385,43 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                           ),
                           const Divider(height: 24),
                           ...datasOrdenadas.map((dataStr) {
-                            List<String> materias = List<String>.from(cronograma[dataStr]);
-                            if (materias.isEmpty) return const SizedBox.shrink();
+                            var blocos = cronograma[dataStr];
+                            List<Widget> materiasWidgets = [];
+                            
+                            if (blocos is Map) {
+                              final temposOrdenados = blocos.keys.toList()..sort();
+                              for (var t in temposOrdenados) {
+                                String discCompleta = blocos[t];
+                                String mat = discCompleta; String prof = '';
+                                if (mat.contains(' - Prof. ')) { var p = mat.split(' - Prof. '); mat = p[0]; prof = p[1]; }
+                                
+                                materiasWidgets.add(
+                                  Container(
+                                    width: 140,
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(color: _getCorMateria(mat, false), border: Border.all(color: Colors.grey.shade200), borderRadius: BorderRadius.circular(8)),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(t, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: _getCorMateria(mat, true))),
+                                        const SizedBox(height: 2),
+                                        Text(mat, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _getCorMateria(mat, true)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                        if (prof.isNotEmpty) Text(prof, style: TextStyle(fontSize: 9, color: _getCorMateria(mat, true).withAlpha(180)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                      ],
+                                    ),
+                                  )
+                                );
+                              }
+                            } else if (blocos is List) {
+                              for (var d in blocos) {
+                                materiasWidgets.add(Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)), child: Text(d.toString(), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold))));
+                              }
+                            }
+
+                            if (materiasWidgets.isEmpty) return const SizedBox.shrink();
+
                             return Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
+                              padding: const EdgeInsets.only(bottom: 12.0),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -347,8 +429,8 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Wrap(
-                                      spacing: 6, runSpacing: 6,
-                                      children: materias.map((m) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.grey.shade300)), child: Text(m, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)))).toList()
+                                      spacing: 8, runSpacing: 8,
+                                      children: materiasWidgets
                                     ),
                                   )
                                 ],
@@ -400,14 +482,22 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
     
     DateTime? dataInicioProva;
     DateTime? dataFimProva;
-    Map<String, List<String>> cronogramaProva = {};
+    
+    Map<String, Map<String, String>> cronogramaProva = {};
 
     if (docEdicao != null && docEdicao['tipo'] == 'Semana de Prova') {
       try {
         dataInicioProva = DateTime.parse(docEdicao['dataInicio']);
         dataFimProva = DateTime.parse(docEdicao['dataFim']);
         Map<String, dynamic> cRaw = docEdicao['cronograma'] ?? {};
-        cRaw.forEach((k, v) => cronogramaProva[k] = List<String>.from(v));
+        cRaw.forEach((kData, vBlocos) {
+          if (vBlocos is Map) {
+            cronogramaProva[kData] = Map<String, String>.from(vBlocos);
+          } else if (vBlocos is List) {
+             cronogramaProva[kData] = {};
+             for (var d in vBlocos) cronogramaProva[kData]!['Livre'] = d.toString();
+          }
+        });
       } catch (_) {}
     }
 
@@ -417,14 +507,17 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
       if (p['disciplina'] != null && p['disciplina'].toString().isNotEmpty) {
         String profNome = p['professorNome'] ?? '';
         String entry = p['disciplina'].toString().toUpperCase();
-        if (profNome.isNotEmpty) {
-          entry += ' - Prof. $profNome';
-        }
+        if (profNome.isNotEmpty) entry += ' - Prof. $profNome';
         disciplinasDaTurma.add(entry);
       }
     }
     if (disciplinasDaTurma.isEmpty) disciplinasDaTurma.add('GERAL - Escola');
     disciplinasDaTurma = disciplinasDaTurma.toSet().toList()..sort();
+
+    List<dynamic> horariosTurma = widget.turma['horarios'] ?? [];
+    Set<String> hUnicos = {};
+    for (var h in horariosTurma) hUnicos.add('${h['inicio']} - ${h['fim']}');
+    List<String> linhasTempo = hUnicos.toList()..sort();
 
     final dataMask = MaskTextInputFormatter(mask: '##/##/####', filter: {"#": RegExp(r'[0-9]')});
     if (dataInicial.isNotEmpty) dataMask.formatEditUpdate(TextEditingValue.empty, TextEditingValue(text: dataInicial));
@@ -444,7 +537,8 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             title: Row(children: [Icon(docEdicao == null ? Icons.add_circle_outline : Icons.edit, color: Colors.deepPurple), const SizedBox(width: 8), Text(docEdicao == null ? 'Novo Evento / Período' : 'Editar', style: const TextStyle(fontWeight: FontWeight.bold))]),
             content: SizedBox(
-              width: 600, height: 450,
+              width: tipoSelecionado == 'Semana de Prova' ? MediaQuery.of(context).size.width * 0.9 : 600, 
+              height: MediaQuery.of(context).size.height * 0.8,
               child: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -529,7 +623,14 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                         const SizedBox(height: 16),
                         InputDecorator(
                           decoration: const InputDecoration(labelText: 'Disciplina / Responsável', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
-                          child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: disciplinaSelecionada ?? disciplinasDaTurma.first, isExpanded: true, items: disciplinasDaTurma.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(), onChanged: (v) => setStateModal(() => disciplinaSelecionada = v))),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: disciplinaSelecionada ?? disciplinasDaTurma.first,
+                              isExpanded: true,
+                              items: disciplinasDaTurma.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                              onChanged: (v) => setStateModal(() => disciplinaSelecionada = v)
+                            ),
+                          ),
                         ),
                       ],
                       const SizedBox(height: 16),
@@ -539,70 +640,152 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                         const Divider(height: 32),
                         const Text('Montar Grade de Provas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.deepPurple)),
                         const SizedBox(height: 8),
-                        Container(
-                          decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
-                          child: Column(
-                            children: diasNoRange.map((dia) {
-                              if (dia.weekday == DateTime.sunday) return const SizedBox.shrink();
-                              String dataStr = _formatarData(dia);
-                              List<String> discNesteDia = cronogramaProva[dataStr] ?? [];
-
-                              return Container(
-                                padding: const EdgeInsets.all(12), decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    SizedBox(width: 80, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_diasSemanaAbrev[dia.weekday - 1], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)), Text(dataStr, style: const TextStyle(fontSize: 12))])),
-                                    Expanded(
-                                      child: Wrap(
-                                        spacing: 6, runSpacing: 6,
-                                        children: [
-                                          ...discNesteDia.map((d) => Chip(
-                                            label: Text(d, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                            backgroundColor: Colors.red.shade50, side: BorderSide(color: Colors.red.shade100),
-                                            deleteIconColor: Colors.red,
-                                            onDeleted: () => setStateModal(() => cronogramaProva[dataStr]!.remove(d)),
-                                          )),
-                                          
-                                          PopupMenuButton<String>(
-                                            child: Chip(label: const Text('+ Adicionar Matéria', style: TextStyle(color: Colors.blue, fontSize: 11)), backgroundColor: Colors.blue.shade50, side: BorderSide.none),
-                                            onSelected: (novaDisc) async {
-                                              bool jaExiste = false;
-                                              cronogramaProva.forEach((kData, vMaterias) {
-                                                if (vMaterias.contains(novaDisc)) jaExiste = true;
-                                              });
-
-                                              if (jaExiste) {
-                                                bool? confirmar = await showDialog<bool>(
-                                                  context: context,
-                                                  builder: (ctxConf) => AlertDialog(
-                                                    title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.orange), SizedBox(width:8), Text('Matéria já inserida')]),
-                                                    content: Text('A matéria "$novaDisc" já foi adicionada em outro dia neste período de provas.\n\nTem certeza que deseja adicioná-la novamente?'),
-                                                    actions: [
-                                                      TextButton(onPressed: () => Navigator.pop(ctxConf, false), child: const Text('Cancelar')),
-                                                      ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctxConf, true), child: const Text('Sim, adicionar')),
-                                                    ],
-                                                  )
-                                                );
-                                                if (confirmar != true) return;
-                                              }
-
-                                              setStateModal(() {
-                                                if (cronogramaProva[dataStr] == null) cronogramaProva[dataStr] = [];
-                                                if (!cronogramaProva[dataStr]!.contains(novaDisc)) cronogramaProva[dataStr]!.add(novaDisc);
-                                              });
-                                            },
-                                            itemBuilder: (ctxPop) => disciplinasDaTurma.map((d) => PopupMenuItem(value: d, child: Text(d))).toList(),
-                                          )
-                                        ],
+                        
+                        if (linhasTempo.isEmpty)
+                           Container(
+                             padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                             child: const Text('A turma não possui quadro de horários cadastrado. Configure no painel primeiro.', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+                           )
+                        else
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Container(
+                              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(12)),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: DataTable(
+                                  dataRowMinHeight: 60, dataRowMaxHeight: 90,
+                                  headingRowColor: WidgetStateProperty.all(Colors.blue.shade50),
+                                  border: TableBorder.symmetric(inside: BorderSide(color: Colors.grey.shade200)),
+                                  columns: [
+                                    const DataColumn(label: Text('HORÁRIO', style: TextStyle(fontWeight: FontWeight.bold))),
+                                    ...diasNoRange.map((dia) => DataColumn(
+                                      label: Expanded(
+                                        child: Center(
+                                          child: Column(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            crossAxisAlignment: CrossAxisAlignment.center,
+                                            children: [
+                                              Text(_diasSemanaAbrev[dia.weekday - 1], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                                              Text(_formatarData(dia), style: const TextStyle(fontSize: 11, color: Colors.grey))
+                                            ]
+                                          ),
+                                        ),
                                       )
-                                    )
+                                    ))
                                   ],
+                                  rows: linhasTempo.map((tempo) {
+                                    return DataRow(
+                                      cells: [
+                                        DataCell(Text(tempo, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
+                                        ...diasNoRange.map((dia) {
+                                          String dataStr = _formatarData(dia);
+                                          String diaNome = _diasSemanaCompleto[dia.weekday - 1]; 
+                                          
+                                          var aulaPadrao = horariosTurma.firstWhere((h) => h['dia'] == diaNome && '${h['inicio']} - ${h['fim']}' == tempo, orElse: () => null);
+
+                                          if (aulaPadrao != null && aulaPadrao['disciplina'] == 'INTERVALO') {
+                                            return DataCell(Container(color: Colors.grey.shade100, child: const Center(child: Text('INTERVALO', style: TextStyle(color: Colors.grey, fontSize: 11)))));
+                                          }
+
+                                          String? provaNestaCelula = cronogramaProva[dataStr]?[tempo];
+
+                                          if (provaNestaCelula != null) {
+                                            String mat = provaNestaCelula; String prof = '';
+                                            if (mat.contains(' - Prof. ')) { var p = mat.split(' - Prof. '); mat = p[0]; prof = p[1]; }
+                                            
+                                            return DataCell(
+                                              InkWell(
+                                                onTap: () => setStateModal(() => cronogramaProva[dataStr]?.remove(tempo)),
+                                                child: Container(
+                                                  width: 140, margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(color: _getCorMateria(mat, false), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
+                                                  child: Column(
+                                                    mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(mat, style: TextStyle(fontWeight: FontWeight.bold, color: _getCorMateria(mat, true), fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                      if (prof.isNotEmpty) Text(prof, style: TextStyle(color: _getCorMateria(mat, true).withAlpha(150), fontSize: 10), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                      const Align(alignment: Alignment.bottomRight, child: Icon(Icons.cancel, size: 14, color: Colors.red))
+                                                    ]
+                                                  ),
+                                                ),
+                                              )
+                                            );
+                                          } else {
+                                            return DataCell(
+                                              InkWell(
+                                                onTap: () {
+                                                  showDialog(
+                                                    context: context,
+                                                    builder: (ctxPop) => AlertDialog(
+                                                      title: const Text('Selecione a Matéria'),
+                                                      content: SizedBox(
+                                                        width: 300,
+                                                        child: ListView.builder(
+                                                          shrinkWrap: true, itemCount: disciplinasDaTurma.length,
+                                                          itemBuilder: (c, i) {
+                                                            String raw = disciplinasDaTurma[i];
+                                                            String m = raw; String p = '';
+                                                            if (raw.contains(' - Prof. ')) { var pts = raw.split(' - Prof. '); m = pts[0].trim(); p = 'Prof. ${pts[1].trim()}'; }
+                                                            
+                                                            return ListTile(
+                                                              title: Column(
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                children: [
+                                                                  Text(m, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor)),
+                                                                  if (p.isNotEmpty) Text(p, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                                                                ],
+                                                              ),
+                                                              onTap: () async {
+                                                                Navigator.pop(ctxPop);
+                                                                String novaDisc = disciplinasDaTurma[i];
+                                                                bool jaExiste = false;
+                                                                cronogramaProva.forEach((kData, vBlocos) { if (vBlocos.values.contains(novaDisc)) jaExiste = true; });
+
+                                                                if (jaExiste) {
+                                                                  bool? confirmar = await showDialog<bool>(
+                                                                    context: context,
+                                                                    builder: (ctxConf) => AlertDialog(
+                                                                      title: const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.orange), SizedBox(width:8), Text('Matéria já inserida')]),
+                                                                      content: Text('A matéria "$novaDisc" já foi adicionada em outro dia neste período de provas.\n\nTem certeza que deseja adicioná-la novamente?'),
+                                                                      actions: [
+                                                                        TextButton(onPressed: () => Navigator.pop(ctxConf, false), child: const Text('Cancelar')),
+                                                                        ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, foregroundColor: Colors.white), onPressed: () => Navigator.pop(ctxConf, true), child: const Text('Sim, duplicar')),
+                                                                      ],
+                                                                    )
+                                                                  );
+                                                                  if (confirmar != true) return;
+                                                                }
+
+                                                                setStateModal(() {
+                                                                  if (cronogramaProva[dataStr] == null) cronogramaProva[dataStr] = {};
+                                                                  cronogramaProva[dataStr]![tempo] = novaDisc;
+                                                                });
+                                                              }
+                                                            );
+                                                          }
+                                                        )
+                                                      )
+                                                    )
+                                                  );
+                                                },
+                                                child: Container(
+                                                  width: 140, margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.all(8),
+                                                  decoration: BoxDecoration(color: Colors.blue.shade50.withAlpha(100), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade100, style: BorderStyle.solid)),
+                                                  child: const Center(child: Text('+ Adicionar', style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold))),
+                                                ),
+                                              )
+                                            );
+                                          }
+                                        }).toList()
+                                      ]
+                                    );
+                                  }).toList()
                                 ),
-                              );
-                            }).toList()
-                          ),
-                        )
+                              ),
+                            ),
+                          )
                       ]
                     ],
                   ),
@@ -621,12 +804,17 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                     return;
                   }
 
+                  if (tipoSelecionado == 'Semana de Prova' && dataFimProva!.isBefore(dataInicioProva!)) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A data de fim não pode ser antes do início.'), backgroundColor: Colors.red));
+                    return;
+                  }
+
                   setStateModal(() => salvando = true);
                   final tipoFinal = tipoSelecionado == 'Outro' ? tipoCustomCtrl.text.trim() : tipoSelecionado;
                   Map<String, dynamic> docDados = { 'titulo': tituloCtrl.text.trim(), 'tipo': tipoFinal, 'descricao': descCtrl.text.trim(), 'autorNome': usuarioNome, 'autorId': usuarioId, 'dataAtualizacao': FieldValue.serverTimestamp() };
 
                   if (tipoSelecionado == 'Semana de Prova') {
-                    Map<String, List<String>> cronoLimpo = {};
+                    Map<String, Map<String, String>> cronoLimpo = {};
                     cronogramaProva.forEach((k, v) { if (v.isNotEmpty) cronoLimpo[k] = v; });
                     docDados['dataInicio'] = _formatarDataBanco(dataInicioProva!); 
                     docDados['dataFim'] = _formatarDataBanco(dataFimProva!); 
@@ -729,14 +917,18 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         
-                                        if (isProva && nomeMateria.isNotEmpty) ...[
-                                          Text(nomeMateria, style: TextStyle(color: cor, fontSize: 18, fontWeight: FontWeight.bold)),
+                                        if (isProva && nomeMateria.isNotEmpty && nomeMateria != 'Período de Provas') ...[
+                                          Text('PROVA: $nomeMateria', style: TextStyle(color: _getCorMateria(nomeMateria, true), fontSize: 18, fontWeight: FontWeight.bold)),
                                           if (nomeProf.isNotEmpty)
                                             Text(nomeProf, style: TextStyle(color: Colors.grey.shade700, fontSize: 12, fontWeight: FontWeight.w600)),
                                           const SizedBox(height: 6),
                                           Row(
                                             children: [
                                               Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)), child: Text(evento['tipo'] ?? 'Prova', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+                                              if (evento['horario'] != null) ...[
+                                                const SizedBox(width: 8),
+                                                Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade100)), child: Text(evento['horario'], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue)))
+                                              ],
                                               const SizedBox(width: 8),
                                               Expanded(child: Text(evento['titulo'] ?? '', style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic), overflow: TextOverflow.ellipsis)),
                                             ],
@@ -759,7 +951,7 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                                         ],
                                         if (evento['autorNome'] != null && evento['autorNome'].toString().isNotEmpty) ...[
                                           const SizedBox(height: 6),
-                                          Row(children: [const Icon(Icons.person_outline, size: 12, color: Colors.grey), const SizedBox(width: 4), Text('Marcado por: ${evento['autorNome']}', style: const TextStyle(fontSize: 10, color: Colors.grey))])
+                                          Row(children: [const Icon(Icons.person_outline, size: 12, color: Colors.grey), const SizedBox(width: 4), Text('Por: ${evento['autorNome']}', style: const TextStyle(fontSize: 10, color: Colors.grey))])
                                         ]
                                       ],
                                     ),
@@ -814,14 +1006,42 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                     onTap: () => _abrirModalDetalhesDia(tenantId, dataCelula, eventosDoDia, usuarioNome, usuarioId, isAdmin),
                     child: Container(
                       decoration: BoxDecoration(color: isHoje ? Colors.blue.shade50.withAlpha(100) : Colors.white, border: Border.all(color: corBorda, width: larguraBorda)),
-                      padding: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(4),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: isHoje ? Colors.blue : Colors.transparent, shape: BoxShape.circle), child: Text(diaReal.toString(), style: TextStyle(fontWeight: isHoje ? FontWeight.bold : FontWeight.normal, color: isHoje ? Colors.white : Colors.black87))),
-                          const Spacer(),
                           if (eventosDoDia.isNotEmpty)
-                            Wrap(spacing: 4, runSpacing: 4, children: eventosDoDia.take(5).map((e) => Tooltip(message: e['titulo'], child: Container(width: 12, height: 12, decoration: BoxDecoration(color: _getCorPorTipo(e['tipo']), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 1.0))))).toList())
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: eventosDoDia.take(4).map((e) {
+                                    bool isProva = e['tipo'].toString().toLowerCase().contains('prova');
+                                    String textoDisplay = e['titulo'] ?? '';
+                                    String nomeParaCor = textoDisplay;
+
+                                    if (isProva && e['disciplina'] != null && e['disciplina'].toString().isNotEmpty && e['disciplina'] != 'Várias' && e['disciplina'] != 'Período de Provas') {
+                                      String mat = e['disciplina'].toString();
+                                      if (mat.contains(' - Prof.')) mat = mat.split(' - Prof.')[0].trim();
+                                      nomeParaCor = mat;
+                                      textoDisplay = 'PROVA: $mat';
+                                    }
+
+                                    Color corBase = isProva ? _getCorMateria(nomeParaCor, false) : _getCorPorTipo(e['tipo']);
+                                    Color corTexto = isProva ? _getCorMateria(nomeParaCor, true) : corBase;
+
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 2),
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                      decoration: BoxDecoration(color: isProva ? corBase : corBase.withAlpha(30), borderRadius: BorderRadius.circular(4), border: Border.all(color: isProva ? corBase : corBase.withAlpha(80), width: 0.5)),
+                                      child: Text(textoDisplay, style: TextStyle(fontSize: 10, color: corTexto, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    );
+                                  }).toList(),
+                                )
+                              )
+                            )
                         ],
                       ),
                     ),
@@ -867,7 +1087,6 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                     itemBuilder: (context, idx) {
                       final evento = eventosDoDia[idx];
                       final cor = _getCorPorTipo(evento['tipo']);
-                      
                       final isProva = evento['tipo'].toString().toLowerCase().contains('prova');
                       String nomeMateria = evento['disciplina'] ?? '';
 
@@ -876,14 +1095,18 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                         nomeMateria = partes[0].trim();
                       }
 
+                      Color corBase = isProva ? _getCorMateria(nomeMateria, false) : cor.withAlpha(30);
+                      Color corTexto = isProva ? _getCorMateria(nomeMateria, true) : cor;
+                      String textoExibicao = isProva && nomeMateria.isNotEmpty && nomeMateria != 'Período de Provas' ? 'PROVA: $nomeMateria' : (evento['titulo'] ?? '');
+
                       return InkWell(
                         onTap: () => _abrirModalDetalhesDia(tenantId, dataDia, eventosDoDia, usuarioNome, usuarioId, isAdmin),
                         child: Container(
-                          padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: cor.withAlpha(30), borderRadius: BorderRadius.circular(8), border: Border.all(color: cor.withAlpha(100))),
+                          padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: corBase, borderRadius: BorderRadius.circular(8), border: Border.all(color: isProva ? corBase : cor.withAlpha(100))),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start, 
                             children: [
-                              Text(isProva && nomeMateria.isNotEmpty ? nomeMateria : (evento['titulo'] ?? ''), style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: cor), maxLines: 2, overflow: TextOverflow.ellipsis), 
+                              Text(textoExibicao, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: corTexto), maxLines: 2, overflow: TextOverflow.ellipsis), 
                               if (evento['disciplina'] != null && evento['disciplina'].toString().isNotEmpty && !isProva) 
                                 Text(evento['disciplina'], style: TextStyle(fontSize: 10, color: Colors.grey.shade700))
                             ]
@@ -962,6 +1185,8 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
           nomeMateria = partes[0].trim();
           nomeProf = 'Prof. ${partes[1].trim()}';
         }
+        
+        String textoExibicao = isProva && nomeMateria.isNotEmpty && nomeMateria != 'Período de Provas' ? 'PROVA: $nomeMateria' : (evento['titulo'] ?? '');
 
         return Card(
           elevation: 1, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
@@ -981,13 +1206,17 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                             crossAxisAlignment: CrossAxisAlignment.start, 
                             mainAxisAlignment: MainAxisAlignment.center, 
                             children: [
-                              if (isProva && nomeMateria.isNotEmpty) ...[
-                                Text(nomeMateria, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                              if (isProva && nomeMateria.isNotEmpty && nomeMateria != 'Período de Provas') ...[
+                                Text(textoExibicao, style: TextStyle(color: _getCorMateria(nomeMateria, true), fontSize: 18, fontWeight: FontWeight.bold)),
                                 if (nomeProf.isNotEmpty) Text(nomeProf, style: TextStyle(color: Colors.grey.shade700, fontSize: 12, fontWeight: FontWeight.w600)),
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
                                     Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2), decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)), child: Text(evento['tipo'] ?? '', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade700))),
+                                    if (evento['horario'] != null) ...[
+                                       const SizedBox(width: 8),
+                                       Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.blue.shade100)), child: Text(evento['horario'], style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue)))
+                                    ],
                                     const SizedBox(width: 8),
                                     Expanded(child: Text(evento['titulo'] ?? '', style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontStyle: FontStyle.italic), overflow: TextOverflow.ellipsis))
                                   ]
