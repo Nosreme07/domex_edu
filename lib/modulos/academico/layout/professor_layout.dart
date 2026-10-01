@@ -24,12 +24,14 @@ class ProfessorLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final usuarioLogado = ref.watch(authProvider).value;
-    final tenantId = usuarioLogado?.id;
+    
+    // CORREÇÃO CRUCIAL AQUI: Pegar o tenantId e não o id do professor
+    final tenantId = usuarioLogado?.tenantId; 
     final nomeSessao = usuarioLogado?.nomeEscola ?? 'ESCOLA NÃO CONFIGURADA';
     
     final isMobile = MediaQuery.of(context).size.width < 800;
 
-    if (tenantId == null) {
+    if (tenantId == null || tenantId.isEmpty) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
@@ -40,7 +42,7 @@ class ProfessorLayout extends ConsumerWidget {
       stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).snapshots(),
       builder: (context, snapshot) {
         
-        // Valores Padrão (Fallback caso não carregue a tempo)
+        // Valores Padrão (Fallback caso a escola ainda não tenha configurado)
         Color corProfessor = Colors.teal.shade700;
         String nomeEscola = nomeSessao;
         String? logoEscola;
@@ -61,9 +63,7 @@ class ProfessorLayout extends ConsumerWidget {
           }
         }
 
-        // A GRANDE MÁGICA: Sobrescreve o tema do Flutter!
-        // Ao invés de azul, todas as telas filhas (Dashboard, Calendario, Perfil)
-        // vão usar automaticamente a cor primária que veio do Firebase (Laranja).
+        // A GRANDE MÁGICA: Sobrescreve o tema do Flutter com a cor da escola
         return Theme(
           data: Theme.of(context).copyWith(
             primaryColor: corProfessor,
