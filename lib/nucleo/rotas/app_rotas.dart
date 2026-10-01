@@ -42,14 +42,15 @@ import '../../modulos/super_admin/apresentacao/telas/super_admin_usuarios_tela.d
 import '../../modulos/academico/layout/professor_layout.dart';
 import '../../modulos/academico/apresentacao/telas/professor_dashboard_tela.dart';
 import '../../modulos/academico/apresentacao/telas/meu_perfil_tela.dart';
-import '../../modulos/academico/apresentacao/telas/professor_calendario_tela.dart';
+// ADICIONADO O PREFIXO "prof_cal" PARA EVITAR CONFLITO (AMBIGUOUS IMPORT)
+import '../../modulos/academico/apresentacao/telas/professor_calendario_tela.dart' as prof_cal;
 
 // ============================================================================
 // IMPORTS: PAINEL DO ALUNO
 // ============================================================================
 import '../../modulos/alunos/layout/aluno_layout.dart';
 import '../../modulos/alunos/apresentacao/telas/aluno_dashboard_tela.dart';
-import '../../modulos/alunos/apresentacao/telas/aluno_calendario_tela.dart'; // <--- IMPORT DA NOVA TELA
+import '../../modulos/alunos/apresentacao/telas/aluno_calendario_tela.dart';
 
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
@@ -240,7 +241,8 @@ class AppRotas {
           ),
           GoRoute(
             path: '/professor/calendario',
-            builder: (context, state) => const ProfessorCalendarioTela(),
+            // UTILIZANDO O PREFIXO AQUI
+            builder: (context, state) => const prof_cal.ProfessorCalendarioTela(),
           ),
         ],
       ),
@@ -257,7 +259,6 @@ class AppRotas {
             path: '/aluno',
             builder: (context, state) => const AlunoDashboardTela(),
           ),
-          // <--- ROTA DO CALENDÁRIO ADICIONADA AQUI
           GoRoute(
             path: '/aluno/calendario',
             builder: (context, state) => const AlunoCalendarioTela(),

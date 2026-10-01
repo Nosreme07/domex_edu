@@ -353,13 +353,21 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
   }
 
   void _abrirModalSemanasProva(List<Map<String, dynamic>> semanasProva) {
+    bool isMobile = MediaQuery.of(context).size.width < 800;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(children: [Icon(Icons.date_range_rounded, color: Theme.of(context).primaryColor), const SizedBox(width: 8), const Text('Semanas de Provas (Períodos)', style: TextStyle(fontWeight: FontWeight.bold))]),
+        title: Row(
+          children: [
+            Icon(Icons.date_range_rounded, color: Theme.of(context).primaryColor), 
+            const SizedBox(width: 8), 
+            const Expanded(child: Text('Semanas de Provas (Períodos)', style: TextStyle(fontWeight: FontWeight.bold)))
+          ]
+        ),
         content: SizedBox(
-          width: 700, height: 500,
+          width: isMobile ? MediaQuery.of(context).size.width * 0.9 : 700, 
+          height: isMobile ? MediaQuery.of(context).size.height * 0.8 : 500,
           child: semanasProva.isEmpty
             ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [Icon(Icons.event_busy, size: 48, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum período de prova cadastrado.', style: TextStyle(color: Colors.grey.shade600))]))
             : ListView.separated(
@@ -450,6 +458,7 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
   }
 
   void _abrirModalEvento(String tenantId, String usuarioNome, String usuarioId, {DateTime? dataPreSelecionada, Map<String, dynamic>? eventoExistente}) {
+    bool isMobile = MediaQuery.of(context).size.width < 800;
     final formKey = GlobalKey<FormState>();
     final docEdicao = eventoExistente != null && eventoExistente.containsKey('originalDoc') ? eventoExistente['originalDoc'] : eventoExistente;
     final tituloCtrl = TextEditingController(text: docEdicao?['titulo'] ?? '');
@@ -535,10 +544,10 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
 
           return AlertDialog(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: Row(children: [Icon(docEdicao == null ? Icons.add_circle_outline : Icons.edit, color: Colors.deepPurple), const SizedBox(width: 8), Text(docEdicao == null ? 'Novo Evento / Período' : 'Editar', style: const TextStyle(fontWeight: FontWeight.bold))]),
+            title: Row(children: [Icon(docEdicao == null ? Icons.add_circle_outline : Icons.edit, color: Colors.deepPurple), const SizedBox(width: 8), Expanded(child: Text(docEdicao == null ? 'Novo Evento / Período' : 'Editar', style: const TextStyle(fontWeight: FontWeight.bold)))]),
             content: SizedBox(
-              width: tipoSelecionado == 'Semana de Prova' ? MediaQuery.of(context).size.width * 0.9 : 600, 
-              height: MediaQuery.of(context).size.height * 0.8,
+              width: tipoSelecionado == 'Semana de Prova' ? (isMobile ? MediaQuery.of(context).size.width * 0.95 : 1000) : 600, 
+              height: isMobile ? MediaQuery.of(context).size.height * 0.8 : 600,
               child: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -547,19 +556,22 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                     children: [
                       TextFormField(controller: tituloCtrl, decoration: const InputDecoration(labelText: 'Título do Evento (Ex: Provas Bimestrais)', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Obrigatório' : null),
                       const SizedBox(height: 16),
-                      Row(
+                      Flex(
+                        direction: isMobile ? Axis.vertical : Axis.horizontal,
                         crossAxisAlignment: CrossAxisAlignment.start, 
                         children: [
-                          Expanded(
+                          SizedBox(
+                            width: isMobile ? double.infinity : null,
                             child: InputDecorator(
                               decoration: const InputDecoration(labelText: 'Tipo do Evento', border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4)),
                               child: DropdownButtonHideUnderline(child: DropdownButton<String>(value: listaTiposPadrao.contains(tipoSelecionado) ? tipoSelecionado : 'Outro', isExpanded: true, items: listaTiposPadrao.map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(), onChanged: (v) => setStateModal(() => tipoSelecionado = v!))),
                             ),
                           ),
-                          const SizedBox(width: 16),
+                          if (!isMobile) const SizedBox(width: 16) else const SizedBox(height: 16),
                           
                           if (tipoSelecionado == 'Semana de Prova')
                             Expanded(
+                              flex: isMobile ? 0 : 1,
                               child: Row(
                                 children: [
                                   Expanded(
@@ -596,6 +608,7 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                             )
                           else
                             Expanded(
+                              flex: isMobile ? 0 : 1,
                               child: TextFormField(
                                 controller: dataCtrl, inputFormatters: [dataMask],
                                 decoration: const InputDecoration(labelText: 'Data (DD/MM/AAAA)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.calendar_today, size: 20)),
@@ -861,12 +874,14 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
         title: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Agenda do Dia', style: TextStyle(fontSize: 14, color: Colors.grey)),
-                Text(_formatarData(data), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Agenda do Dia', style: TextStyle(fontSize: 14, color: Colors.grey)),
+                  Text(_formatarData(data), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+                ],
+              ),
             ),
             ElevatedButton.icon(
               style: ElevatedButton.styleFrom(backgroundColor: Theme.of(context).primaryColor, foregroundColor: Colors.white),
@@ -951,7 +966,7 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                                         ],
                                         if (evento['autorNome'] != null && evento['autorNome'].toString().isNotEmpty) ...[
                                           const SizedBox(height: 6),
-                                          Row(children: [const Icon(Icons.person_outline, size: 12, color: Colors.grey), const SizedBox(width: 4), Text('Por: ${evento['autorNome']}', style: const TextStyle(fontSize: 10, color: Colors.grey))])
+                                          Row(children: [const Icon(Icons.person_outline, size: 12, color: Colors.grey), const SizedBox(width: 4), Text('Marcado por: ${evento['autorNome']}', style: const TextStyle(fontSize: 10, color: Colors.grey))])
                                         ]
                                       ],
                                     ),
@@ -960,7 +975,7 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                                     IconButton(icon: const Icon(Icons.edit, color: Colors.blue), tooltip: 'Editar', onPressed: () => _abrirModalEvento(tenantId, usuarioNome, usuarioId, eventoExistente: evento)),
                                     IconButton(icon: const Icon(Icons.delete, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, tenantId, evento)),
                                   ] else ...[
-                                    Padding(padding: const EdgeInsets.only(right: 16.0), child: Icon(isFixoOuGeral ? Icons.lock_outline_rounded : Icons.lock_person_rounded, color: Colors.grey.shade400, size: 20))
+                                    Padding(padding: const EdgeInsets.only(right: 16.0), child: Icon(isFixoOuGeral ? Icons.lock_outline_rounded : Icons.lock_person_rounded, color: Colors.grey, size: 20))
                                   ]
                                 ],
                               ),
@@ -980,153 +995,182 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
   }
 
   Widget _buildVisaoMes(String tenantId, Map<String, List<Map<String, dynamic>>> eventosPorData, String usuarioNome, String usuarioId, bool isAdmin) {
+    bool isMobile = MediaQuery.of(context).size.width < 800;
     final int diasNoMes = DateTime(_dataFoco.year, _dataFoco.month + 1, 0).day;
     final int diasParaPular = DateTime(_dataFoco.year, _dataFoco.month, 1).weekday - 1; 
     int linhasNecessarias = ((diasNoMes + diasParaPular) / 7).ceil();
 
-    return Column(
-      children: [
-        Row(children: _diasSemanaAbrev.map((dia) => Expanded(child: Container(padding: const EdgeInsets.symmetric(vertical: 12), alignment: Alignment.center, decoration: BoxDecoration(color: Colors.blue.shade50, border: Border.all(color: Colors.white)), child: Text(dia, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey))))).toList()),
-        ...List.generate(linhasNecessarias, (linhaIndex) {
-          return Expanded(
-            child: Row(
-              children: List.generate(7, (colIndex) {
-                int diaReal = ((linhaIndex * 7) + colIndex) - diasParaPular + 1;
-                if (diaReal < 1 || diaReal > diasNoMes) return Expanded(child: Container(decoration: BoxDecoration(color: Colors.grey.shade50, border: Border.all(color: Colors.grey.shade200))));
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minWidth = constraints.maxWidth < 800 ? 800.0 : constraints.maxWidth;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: minWidth,
+            child: Column(
+              children: [
+                Row(children: _diasSemanaAbrev.map((dia) => Expanded(child: Container(padding: const EdgeInsets.symmetric(vertical: 12), alignment: Alignment.center, decoration: BoxDecoration(color: Colors.blue.shade50, border: Border.all(color: Colors.white)), child: Text(dia, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey))))).toList()),
+                ...List.generate(linhasNecessarias, (linhaIndex) {
+                  return Expanded(
+                    child: Row(
+                      children: List.generate(7, (colIndex) {
+                        int diaReal = ((linhaIndex * 7) + colIndex) - diasParaPular + 1;
+                        if (diaReal < 1 || diaReal > diasNoMes) return Expanded(child: Container(decoration: BoxDecoration(color: Colors.grey.shade50, border: Border.all(color: Colors.grey.shade200))));
 
-                DateTime dataCelula = DateTime(_dataFoco.year, _dataFoco.month, diaReal);
-                List<Map<String, dynamic>> eventosDoDia = eventosPorData[_formatarData(dataCelula)] ?? [];
-                bool isHoje = _isMesmoDia(dataCelula, DateTime.now());
+                        DateTime dataCelula = DateTime(_dataFoco.year, _dataFoco.month, diaReal);
+                        List<Map<String, dynamic>> eventosDoDia = eventosPorData[_formatarData(dataCelula)] ?? [];
+                        bool isHoje = _isMesmoDia(dataCelula, DateTime.now());
 
-                Color corBorda = isHoje ? Colors.blue.shade400 : (eventosDoDia.isNotEmpty ? _getCorPorTipo(eventosDoDia.first['tipo']).withAlpha(150) : Colors.grey.shade200);
-                double larguraBorda = isHoje ? 2.0 : (eventosDoDia.isNotEmpty ? 1.5 : 1.0);
+                        Color corBorda = isHoje ? Colors.blue.shade400 : (eventosDoDia.isNotEmpty ? _getCorPorTipo(eventosDoDia.first['tipo']).withAlpha(150) : Colors.grey.shade200);
+                        double larguraBorda = isHoje ? 2.0 : (eventosDoDia.isNotEmpty ? 1.5 : 1.0);
 
-                return Expanded(
-                  child: InkWell(
-                    onTap: () => _abrirModalDetalhesDia(tenantId, dataCelula, eventosDoDia, usuarioNome, usuarioId, isAdmin),
-                    child: Container(
-                      decoration: BoxDecoration(color: isHoje ? Colors.blue.shade50.withAlpha(100) : Colors.white, border: Border.all(color: corBorda, width: larguraBorda)),
-                      padding: const EdgeInsets.all(4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: isHoje ? Colors.blue : Colors.transparent, shape: BoxShape.circle), child: Text(diaReal.toString(), style: TextStyle(fontWeight: isHoje ? FontWeight.bold : FontWeight.normal, color: isHoje ? Colors.white : Colors.black87))),
-                          if (eventosDoDia.isNotEmpty)
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(top: 4.0),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                                  children: eventosDoDia.take(4).map((e) {
-                                    bool isProva = e['tipo'].toString().toLowerCase().contains('prova');
-                                    String textoDisplay = e['titulo'] ?? '';
-                                    String nomeParaCor = textoDisplay;
+                        return Expanded(
+                          child: InkWell(
+                            onTap: () => _abrirModalDetalhesDia(tenantId, dataCelula, eventosDoDia, usuarioNome, usuarioId, isAdmin),
+                            child: Container(
+                              decoration: BoxDecoration(color: isHoje ? Colors.blue.shade50.withAlpha(100) : Colors.white, border: Border.all(color: corBorda, width: larguraBorda)),
+                              padding: EdgeInsets.all(isMobile ? 2 : 4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(padding: EdgeInsets.all(isMobile ? 4 : 6), decoration: BoxDecoration(color: isHoje ? Colors.blue : Colors.transparent, shape: BoxShape.circle), child: Text(diaReal.toString(), style: TextStyle(fontWeight: isHoje ? FontWeight.bold : FontWeight.normal, color: isHoje ? Colors.white : Colors.black87, fontSize: isMobile ? 12 : 14))),
+                                  if (eventosDoDia.isNotEmpty)
+                                    Expanded(
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 2.0),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(4),
+                                          child: SingleChildScrollView(
+                                            physics: const ClampingScrollPhysics(),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                                              children: eventosDoDia.map((e) {
+                                                bool isProva = e['tipo'].toString().toLowerCase().contains('prova');
+                                                String textoDisplay = e['titulo'] ?? '';
+                                                String nomeParaCor = textoDisplay;
 
-                                    if (isProva && e['disciplina'] != null && e['disciplina'].toString().isNotEmpty && e['disciplina'] != 'Várias' && e['disciplina'] != 'Período de Provas') {
-                                      String mat = e['disciplina'].toString();
-                                      if (mat.contains(' - Prof.')) mat = mat.split(' - Prof.')[0].trim();
-                                      nomeParaCor = mat;
-                                      textoDisplay = 'PROVA: $mat';
-                                    }
+                                                if (isProva && e['disciplina'] != null && e['disciplina'].toString().isNotEmpty && e['disciplina'] != 'Várias' && e['disciplina'] != 'Período de Provas') {
+                                                  String mat = e['disciplina'].toString();
+                                                  if (mat.contains(' - Prof.')) mat = mat.split(' - Prof.')[0].trim();
+                                                  nomeParaCor = mat;
+                                                  textoDisplay = 'PROVA: $mat';
+                                                }
 
-                                    Color corBase = isProva ? _getCorMateria(nomeParaCor, false) : _getCorPorTipo(e['tipo']);
-                                    Color corTexto = isProva ? _getCorMateria(nomeParaCor, true) : corBase;
+                                                Color corBase = isProva ? _getCorMateria(nomeParaCor, false) : _getCorPorTipo(e['tipo']);
+                                                Color corTexto = isProva ? _getCorMateria(nomeParaCor, true) : corBase;
 
-                                    return Container(
-                                      margin: const EdgeInsets.only(bottom: 2),
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                      decoration: BoxDecoration(color: isProva ? corBase : corBase.withAlpha(30), borderRadius: BorderRadius.circular(4), border: Border.all(color: isProva ? corBase : corBase.withAlpha(80), width: 0.5)),
-                                      child: Text(textoDisplay, style: TextStyle(fontSize: 10, color: corTexto, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    );
-                                  }).toList(),
-                                )
-                              )
-                            )
-                        ],
-                      ),
+                                                return Container(
+                                                  margin: const EdgeInsets.only(bottom: 2),
+                                                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                                                  decoration: BoxDecoration(color: isProva ? corBase : corBase.withAlpha(30), borderRadius: BorderRadius.circular(4), border: Border.all(color: isProva ? corBase : corBase.withAlpha(80), width: 0.5)),
+                                                  child: Text(textoDisplay, style: TextStyle(fontSize: isMobile ? 9 : 10, color: corTexto, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ),
+                                        )
+                                      )
+                                    )
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
                     ),
-                  ),
-                );
-              }),
-            ),
-          );
-        }),
-      ],
+                  );
+                }),
+              ],
+            )
+          )
+        );
+      }
     );
   }
 
   Widget _buildVisaoSemana(String tenantId, Map<String, List<Map<String, dynamic>>> eventosPorData, String usuarioNome, String usuarioId, bool isAdmin) {
     DateTime segundaFeira = _dataFoco.subtract(Duration(days: _dataFoco.weekday - 1));
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: List.generate(7, (index) {
-        DateTime dataDia = segundaFeira.add(Duration(days: index));
-        List<Map<String, dynamic>> eventosDoDia = eventosPorData[_formatarData(dataDia)] ?? [];
-        bool isHoje = _isMesmoDia(dataDia, DateTime.now());
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minWidth = constraints.maxWidth < 800 ? 800.0 : constraints.maxWidth;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: minWidth,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: List.generate(7, (index) {
+                DateTime dataDia = segundaFeira.add(Duration(days: index));
+                List<Map<String, dynamic>> eventosDoDia = eventosPorData[_formatarData(dataDia)] ?? [];
+                bool isHoje = _isMesmoDia(dataDia, DateTime.now());
 
-        Color corBorda = isHoje ? Colors.blue.shade400 : (eventosDoDia.isNotEmpty ? _getCorPorTipo(eventosDoDia.first['tipo']).withAlpha(150) : Colors.grey.shade300);
-        double larguraBorda = isHoje ? 2.0 : (eventosDoDia.isNotEmpty ? 1.5 : 1.0);
+                Color corBorda = isHoje ? Colors.blue.shade400 : (eventosDoDia.isNotEmpty ? _getCorPorTipo(eventosDoDia.first['tipo']).withAlpha(150) : Colors.grey.shade300);
+                double larguraBorda = isHoje ? 2.0 : (eventosDoDia.isNotEmpty ? 1.5 : 1.0);
 
-        return Expanded(
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: isHoje ? Colors.blue.shade50 : Colors.white, border: Border.all(color: corBorda, width: larguraBorda), borderRadius: BorderRadius.circular(12)),
-            child: Column(
-              children: [
-                InkWell(
-                  onTap: () => _abrirModalDetalhesDia(tenantId, dataDia, eventosDoDia, usuarioNome, usuarioId, isAdmin),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                return Expanded(
                   child: Container(
-                    width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: isHoje ? Colors.blue : Colors.grey.shade100, borderRadius: const BorderRadius.vertical(top: Radius.circular(12))),
-                    child: Column(children: [Text(_diasSemanaAbrev[index], style: TextStyle(fontWeight: FontWeight.bold, color: isHoje ? Colors.white : Colors.blueGrey)), const SizedBox(height: 4), Text(dataDia.day.toString().padLeft(2, '0'), style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: isHoje ? Colors.white : Colors.black87))]),
-                  ),
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.all(8), itemCount: eventosDoDia.length, separatorBuilder: (context, index) => const SizedBox(height: 8),
-                    itemBuilder: (context, idx) {
-                      final evento = eventosDoDia[idx];
-                      final cor = _getCorPorTipo(evento['tipo']);
-                      final isProva = evento['tipo'].toString().toLowerCase().contains('prova');
-                      String nomeMateria = evento['disciplina'] ?? '';
-
-                      if (nomeMateria.contains(' - Prof.')) {
-                        final partes = nomeMateria.split(' - Prof.');
-                        nomeMateria = partes[0].trim();
-                      }
-
-                      Color corBase = isProva ? _getCorMateria(nomeMateria, false) : cor.withAlpha(30);
-                      Color corTexto = isProva ? _getCorMateria(nomeMateria, true) : cor;
-                      String textoExibicao = isProva && nomeMateria.isNotEmpty && nomeMateria != 'Período de Provas' ? 'PROVA: $nomeMateria' : (evento['titulo'] ?? '');
-
-                      return InkWell(
-                        onTap: () => _abrirModalDetalhesDia(tenantId, dataDia, eventosDoDia, usuarioNome, usuarioId, isAdmin),
-                        child: Container(
-                          padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: corBase, borderRadius: BorderRadius.circular(8), border: Border.all(color: isProva ? corBase : cor.withAlpha(100))),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start, 
-                            children: [
-                              Text(textoExibicao, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: corTexto), maxLines: 2, overflow: TextOverflow.ellipsis), 
-                              if (evento['disciplina'] != null && evento['disciplina'].toString().isNotEmpty && !isProva) 
-                                Text(evento['disciplina'], style: TextStyle(fontSize: 10, color: Colors.grey.shade700))
-                            ]
+                    margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: isHoje ? Colors.blue.shade50 : Colors.white, border: Border.all(color: corBorda, width: larguraBorda), borderRadius: BorderRadius.circular(12)),
+                    child: Column(
+                      children: [
+                        InkWell(
+                          onTap: () => _abrirModalDetalhesDia(tenantId, dataDia, eventosDoDia, usuarioNome, usuarioId, isAdmin),
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                          child: Container(
+                            width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 12), decoration: BoxDecoration(color: isHoje ? Colors.blue : Colors.grey.shade100, borderRadius: const BorderRadius.vertical(top: Radius.circular(12))),
+                            child: Column(children: [Text(_diasSemanaAbrev[index], style: TextStyle(fontWeight: FontWeight.bold, color: isHoje ? Colors.white : Colors.blueGrey)), const SizedBox(height: 4), Text(dataDia.day.toString().padLeft(2, '0'), style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: isHoje ? Colors.white : Colors.black87))]),
                           ),
                         ),
-                      );
-                    },
+                        Expanded(
+                          child: ListView.separated(
+                            padding: const EdgeInsets.all(8), itemCount: eventosDoDia.length, separatorBuilder: (context, index) => const SizedBox(height: 8),
+                            itemBuilder: (context, idx) {
+                              final evento = eventosDoDia[idx];
+                              final cor = _getCorPorTipo(evento['tipo']);
+                              final isProva = evento['tipo'].toString().toLowerCase().contains('prova');
+                              String nomeMateria = evento['disciplina'] ?? '';
+
+                              if (nomeMateria.contains(' - Prof.')) {
+                                nomeMateria = nomeMateria.split(' - Prof.')[0].trim();
+                              }
+
+                              Color corBase = isProva ? _getCorMateria(nomeMateria, false) : cor.withAlpha(30);
+                              Color corTexto = isProva ? _getCorMateria(nomeMateria, true) : cor;
+                              String textoExibicao = isProva && nomeMateria.isNotEmpty && nomeMateria != 'Período de Provas' ? 'PROVA: $nomeMateria' : (evento['titulo'] ?? '');
+
+                              return InkWell(
+                                onTap: () => _abrirModalDetalhesDia(tenantId, dataDia, eventosDoDia, usuarioNome, usuarioId, isAdmin),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: corBase, borderRadius: BorderRadius.circular(8), border: Border.all(color: isProva ? corBase : cor.withAlpha(100))),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start, 
+                                    children: [
+                                      Text(textoExibicao, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: corTexto), maxLines: 2, overflow: TextOverflow.ellipsis), 
+                                      if (evento['disciplina'] != null && evento['disciplina'].toString().isNotEmpty && !isProva) 
+                                        Text(evento['disciplina'], style: TextStyle(fontSize: 10, color: Colors.grey.shade700))
+                                    ]
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        )
+                      ],
+                    ),
                   ),
-                )
-              ],
-            ),
-          ),
+                );
+              }),
+            )
+          )
         );
-      }),
+      }
     );
   }
 
   Widget _buildVisaoAno(Map<String, List<Map<String, dynamic>>> eventosPorData) {
+    bool isMobile = MediaQuery.of(context).size.width < 800;
     return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 1.5),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: isMobile ? 2 : 4, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 1.5),
       itemCount: 12,
       itemBuilder: (context, index) {
         int mes = index + 1;
@@ -1254,8 +1298,11 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
 
   @override
   Widget build(BuildContext context) {
+    bool isMobile = MediaQuery.of(context).size.width < 800;
     final usuario = ref.watch(authProvider).value;
-    if (usuario == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (usuario == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     
     final tenantId = usuario.tenantId;
     final usuarioNome = usuario.nome;
@@ -1292,57 +1339,64 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
         label: const Text('Adicionar Evento', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(32.0),
+        padding: EdgeInsets.all(isMobile ? 16.0 : 32.0),
         child: Column(
           children: [
             Container(
+              width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey.shade200)),
-              child: Row(
+              child: Wrap(
+                spacing: 16, runSpacing: 16,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Row(
-                    children: [
-                      IconButton(onPressed: () => _navegar(-1), icon: const Icon(Icons.chevron_left_rounded)),
-                      SizedBox(width: 150, child: Text(tituloPeriodo, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple))),
-                      IconButton(onPressed: () => _navegar(1), icon: const Icon(Icons.chevron_right_rounded)),
-                      const SizedBox(width: 8),
-                      TextButton(onPressed: _irParaHoje, child: const Text('HOJE', style: TextStyle(fontWeight: FontWeight.bold))),
-                    ],
+                  Container(
+                    constraints: BoxConstraints(maxWidth: isMobile ? double.infinity : 300),
+                    child: Row(
+                      mainAxisAlignment: isMobile ? MainAxisAlignment.center : MainAxisAlignment.start,
+                      children: [
+                        IconButton(onPressed: () => _navegar(-1), icon: const Icon(Icons.chevron_left_rounded)),
+                        Expanded(child: Text(tituloPeriodo, textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.deepPurple))),
+                        IconButton(onPressed: () => _navegar(1), icon: const Icon(Icons.chevron_right_rounded)),
+                        TextButton(onPressed: _irParaHoje, child: const Text('HOJE', style: TextStyle(fontWeight: FontWeight.bold))),
+                      ],
+                    ),
                   ),
-                  const Spacer(),
                   StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(widget.turma['id']).collection('eventos').snapshots(),
                     builder: (context, snapTurma) {
                       final evTurma = snapTurma.data?.docs ?? [];
                       final listaSemanasProva = evTurma.where((d) => (d.data() as Map)['tipo'] == 'Semana de Prova').map((d) => {...d.data() as Map<String,dynamic>, 'id': d.id}).toList();
 
-                      return Row(
+                      return Wrap(
+                        spacing: 8, runSpacing: 8,
+                        alignment: WrapAlignment.center,
                         children: [
                           if (listaSemanasProva.isNotEmpty)
                             ElevatedButton.icon(
                               style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50, foregroundColor: Colors.red.shade900, elevation: 0),
                               onPressed: () => _abrirModalSemanasProva(listaSemanasProva),
-                              icon: const Icon(Icons.fact_check_rounded, size: 18),
+                              icon: const Icon(Icons.fact_check_rounded, size: 16),
                               label: const Text('Períodos de Prova'),
                             ),
-                          const SizedBox(width: 12),
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, elevation: 0),
                             onPressed: () {
                               List<Map<String, dynamic>> todosEventosPdf = _montarListaEventosGlobais(_dataFoco.year, evTurma, estadoCalendarioEscola.value);
                               _exportarCalendarioParaPdf(todosEventosPdf);
                             },
-                            icon: const Icon(Icons.print_rounded, size: 18),
+                            icon: const Icon(Icons.print_rounded, size: 16),
                             label: const Text('Exportar PDF'),
                           )
                         ],
                       );
                     }
                   ),
-                  const SizedBox(width: 24),
                   Container(
                     decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: ['SEMANA', 'MÊS', 'ANO'].map((modo) {
                         bool isAtivo = _modoVisualizacao == modo;
                         return InkWell(
@@ -1356,9 +1410,8 @@ class _TurmaCalendarioTelaState extends ConsumerState<TurmaCalendarioTela> {
                       }).toList(),
                     ),
                   ),
-                  const SizedBox(width: 24),
                   SizedBox(
-                    width: 250, height: 40,
+                    width: isMobile ? double.infinity : 250, height: 40,
                     child: TextField(
                       onChanged: (val) => _debouncer.run(() => setState(() => _termoBusca = val)),
                       decoration: InputDecoration(hintText: 'Pesquisar evento...', prefixIcon: const Icon(Icons.search, size: 20), filled: true, fillColor: Colors.grey.shade100, contentPadding: EdgeInsets.zero, border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
