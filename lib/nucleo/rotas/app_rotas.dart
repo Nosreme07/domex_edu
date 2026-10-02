@@ -52,6 +52,11 @@ import '../../modulos/alunos/layout/aluno_layout.dart';
 import '../../modulos/alunos/apresentacao/telas/aluno_dashboard_tela.dart';
 import '../../modulos/alunos/apresentacao/telas/aluno_calendario_tela.dart';
 
+// ============================================================================
+// IMPORTS: PAINEL DO RESPONSÁVEL
+// ============================================================================
+import '../../modulos/responsaveis/layout/responsavel_layout.dart';
+import '../../modulos/responsaveis/apresentacao/tela/responsavel_dashboard_tela.dart'; // <-- Caminho corrigido aqui
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
   AppRotas._();
@@ -262,6 +267,21 @@ class AppRotas {
           GoRoute(
             path: '/aluno/calendario',
             builder: (context, state) => const AlunoCalendarioTela(),
+          ),
+        ],
+      ),
+
+      // ==========================================================
+      // GRUPO 6: ESTRUTURA DO RESPONSÁVEL
+      // ==========================================================
+      ShellRoute(
+        builder: (context, state, child) {
+          return ResponsavelLayout(child: child);
+        },
+        routes: [
+          GoRoute(
+            path: '/responsavel',
+            builder: (context, state) => const ResponsavelDashboardTela(),
           ),
         ],
       ),

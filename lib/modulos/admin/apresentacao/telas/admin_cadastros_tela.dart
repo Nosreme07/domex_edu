@@ -11,12 +11,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../estado/aluno_provider.dart';
-import '../estado/responsavel_provider.dart';
 import '../estado/professor_provider.dart';
 import '../estado/secretaria_provider.dart';
 import '../estado/turma_provider.dart';
 
-// Importação da Tela de Usuários
+// Importação da Tela de Usuários restaurada!
 import 'admin_usuarios_form_tela.dart';
 
 // ============================================================================
@@ -81,7 +80,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
     final corPrimaria = Theme.of(context).primaryColor;
 
     return DefaultTabController(
-      length: 6,
+      length: 5, // 5 Abas
       initialIndex: widget.abaInicial,
       child: Scaffold(
         appBar: AppBar(
@@ -101,7 +100,6 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             tabAlignment: TabAlignment.start,
             tabs: const [
               Tab(icon: Icon(Icons.school_rounded), text: 'Alunos'),
-              Tab(icon: Icon(Icons.family_restroom_rounded), text: 'Responsáveis'),
               Tab(icon: Icon(Icons.assignment_ind_rounded), text: 'Professores'),
               Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretaria'),
               Tab(icon: Icon(Icons.meeting_room_rounded), text: 'Turmas'),
@@ -109,15 +107,13 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             ],
           ),
         ),
-        // Adicionada as instâncias separadas para evitar os erros de invalid_constant e non_constant_list
-        body: TabBarView(
+        body: const TabBarView(
           children: [
-            const _GestaoAlunosAba(),
-            const _GestaoResponsaveisAba(),
-            const _GestaoProfessoresAba(),
-            const _GestaoSecretariaAba(),
-            const _GestaoTurmasAba(),
-            const AdminUsuariosFormTela(),
+            _GestaoAlunosAba(),
+            _GestaoProfessoresAba(),
+            _GestaoSecretariaAba(),
+            _GestaoTurmasAba(),
+            AdminUsuariosFormTela(), // Tela de Usuários de volta!
           ],
         ),
       ),
@@ -1209,573 +1205,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
 }
 
 // ============================================================================
-// 2. ABA DE RESPONSÁVEIS
-// ============================================================================
-class _GestaoResponsaveisAba extends ConsumerStatefulWidget {
-  const _GestaoResponsaveisAba();
-  @override
-  ConsumerState<_GestaoResponsaveisAba> createState() => _GestaoResponsaveisAbaState();
-}
-
-class _GestaoResponsaveisAbaState extends ConsumerState<_GestaoResponsaveisAba> with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  String _termoBusca = '';
-  final _debouncer = Debouncer(milliseconds: 400);
-  bool _sincronizando = false;
-
-  void _confirmarExclusao(BuildContext context, Map<String, dynamic> resp) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.red),
-              SizedBox(width: 8),
-              Text(
-                'Excluir Responsável',
-                style: TextStyle(color: Colors.red),
-              ),
-            ],
-          ),
-          content: Text('Deseja excluir o registro de ${resp['nome']}?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () async {
-                try {
-                  await ref.read(responsavelServiceProvider).excluirResponsavel(resp['id']);
-                  if (!context.mounted) {
-                    return;
-                  }
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Registro excluído.'), backgroundColor: Colors.green),
-                  );
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red),
-                    );
-                  }
-                }
-              },
-              child: const Text('Excluir', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _abrirFichaAlunoRapida(BuildContext context, Map<String, dynamic> aluno) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Ficha Rápida do Aluno'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Nome: ${aluno['nome']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 8),
-            Text('Matrícula: ${aluno['matricula']}'),
-            Text('Turma: ${aluno['turma'] ?? 'Sem turma'}'),
-            Text('Status: ${aluno['status'] ?? 'Ativo'}'),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Theme.of(context).primaryColor,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Fechar Ficha'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _abrirFichaResponsavel(BuildContext context, Map<String, dynamic> resp, List<Map<String, dynamic>> todosAlunos) {
-    final corPrimaria = Theme.of(context).primaryColor;
-    final alunosVinculadosIds = (resp['alunosVinculadosRaw'] as List?)?.map((v) => v['matricula'].toString()).toList() ?? [];
-    final alunosCompletos = todosAlunos.where((a) => alunosVinculadosIds.contains(a['matricula'].toString())).toList();
-
-    Widget buildLinha(String label, dynamic valorRaw) {
-      final valor = (valorRaw?.toString() ?? '').trim();
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6.0),
-        child: RichText(
-          text: TextSpan(
-            style: const TextStyle(color: Colors.black87, fontSize: 14),
-            children: [
-              TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w600)),
-              TextSpan(text: valor.isEmpty ? 'Não informado' : valor),
-            ],
-          ),
-        ),
-      );
-    }
-
-    Widget buildLinhaContato(String label, dynamic valorRaw) {
-      final telefone = (valorRaw?.toString() ?? '').trim();
-      final numeroLimpo = telefone.replaceAll(RegExp(r'[^0-9]'), '');
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text('$label: ', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.black87)),
-            Text(telefone.isEmpty ? 'Não informado' : telefone, style: const TextStyle(fontSize: 14, color: Colors.black87)),
-            if (numeroLimpo.length >= 10) ...[
-              const SizedBox(width: 8),
-              Tooltip(
-                message: 'Abrir WhatsApp',
-                child: InkWell(
-                  onTap: () => launchUrl(Uri.parse('https://wa.me/55$numeroLimpo')),
-                  child: Image.asset('assets/whatsapp.png', width: 18, height: 18),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Tooltip(
-                message: 'Ligar',
-                child: InkWell(
-                  onTap: () => launchUrl(Uri.parse('tel:$numeroLimpo')),
-                  child: const Icon(Icons.phone, color: Colors.blue, size: 18),
-                ),
-              ),
-            ],
-          ],
-        ),
-      );
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateModal) {
-            final statusAtual = resp['status'] ?? 'Ativo';
-            final isBloqueado = statusAtual == 'Bloqueado';
-
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              titlePadding: const EdgeInsets.all(0),
-              title: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: corPrimaria.withAlpha(13),
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                ),
-                child: Row(
-                  children: [
-                    InkWell(
-                      onTap: resp['fotoUrl'] != null ? () => _mostrarFotoAmpliada(context, resp['fotoUrl']) : null,
-                      borderRadius: BorderRadius.circular(32),
-                      child: CircleAvatar(
-                        radius: 32,
-                        backgroundColor: Colors.white,
-                        backgroundImage: resp['fotoUrl'] != null ? NetworkImage(resp['fotoUrl']) : null,
-                        child: resp['fotoUrl'] == null ? Icon(Icons.family_restroom, size: 32, color: corPrimaria) : null,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(resp['nome'] ?? 'Responsável', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
-                          const SizedBox(height: 4),
-                          Text('ID: ${resp['id']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
-                        ],
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Text(isBloqueado ? 'BLOQUEADO' : 'ATIVO', style: TextStyle(color: isBloqueado ? Colors.red : Colors.green, fontWeight: FontWeight.bold, fontSize: 12)),
-                        Switch(
-                          value: !isBloqueado,
-                          activeThumbColor: Colors.green,
-                          inactiveThumbColor: Colors.red,
-                          onChanged: (val) async {
-                            final novoStatus = val ? 'Ativo' : 'Bloqueado';
-                            try {
-                              await ref.read(responsavelServiceProvider).atualizarStatus(resp['id'], novoStatus);
-                              setStateModal(() { resp['status'] = novoStatus; });
-                            } catch (e) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao atualizar: $e'), backgroundColor: Colors.red));
-                              }
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-              ),
-              content: SizedBox(
-                width: 700,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('DADOS PESSOAIS', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                                const Divider(),
-                                buildLinha('CPF', resp['cpf']),
-                                buildLinha('Nascimento', resp['dataNascimento']),
-                                buildLinhaContato('Celular', resp['telefone']),
-                                buildLinha('E-mail', resp['email']),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 24),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('VÍNCULO ACADÊMICO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                                const Divider(),
-                                if (alunosCompletos.isEmpty)
-                                  const Text('Nenhum aluno encontrado.', style: TextStyle(color: Colors.grey))
-                                else
-                                  ...alunosCompletos.map((aluno) => Padding(
-                                    padding: const EdgeInsets.only(bottom: 8.0),
-                                    child: InkWell(
-                                      onTap: () => _abrirFichaAlunoRapida(context, aluno),
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                                        child: Row(
-                                          children: [
-                                            const Icon(Icons.school_rounded, size: 18, color: Colors.blue),
-                                            const SizedBox(width: 8),
-                                            Expanded(child: Text('${aluno['nome']} (${aluno['matricula']})', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.blue))),
-                                            const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.blue),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  )),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      const Text('ENDEREÇO', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-                      const Divider(),
-                      buildLinha('Logradouro', '${resp['endereco']?['rua'] ?? ''}, Nº ${resp['endereco']?['numero'] ?? ''}'),
-                      buildLinha('Bairro/Cidade', '${resp['endereco']?['bairro'] ?? ''} - ${resp['endereco']?['cidade'] ?? ''}'),
-                    ],
-                  ),
-                ),
-              ),
-              actionsPadding: const EdgeInsets.all(24),
-              actions: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Fechar Ficha'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _importarResponsaveisDosAlunos() async {
-    setState(() => _sincronizando = true);
-    try {
-      final alunos = ref.read(alunosStreamProvider).value ?? [];
-      final responsaveisExistentes = List<Map<String, dynamic>>.from(ref.read(responsavelStreamProvider).value ?? []);
-      final servico = ref.read(responsavelServiceProvider);
-
-      int importados = 0;
-      int atualizados = 0;
-
-      for (var aluno in alunos) {
-        final matriculaAluno = aluno['matricula']?.toString() ?? '';
-        final nomeAluno = aluno['nome']?.toString() ?? '';
-        if (matriculaAluno.isEmpty) {
-          continue;
-        }
-
-        final listaResponsaveisFicha = aluno['responsaveis'] as List? ?? [];
-        int indexParentesco = 1;
-
-        for (var resp in listaResponsaveisFicha) {
-          final cpf = (resp['cpf'] ?? '').toString().trim();
-          final nome = (resp['nome'] ?? '').toString().trim().toUpperCase();
-
-          if (nome.isEmpty || cpf.isEmpty || cpf.length < 14) {
-            continue;
-          }
-
-          int indexExistente = responsaveisExistentes.indexWhere((existente) {
-            final cpfExistente = (existente['cpf'] ?? '').toString().trim();
-            final nomeExistente = (existente['nome'] ?? '').toString().trim().toUpperCase();
-            if (cpf.isNotEmpty && cpfExistente == cpf) {
-              return true;
-            }
-            if (nomeExistente == nome) {
-              return true;
-            }
-            return false;
-          });
-
-          final alunoVinculoStr = '${nomeAluno.toUpperCase()} ($matriculaAluno)';
-          final alunoVinculoRaw = {'nome': nomeAluno, 'matricula': matriculaAluno};
-
-          if (indexExistente == -1) {
-            String newId = 'RESP-$matriculaAluno';
-            if (indexParentesco > 1) {
-              newId = 'RESP-$matriculaAluno-$indexParentesco';
-            }
-
-            final novoResponsavel = {
-              'id': newId,
-              'nome': nome,
-              'cpf': cpf,
-              'telefone': resp['telefone'] ?? '',
-              'email': resp['email'] ?? '',
-              'status': 'Ativo',
-              'dataCadastro': DateTime.now().toIso8601String(),
-              'alunosVinculados': [alunoVinculoStr],
-              'alunosVinculadosRaw': [alunoVinculoRaw],
-              'endereco': aluno['endereco'],
-            };
-
-            await servico.salvarResponsavel(novoResponsavel);
-            responsaveisExistentes.add(novoResponsavel);
-            importados++;
-          } else {
-            var responsavelEncontrado = Map<String, dynamic>.from(responsaveisExistentes[indexExistente]);
-            List<String> vinculosAtuais = List<String>.from(responsavelEncontrado['alunosVinculados'] ?? []);
-            List<dynamic> vinculosRawAtuais = List<dynamic>.from(responsavelEncontrado['alunosVinculadosRaw'] ?? []);
-
-            if (!vinculosAtuais.contains(alunoVinculoStr)) {
-              vinculosAtuais.add(alunoVinculoStr);
-              vinculosRawAtuais.add(alunoVinculoRaw);
-
-              responsavelEncontrado['alunosVinculados'] = vinculosAtuais;
-              responsavelEncontrado['alunosVinculadosRaw'] = vinculosRawAtuais;
-
-              await servico.salvarResponsavel(responsavelEncontrado);
-              responsaveisExistentes[indexExistente] = responsavelEncontrado;
-              atualizados++;
-            }
-          }
-          indexParentesco++;
-        }
-      }
-
-      if (mounted) {
-        if (importados > 0 || atualizados > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$importados novos e $atualizados vínculos de irmãos atualizados!'), backgroundColor: Colors.green),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Todos os responsáveis já estavam 100% sincronizados!'), backgroundColor: Colors.blue),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao importar: $e'), backgroundColor: Colors.red));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _sincronizando = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context);
-    final estadoResponsaveis = ref.watch(responsavelStreamProvider);
-    final estadoAlunos = ref.watch(alunosStreamProvider);
-    final todosAlunos = estadoAlunos.value ?? [];
-
-    return Padding(
-      padding: const EdgeInsets.all(24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text(
-                'Responsáveis Financeiros',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const Spacer(),
-              SizedBox(
-                width: 250,
-                height: 40,
-                child: TextField(
-                  onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
-                  decoration: InputDecoration(
-                    hintText: 'Pesquisar...',
-                    prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    filled: true,
-                    fillColor: Colors.grey.shade100,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.orange.shade600, foregroundColor: Colors.white),
-                onPressed: _sincronizando ? null : _importarResponsaveisDosAlunos,
-                icon: _sincronizando
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                    : const Icon(Icons.sync_rounded),
-                label: const Text('Puxar dos Alunos'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: estadoResponsaveis.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (erro, stack) => Center(child: Text('Erro: $erro')),
-              data: (lista) {
-                final filtrados = lista.where((p) {
-                  final nome = p['nome']?.toString() ?? '';
-                  if (nome.trim().isEmpty) {
-                    return false;
-                  }
-                  return nome.toLowerCase().contains(_termoBusca.toLowerCase());
-                }).toList();
-
-                if (filtrados.isEmpty) {
-                  return const Center(child: Text('Nenhum responsável encontrado. Clique em "Puxar dos Alunos".'));
-                }
-
-                return ListView.separated(
-                  itemCount: filtrados.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final resp = filtrados[index];
-                    final inativo = resp['status'] != 'Ativo';
-                    final alunosVinculadosRaw = resp['alunosVinculadosRaw'] as List? ?? [];
-
-                    return Card(
-                      elevation: 1,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(color: inativo ? Colors.red.shade200 : Colors.grey.shade300),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12.0, horizontal: 16.0),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 24,
-                              backgroundColor: Colors.grey.shade200,
-                              backgroundImage: resp['fotoUrl'] != null ? NetworkImage(resp['fotoUrl']) : null,
-                              child: resp['fotoUrl'] == null ? const Icon(Icons.family_restroom, color: Colors.grey) : null,
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              flex: 3,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(resp['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  const SizedBox(height: 4),
-                                  Text('ID: ${resp['id']}  |  CPF: ${resp['cpf']}', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)),
-                                  if (alunosVinculadosRaw.isNotEmpty) ...[
-                                    const SizedBox(height: 4),
-                                    Wrap(
-                                      spacing: 8,
-                                      children: alunosVinculadosRaw.map((v) {
-                                        return InkWell(
-                                          onTap: () {
-                                            final alunoEncontrado = todosAlunos.firstWhere((a) => a['matricula'] == v['matricula'], orElse: () => {});
-                                            if (alunoEncontrado.isNotEmpty) {
-                                              _abrirFichaAlunoRapida(context, alunoEncontrado);
-                                            }
-                                          },
-                                          child: Text(
-                                            '${v['nome']} (${v['matricula']})',
-                                            style: TextStyle(color: Colors.blue.shade700, fontSize: 12, fontWeight: FontWeight.w600, decoration: TextDecoration.underline),
-                                          ),
-                                        );
-                                      }).toList(),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(color: inativo ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(16)),
-                              child: Text(
-                                resp['status'] ?? 'Ativo',
-                                style: TextStyle(color: inativo ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12),
-                              ),
-                            ),
-                            const SizedBox(width: 24),
-                            IconButton(
-                              icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
-                              tooltip: 'Visualizar Ficha',
-                              onPressed: () => _abrirFichaResponsavel(context, resp, todosAlunos),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.edit_rounded, color: Colors.blue),
-                              tooltip: 'Editar Cadastro',
-                              onPressed: () => context.push('/admin/cadastros/responsavel/novo', extra: resp),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_rounded, color: Colors.red),
-                              tooltip: 'Excluir',
-                              onPressed: () => _confirmarExclusao(context, resp),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ============================================================================
-// 3. ABA DE PROFESSORES
+// 2. ABA DE PROFESSORES (AGORA É O INDEX 2)
 // ============================================================================
 class _GestaoProfessoresAba extends ConsumerStatefulWidget {
   const _GestaoProfessoresAba();
@@ -2059,7 +1489,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
                               ),
                             ),
                           );
-                        }), // .toList() removido!
+                        }),
                     ],
                   ),
                 ),
@@ -2076,6 +1506,55 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
           },
         );
       },
+    );
+  }
+
+  void _gerarAcessoProfessor(Map<String, dynamic> prof) async {
+    final authNotif = ref.read(authProvider.notifier);
+    final emailOriginal = prof['email']?.toString() ?? '';
+    final cpfLimpo = (prof['cpf']?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), ''); 
+    final loginASerCriado = emailOriginal.isNotEmpty && emailOriginal.contains('@') ? emailOriginal : cpfLimpo;
+    
+    final senhaPadrao = 'prof${cpfLimpo.length >= 4 ? cpfLimpo.substring(0,4) : '1234'}';
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        bool gerando = false;
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text('Gerar Acesso Manual'),
+              content: Text('Será criado o acesso para:\n\nLogin: $loginASerCriado\nSenha: $senhaPadrao\n\n(Se o login for apenas CPF, ele deverá informar o Código da Instituição na tela de entrada)'),
+              actions: [
+                TextButton(onPressed: gerando ? null : () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                  onPressed: gerando ? null : () async {
+                    setModalState(() => gerando = true);
+                    try {
+                      await authNotif.criarUsuarioManual(
+                        email: loginASerCriado.contains('@') ? loginASerCriado : '$loginASerCriado@escola.com', 
+                        senha: senhaPadrao,
+                        nome: prof['nome'],
+                        perfil: 'professor'
+                      );
+                      
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Acesso criado com sucesso!'), backgroundColor: Colors.green));
+                    } catch (e) {
+                      setModalState(() => gerando = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                    }
+                  },
+                  child: gerando ? const CircularProgressIndicator(color: Colors.white) : const Text('Confirmar', style: TextStyle(color: Colors.white)),
+                )
+              ],
+            );
+          }
+        );
+      }
     );
   }
 
@@ -2251,6 +1730,11 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
                             const SizedBox(width: 24),
                             Row(
                               children: [
+                                IconButton(
+                                  icon: const Icon(Icons.vpn_key_rounded, color: Colors.orange),
+                                  tooltip: 'Gerar Acesso',
+                                  onPressed: () => _gerarAcessoProfessor(prof),
+                                ),
                                 IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaProfessor(context, prof, turmas)),
                                 IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Professor', onPressed: () => context.push('/admin/cadastros/professor/novo', extra: prof)),
                                 IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, prof)),
@@ -2272,7 +1756,7 @@ class _GestaoProfessoresAbaState extends ConsumerState<_GestaoProfessoresAba> wi
 }
 
 // ============================================================================
-// 4. ABA DE SECRETÁRIA
+// 3. ABA DE SECRETÁRIA
 // ============================================================================
 class _GestaoSecretariaAba extends ConsumerStatefulWidget {
   const _GestaoSecretariaAba();
@@ -2501,6 +1985,55 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with
     );
   }
 
+  void _gerarAcessoSecretaria(Map<String, dynamic> mem) async {
+    final authNotif = ref.read(authProvider.notifier);
+    final emailOriginal = mem['email']?.toString() ?? '';
+    final cpfLimpo = (mem['cpf']?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), ''); 
+    final loginASerCriado = emailOriginal.isNotEmpty && emailOriginal.contains('@') ? emailOriginal : cpfLimpo;
+    
+    final senhaPadrao = 'adm${cpfLimpo.length >= 4 ? cpfLimpo.substring(0,4) : '1234'}';
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        bool gerando = false;
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              title: const Text('Gerar Acesso Manual'),
+              content: Text('Será criado o acesso para:\n\nLogin: $loginASerCriado\nSenha: $senhaPadrao\n\n(Se o login for apenas CPF, ele deverá informar o Código da Instituição na tela de entrada)'),
+              actions: [
+                TextButton(onPressed: gerando ? null : () => Navigator.pop(ctx), child: const Text('Cancelar')),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                  onPressed: gerando ? null : () async {
+                    setModalState(() => gerando = true);
+                    try {
+                      await authNotif.criarUsuarioManual(
+                        email: loginASerCriado.contains('@') ? loginASerCriado : '$loginASerCriado@escola.com', 
+                        senha: senhaPadrao,
+                        nome: mem['nome'],
+                        perfil: 'admin_escola'
+                      );
+                      
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Acesso criado com sucesso!'), backgroundColor: Colors.green));
+                    } catch (e) {
+                      setModalState(() => gerando = false);
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e'), backgroundColor: Colors.red));
+                    }
+                  },
+                  child: gerando ? const CircularProgressIndicator(color: Colors.white) : const Text('Confirmar', style: TextStyle(color: Colors.white)),
+                )
+              ],
+            );
+          }
+        );
+      }
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -2645,6 +2178,11 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with
                                   const SizedBox(width: 24),
                                   Row(
                                     children: [
+                                      IconButton(
+                                        icon: const Icon(Icons.vpn_key_rounded, color: Colors.orange),
+                                        tooltip: 'Gerar Acesso',
+                                        onPressed: () => _gerarAcessoSecretaria(mem),
+                                      ),
                                       IconButton(icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey), tooltip: 'Visualizar Ficha', onPressed: () => _abrirFichaSecretaria(context, mem)),
                                       IconButton(icon: const Icon(Icons.edit_rounded, color: Colors.blue), tooltip: 'Editar Cadastro', onPressed: () => context.push('/admin/cadastros/secretaria/novo', extra: mem)),
                                       IconButton(icon: const Icon(Icons.delete_rounded, color: Colors.red), tooltip: 'Excluir', onPressed: () => _confirmarExclusao(context, mem)),
@@ -2666,7 +2204,7 @@ class _GestaoSecretariaAbaState extends ConsumerState<_GestaoSecretariaAba> with
 }
 
 // ============================================================================
-// 5. ABA DE TURMAS
+// 4. ABA DE TURMAS
 // ============================================================================
 class _GestaoTurmasAba extends ConsumerStatefulWidget {
   const _GestaoTurmasAba();

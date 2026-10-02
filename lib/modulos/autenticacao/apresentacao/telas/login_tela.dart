@@ -14,7 +14,7 @@ class LoginTela extends ConsumerStatefulWidget {
 class _LoginTelaState extends ConsumerState<LoginTela> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-  final _codigoEscolaController = TextEditingController(); // NOVO: Campo de Código da Escola
+  final _codigoEscolaController = TextEditingController(); 
   final _senhaController = TextEditingController();
   bool _ocultarSenha = true;
 
@@ -28,21 +28,29 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
 
   void _executarLogin() {
     if (_formKey.currentState!.validate()) {
-      String login = _emailController.text.trim().toLowerCase();
+      String loginOriginal = _emailController.text.trim().toLowerCase();
       String codigoEscola = _codigoEscolaController.text.trim().toLowerCase();
       
-      // MÁGICA: Evita conflito entre escolas!
-      if (!login.contains('@')) {
+      String loginFinal = loginOriginal;
+
+      if (!loginOriginal.contains('@')) {
         if (codigoEscola.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Para acessar com Matrícula ou ID, informe o Código da Instituição.'), backgroundColor: Colors.red),
+            const SnackBar(content: Text('Para acessar com Matrícula ou ID/CPF, informe o Código da Instituição.'), backgroundColor: Colors.red),
           );
           return;
         }
-        login = '$login@$codigoEscola.com';
+        
+        // ================================================================
+        // MÁGICA DE LIMPEZA DE CPF: Remove pontos, traços e espaços!
+        // Garante que "098.766.543-72" vire "09876654372" automaticamente
+        // ================================================================
+        String loginLimpo = loginOriginal.replaceAll('.', '').replaceAll('-', '').replaceAll('/', '').replaceAll(' ', '');
+        
+        loginFinal = '$loginLimpo@$codigoEscola.com';
       }
 
-      ref.read(authProvider.notifier).fazerLogin(login, _senhaController.text);
+      ref.read(authProvider.notifier).fazerLogin(loginFinal, _senhaController.text);
     }
   }
 
@@ -75,7 +83,7 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Text(
-                        'Digite o e-mail cadastrado na sua conta.\n(Atenção: Não é possível recuperar senha utilizando apenas matrícula ou ID)',
+                        'Digite o e-mail cadastrado na sua conta.\n(Atenção: Não é possível recuperar senha utilizando apenas matrícula ou CPF)',
                         style: TextStyle(color: Colors.black54),
                       ),
                       const SizedBox(height: 24),
@@ -136,10 +144,13 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
         },
         data: (usuario) {
           if (usuario != null) {
-            if (usuario.perfil == 'super_admin') context.go('/super-admin');
-            else if (usuario.perfil == 'admin_escola') context.go('/admin');
-            else if (usuario.perfil == 'professor') context.go('/professor');
-            else if (usuario.perfil == 'aluno') context.go('/aluno'); 
+            final perfil = usuario.perfil.toLowerCase();
+            
+            if (perfil == 'super_admin') context.go('/super-admin');
+            else if (perfil == 'admin_escola') context.go('/admin');
+            else if (perfil == 'professor') context.go('/professor');
+            else if (perfil == 'aluno') context.go('/aluno'); 
+            else if (perfil == 'responsavel' || perfil == 'responsável') context.go('/responsavel');
           }
         },
       );
@@ -171,13 +182,13 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                       const SizedBox(height: 24),
                       const Text('Acesso ao Sistema', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: corDominante)),
                       const SizedBox(height: 8),
-                      const Text('Insira seu e-mail, matrícula ou ID para acessar o seu painel.', textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)),
+                      const Text('Insira seu e-mail, matrícula ou CPF para acessar o seu painel.', textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)),
                       const SizedBox(height: 32),
                       
                       TextFormField(
                         controller: _emailController,
                         decoration: InputDecoration(
-                          labelText: 'E-mail, Matrícula ou ID',
+                          labelText: 'E-mail, Matrícula ou CPF',
                           prefixIcon: const Icon(Icons.person_outline, color: corDominante),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),
@@ -185,12 +196,11 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
                       ),
                       const SizedBox(height: 16),
                       
-                      // NOVO CAMPO: CÓDIGO DA ESCOLA
                       TextFormField(
                         controller: _codigoEscolaController,
                         decoration: InputDecoration(
                           labelText: 'Código da Instituição',
-                          hintText: 'Apenas se usar Matrícula/ID',
+                          hintText: 'Apenas se usar Matrícula/CPF',
                           prefixIcon: const Icon(Icons.domain_rounded, color: corDominante),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                         ),

@@ -69,8 +69,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
   }
 
   void _confirmarExclusaoAcesso(Map<String, dynamic> u) {
-    final bool isAutomatico = u['origem'] == 'AUTOMATICO';
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -357,7 +355,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                 ),
               ),
               actionsPadding: const EdgeInsets.all(16),
-              actionsAlignment: MainAxisAlignment.spaceBetween, // FIX DO ERRO DA TELA CINZA WEB (OVERFLOW BAR)
+              actionsAlignment: MainAxisAlignment.spaceBetween,
               actions: [
                 if (statusVisual != 'Excluído')
                   TextButton.icon(
@@ -458,7 +456,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     String getPessoaId(Map<String, dynamic> p, String tipo) {
       if (tipo == 'ALUNO') return p['matricula']?.toString() ?? '';
-      if (tipo == 'RESPONSÁVEL') return p['cpf']?.toString() ?? '';
+      if (tipo == 'RESPONSÁVEL') return (p['cpf']?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), '');
       return p['id']?.toString() ?? '';
     }
 
@@ -605,14 +603,14 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                           },
                         ),
                       
-                      if (!isEdicao && tipoSelecionado == 'ALUNO' && idPessoaSelecionada != null)
+                      if (!isEdicao && (tipoSelecionado == 'ALUNO' || tipoSelecionado == 'RESPONSÁVEL') && idPessoaSelecionada != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8, bottom: 4),
                           child: CheckboxListTile(
                             contentPadding: EdgeInsets.zero,
                             controlAffinity: ListTileControlAffinity.leading,
                             activeColor: corPrimaria,
-                            title: const Text('Usar matrícula como login', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                            title: Text('Usar ${tipoSelecionado == 'ALUNO' ? 'Matrícula' : 'CPF'} como login', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                             value: usarMatricula,
                             onChanged: (val) {
                               setModalState(() {
@@ -640,7 +638,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                         ),
                         validator: (v) {
                           if (v!.trim().isEmpty) return 'Obrigatório';
-                          if (!usarMatricula && tipoSelecionado != 'ALUNO' && !v.contains('@')) {
+                          if (!usarMatricula && tipoSelecionado != 'ALUNO' && tipoSelecionado != 'RESPONSÁVEL' && !v.contains('@')) {
                             return 'Insira um e-mail válido';
                           }
                           return null;
@@ -805,9 +803,10 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     void adicionarAuto(Map<String, dynamic> data, String perfil, IconData icone, Color cor) {
       String idBase = '';
       if (perfil == 'ALUNO') idBase = (data['matricula'] ?? '').toString().toLowerCase().trim();
-      else if (perfil == 'RESPONSÁVEL') idBase = (data['cpf'] ?? '').toString().toLowerCase().trim();
+      else if (perfil == 'RESPONSÁVEL') idBase = (data['cpf'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '').toLowerCase().trim();
       else idBase = (data['id'] ?? '').toString().toLowerCase().trim();
 
+      // Puxa o e-mail ou o CPF limpo diretamente do cadastro do aluno/responsável
       String loginChave = (data['email']?.toString().trim().isNotEmpty == true) 
           ? data['email'].toString().toLowerCase().trim() 
           : idBase;
@@ -827,8 +826,9 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
         String chavePrincipal = chavesEncontradas.first;
         status = manuaisMap[chavePrincipal]!['status'] ?? status;
         
+        // Verifica se o usuário alterou o e-mail no painel de usuário manual, se sim, o manual tem prioridade.
         String emailAcesso = (manuaisMap[chavePrincipal]!['email'] ?? '').toString().trim().toLowerCase();
-        if (emailAcesso.isNotEmpty) {
+        if (emailAcesso.isNotEmpty && !loginChave.contains('@')) {
            loginChave = emailAcesso;
         } else if (!loginChave.contains('@')) {
            loginChave = manuaisMap[chavePrincipal]!['idLogin']?.toString().toLowerCase() ?? loginChave;
@@ -853,7 +853,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
         'origem': 'AUTOMATICO',
         'icone': icone,
         'cor': cor,
-        'rawDoc': data,
+        'rawDoc': data, // Passando os dados frescos da ficha para o modal!
       });
     }
 

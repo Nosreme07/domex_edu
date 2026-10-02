@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; 
+import 'package:firebase_core/firebase_core.dart'; // NOVO: Necessário para criar a instância temporária do Firebase
 
 class UsuarioSessao {
   final String id;
@@ -208,6 +209,60 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         rethrow;
       }
     });
+  }
+
+  // =========================================================================
+  // CRIAÇÃO DE USUÁRIOS SEM DERRUBAR O ADMIN LOGADO
+  // =========================================================================
+  Future<void> criarUsuarioManual({
+    required String email,
+    required String senha,
+    required String nome,
+    required String perfil,
+  }) async {
+    final usuarioLogado = state.value;
+    if (usuarioLogado == null) throw Exception('Administrador não logado.');
+
+    try {
+      // 1. Cria uma instância temporária do Firebase
+      FirebaseApp tempApp = await Firebase.initializeApp(
+        name: 'TempAuth_${DateTime.now().millisecondsSinceEpoch}',
+        options: Firebase.app().options,
+      );
+
+      // 2. Cria o login na instância temporária
+      UserCredential userCred = await FirebaseAuth.instanceFor(app: tempApp)
+          .createUserWithEmailAndPassword(email: email, password: senha);
+
+      final uid = userCred.user!.uid;
+
+      // 3. Salva a ficha de acesso no banco de dados central ('usuarios')
+      await FirebaseFirestore.instance.collection('usuarios').doc(uid).set({
+        'id': uid,
+        'idLogin': email.split('@')[0], // Salva a parte antes do @ (CPF ou Matrícula limpa) para a busca no login
+        'nome': nome,
+        'email': email,
+        'perfil': perfil, // 'responsavel', 'professor', ou 'admin_escola'
+        'escolaId': usuarioLogado.tenantId, // Prende o usuário à escola correta
+        'codigoEscola': usuarioLogado.codigoEscola,
+        'status': 'Ativo',
+        'dataCadastro': FieldValue.serverTimestamp(),
+      });
+
+      // 4. Apaga a instância temporária
+      await tempApp.delete();
+
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'email-already-in-use') {
+        throw Exception('Este login (e-mail ou CPF) já possui acesso gerado.');
+      } else if (e.code == 'weak-password') {
+        throw Exception('A senha informada é muito fraca. Mínimo 6 caracteres.');
+      } else {
+        throw Exception(e.message);
+      }
+    } catch (e) {
+      throw Exception('Erro inesperado: $e');
+    }
   }
 
   Future<void> fazerLogout() async {
