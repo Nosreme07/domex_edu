@@ -80,7 +80,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
     final corPrimaria = Theme.of(context).primaryColor;
 
     return DefaultTabController(
-      length: 5, // 5 Abas
+      length: 5, 
       initialIndex: widget.abaInicial,
       child: Scaffold(
         appBar: AppBar(
@@ -113,7 +113,7 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             _GestaoProfessoresAba(),
             _GestaoSecretariaAba(),
             _GestaoTurmasAba(),
-            AdminUsuariosFormTela(), // Tela de Usuários de volta!
+            AdminUsuariosFormTela(), 
           ],
         ),
       ),
@@ -525,7 +525,8 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
                                             pdfLinha('Nome', r['nome']),
                                             pw.Row(
                                               children: [
-                                                pw.Expanded(child: pdfLinha('CPF', r['cpf'])),
+                                                // PDF também limpando CPF visualmente
+                                                pw.Expanded(child: pdfLinha('CPF', r['cpf']?.toString().replaceAll(RegExp(r'[^0-9]'), '') ?? '')),
                                                 pw.Expanded(child: pdfLinha('Tel', r['telefone'])),
                                               ],
                                             ),
@@ -847,7 +848,7 @@ class _GestaoAlunosAbaState extends ConsumerState<_GestaoAlunosAba> with Automat
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           _buildLinha('Nome', r['nome']),
-                                          _buildLinha('CPF', r['cpf']),
+                                          _buildLinha('CPF', r['cpf']?.toString().replaceAll(RegExp(r'[^0-9]'), '') ?? ''), // <--- Força a mostrar o CPF limpo!
                                           _buildLinhaTelefone('Tel', r['telefone']),
                                           _buildLinha('E-mail', r['email']),
                                           const SizedBox(height: 4),

@@ -835,6 +835,13 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
       final isEdicao = widget.alunoParaEditar != null;
       String matriculaParaSalvar;
 
+      // ==============================================================
+      // MÁGICA 1: LIMPAR OS CPFs ANTES DE MOSTRAR NA REVISÃO E SALVAR
+      // ==============================================================
+      final cpfAlunoLimpo = _cpfAlunoCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+      final cpfResp1Limpo = _resp1CpfCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+      final cpfResp2Limpo = _resp2CpfCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+
       if (isEdicao) {
         matriculaParaSalvar = widget.alunoParaEditar!['matricula'];
       } else {
@@ -944,7 +951,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                     if (_emailAlunoCtrl.text.isNotEmpty)
                       _resumoLinha('E-mail', _emailAlunoCtrl.text),
                     if (_cpfAlunoCtrl.text.isNotEmpty)
-                      _resumoLinha('CPF', _cpfAlunoCtrl.text),
+                      _resumoLinha('CPF', cpfAlunoLimpo), // Mostrando limpo!
                     if (_rgAlunoCtrl.text.isNotEmpty)
                       _resumoLinha(
                         'RG',
@@ -999,12 +1006,14 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                       '${_resp1NomeCtrl.text} (Tel: ${_resp1TelCtrl.text})',
                     ),
                     if (_resp1CpfCtrl.text.isNotEmpty)
-                      _resumoLinha('CPF Principal', _resp1CpfCtrl.text),
+                      _resumoLinha('CPF Principal', cpfResp1Limpo), // Mostrando limpo!
                     if (_resp2NomeCtrl.text.isNotEmpty)
                       _resumoLinha(
                         'Resp. Secundário',
                         '${_resp2NomeCtrl.text} (Tel: ${_resp2TelCtrl.text})',
                       ),
+                    if (_resp2CpfCtrl.text.isNotEmpty)
+                      _resumoLinha('CPF Secundário', cpfResp2Limpo), // Mostrando limpo!
                     _resumoLinha(
                       'Autoriza Sair Só',
                       _autorizaSairSo ? 'SIM' : 'NÃO',
@@ -1178,13 +1187,16 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                         )
                         .toList();
 
+                    // ==============================================================
+                    // MÁGICA 2: SALVAR OS DADOS DE CPF TOTALMENTE LIMPOS NO FIREBASE
+                    // ==============================================================
                     final dadosAluno = {
                       'matricula': matriculaParaSalvar,
                       'nome': _nomeAlunoCtrl.text,
                       'ra': _raCtrl.text,
                       'telefone': _telefoneAlunoCtrl.text,
                       'email': _emailAlunoCtrl.text.trim().toLowerCase(),
-                      'cpf': _cpfAlunoCtrl.text,
+                      'cpf': cpfAlunoLimpo, // Salvando limpo!
                       'rg': _rgAlunoCtrl.text,
                       'orgaoExpedidor': _orgaoExpedidorCtrl.text,
                       'naturalidade': _naturalidadeCtrl.text,
@@ -1221,7 +1233,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                       'responsaveis': [
                         {
                           'nome': _resp1NomeCtrl.text,
-                          'cpf': _resp1CpfCtrl.text,
+                          'cpf': cpfResp1Limpo, // Salvando limpo!
                           'telefone': _resp1TelCtrl.text,
                           'email': _resp1EmailCtrl.text,
                           'principal': true,
@@ -1229,7 +1241,7 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                         if (_resp2NomeCtrl.text.isNotEmpty)
                           {
                             'nome': _resp2NomeCtrl.text,
-                            'cpf': _resp2CpfCtrl.text,
+                            'cpf': cpfResp2Limpo, // Salvando limpo!
                             'telefone': _resp2TelCtrl.text,
                             'email': _resp2EmailCtrl.text,
                             'principal': false,
@@ -1700,8 +1712,8 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                                                 (v != null &&
                                                         v.isNotEmpty &&
                                                         !v.contains('@'))
-                                                ? 'E-mail inválido'
-                                                : null,
+                                                    ? 'E-mail inválido'
+                                                    : null,
                                           ),
                                         ),
                                       ],
@@ -2336,159 +2348,6 @@ class _AdminAlunoFormTelaState extends ConsumerState<AdminAlunoFormTela> {
                               style: TextStyle(fontWeight: FontWeight.bold),
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(32.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Row(
-                                children: [
-                                  Icon(
-                                    Icons.folder_shared_rounded,
-                                    color: Colors.deepPurple,
-                                  ),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Documentos do Aluno (RG, Histórico, etc.)',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.deepPurple,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.deepPurple,
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: _escolherAnexos,
-                                icon: const Icon(Icons.upload_file_rounded),
-                                label: const Text('Adicionar Arquivo'),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 32),
-                          if (_anexos.isEmpty)
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(32),
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade50,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: Colors.grey.shade300,
-                                  style: BorderStyle.solid,
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  Icon(
-                                    Icons.cloud_upload_outlined,
-                                    size: 48,
-                                    color: Colors.grey.shade400,
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'Nenhum documento anexado.',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade600,
-                                    ),
-                                  ),
-                                  const Text(
-                                    'Envie PDFs ou imagens (RG dos pais, Histórico Escolar, Laudo Médico).',
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          else
-                            ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              itemCount: _anexos.length,
-                              separatorBuilder: (ctx, index) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final anexo = _anexos[index];
-                                final isPDF = anexo['extensao'] == 'pdf';
-                                final isSalvo = anexo['url'] != null;
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(
-                                      color: Colors.grey.shade300,
-                                    ),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: ListTile(
-                                    leading: Icon(
-                                      isPDF
-                                          ? Icons.picture_as_pdf_rounded
-                                          : Icons.image_rounded,
-                                      color: isPDF ? Colors.red : Colors.blue,
-                                      size: 32,
-                                    ),
-                                    title: Text(
-                                      anexo['nome'],
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    subtitle: Text(
-                                      isSalvo
-                                          ? 'Salvo nas nuvens'
-                                          : 'Pronto para enviar',
-                                      style: TextStyle(
-                                        color: isSalvo
-                                            ? Colors.green
-                                            : Colors.orange,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    trailing: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        if (isSalvo)
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.download_rounded,
-                                              color: Colors.blue,
-                                            ),
-                                            tooltip:
-                                                'Baixar / Visualizar Arquivo',
-                                            onPressed: () =>
-                                                _abrirAnexoUrl(anexo['url']),
-                                          ),
-                                        IconButton(
-                                          icon: const Icon(
-                                            Icons.delete_outline_rounded,
-                                            color: Colors.red,
-                                          ),
-                                          tooltip: 'Remover Anexo',
-                                          onPressed: () => _removerAnexo(index),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
                         ],
                       ),
                     ),

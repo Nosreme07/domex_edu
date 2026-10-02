@@ -8,7 +8,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
-import '../estado/responsavel_provider.dart';
 import '../estado/secretaria_provider.dart';
 import '../estado/turma_provider.dart';
 import '../estado/usuario_escola_provider.dart';
@@ -112,8 +111,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                       await ref.read(alunoServiceProvider).atualizarStatus(doc['matricula'], 'Excluído');
                     } else if (perfil == 'PROFESSOR') {
                       await ref.read(professorServiceProvider).atualizarStatus(doc['id'], 'Excluído');
-                    } else if (perfil == 'RESPONSÁVEL') {
-                      await ref.read(responsavelServiceProvider).atualizarStatus(doc['id'], 'Excluído');
                     } else if (perfil == 'SECRETARIA') {
                       await ref.read(secretariaServiceProvider).atualizarStatus(doc['id'], 'Excluído');
                     }
@@ -294,8 +291,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                                       await ref.read(alunoServiceProvider).atualizarStatus(doc['matricula'], novoStatus);
                                     } else if (perfil == 'PROFESSOR') {
                                       await ref.read(professorServiceProvider).atualizarStatus(doc['id'], novoStatus);
-                                    } else if (perfil == 'RESPONSÁVEL') {
-                                      await ref.read(responsavelServiceProvider).atualizarStatus(doc['id'], novoStatus);
                                     } else if (perfil == 'SECRETARIA') {
                                       await ref.read(secretariaServiceProvider).atualizarStatus(doc['id'], novoStatus);
                                     } else {
@@ -418,7 +413,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                           Navigator.pop(context);
                           if (perfil == 'ALUNO') context.push('/admin/cadastros/aluno/novo', extra: doc);
                           else if (perfil == 'PROFESSOR') context.push('/admin/cadastros/professor/novo', extra: doc);
-                          else if (perfil == 'RESPONSÁVEL') context.push('/admin/cadastros/responsavel/novo', extra: doc);
+                          // Como não temos mais form isolado de responsável, levamos o admin pra turma/aluno
                           else if (perfil == 'SECRETARIA') context.push('/admin/cadastros/secretaria/novo', extra: doc);
                         },
                         icon: const Icon(Icons.edit_rounded, color: Colors.blue),
@@ -456,7 +451,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     String getPessoaId(Map<String, dynamic> p, String tipo) {
       if (tipo == 'ALUNO') return p['matricula']?.toString() ?? '';
-      if (tipo == 'RESPONSÁVEL') return (p['cpf']?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+      if (tipo == 'RESPONSÁVEL') return (p['cpf']?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), '').trim();
       return p['id']?.toString() ?? '';
     }
 
@@ -754,7 +749,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     final alunosAsync = ref.watch(alunosStreamProvider);
     final professoresAsync = ref.watch(professoresStreamProvider);
-    final responsaveisAsync = ref.watch(responsavelStreamProvider);
     final secretariaAsync = ref.watch(secretariaStreamProvider);
     final manuaisAsync = ref.watch(usuariosEscolaStreamProvider);
     final turmasAsync = ref.watch(turmasStreamProvider);
@@ -765,10 +759,9 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
     if (manuaisAsync.hasError) return _buildErro('Erro em Usuários', manuaisAsync.error);
     if (alunosAsync.hasError) return _buildErro('Erro em Alunos', alunosAsync.error);
     if (professoresAsync.hasError) return _buildErro('Erro em Professores', professoresAsync.error);
-    if (responsaveisAsync.hasError) return _buildErro('Erro em Responsáveis', responsaveisAsync.error);
     if (secretariaAsync.hasError) return _buildErro('Erro em Secretaria', secretariaAsync.error);
 
-    if (alunosAsync.isLoading || professoresAsync.isLoading || responsaveisAsync.isLoading || secretariaAsync.isLoading || manuaisAsync.isLoading || turmasAsync.isLoading) {
+    if (alunosAsync.isLoading || professoresAsync.isLoading || secretariaAsync.isLoading || manuaisAsync.isLoading || turmasAsync.isLoading) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -783,10 +776,53 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
 
     final alunos = alunosAsync.value ?? [];
     final professores = professoresAsync.value ?? [];
-    final responsaveis = responsaveisAsync.value ?? [];
     final secretaria = secretariaAsync.value ?? [];
     final manuais = manuaisAsync.value ?? [];
     final turmasDoSistema = turmasAsync.value ?? [];
+
+    // =========================================================================
+    // EXTRATOR MAGICO DE RESPONSÁVEIS DOS ALUNOS
+    // =========================================================================
+    final responsaveisUnicos = <String, Map<String, dynamic>>{};
+    
+    for (var aluno in alunos) {
+      final respsArray = aluno['responsaveis'] as List? ?? [];
+      final matriculaAluno = aluno['matricula']?.toString() ?? '';
+      final nomeAluno = aluno['nome']?.toString() ?? 'Sem Nome';
+
+      for (var r in respsArray) {
+        final cpfOriginal = (r['cpf'] ?? '').toString();
+        final cpfLimpo = cpfOriginal.replaceAll(RegExp(r'[^0-9]'), '').trim();
+        final nomeResp = (r['nome'] ?? '').toString().trim();
+
+        if (nomeResp.isNotEmpty && cpfLimpo.isNotEmpty) {
+          if (!responsaveisUnicos.containsKey(cpfLimpo)) {
+            // Cria um perfil de responsável independente na memória
+            responsaveisUnicos[cpfLimpo] = {
+              'id': 'RESP-$cpfLimpo',
+              'cpf': cpfLimpo,
+              'nome': nomeResp,
+              'email': (r['email'] ?? '').toString().trim(),
+              'telefone': (r['telefone'] ?? '').toString().trim(),
+              'status': 'Ativo',
+              'alunosVinculados': ['${nomeAluno.toUpperCase()} ($matriculaAluno)'],
+            };
+          } else {
+            // Se o responsável já existe, apenas adiciona o filho à lista dele
+            final vinculoStr = '${nomeAluno.toUpperCase()} ($matriculaAluno)';
+            final vinculosAtuais = List<String>.from(responsaveisUnicos[cpfLimpo]!['alunosVinculados']);
+            if (!vinculosAtuais.contains(vinculoStr)) {
+              vinculosAtuais.add(vinculoStr);
+              responsaveisUnicos[cpfLimpo]!['alunosVinculados'] = vinculosAtuais;
+            }
+          }
+        }
+      }
+    }
+    
+    final responsaveisList = responsaveisUnicos.values.toList();
+
+    // =========================================================================
 
     Map<String, Map<String, dynamic>> manuaisMap = {};
     for (var m in manuais) {
@@ -806,7 +842,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
       else if (perfil == 'RESPONSÁVEL') idBase = (data['cpf'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '').toLowerCase().trim();
       else idBase = (data['id'] ?? '').toString().toLowerCase().trim();
 
-      // Puxa o e-mail ou o CPF limpo diretamente do cadastro do aluno/responsável
       String loginChave = (data['email']?.toString().trim().isNotEmpty == true) 
           ? data['email'].toString().toLowerCase().trim() 
           : idBase;
@@ -826,7 +861,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
         String chavePrincipal = chavesEncontradas.first;
         status = manuaisMap[chavePrincipal]!['status'] ?? status;
         
-        // Verifica se o usuário alterou o e-mail no painel de usuário manual, se sim, o manual tem prioridade.
         String emailAcesso = (manuaisMap[chavePrincipal]!['email'] ?? '').toString().trim().toLowerCase();
         if (emailAcesso.isNotEmpty && !loginChave.contains('@')) {
            loginChave = emailAcesso;
@@ -853,13 +887,13 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
         'origem': 'AUTOMATICO',
         'icone': icone,
         'cor': cor,
-        'rawDoc': data, // Passando os dados frescos da ficha para o modal!
+        'rawDoc': data, 
       });
     }
 
     for (var a in alunos) adicionarAuto(a, 'ALUNO', Icons.school_rounded, Colors.blue);
     for (var p in professores) adicionarAuto(p, 'PROFESSOR', Icons.assignment_ind_rounded, Colors.orange);
-    for (var r in responsaveis) adicionarAuto(r, 'RESPONSÁVEL', Icons.family_restroom_rounded, Colors.green);
+    for (var r in responsaveisList) adicionarAuto(r, 'RESPONSÁVEL', Icons.family_restroom_rounded, Colors.green);
     for (var s in secretaria) adicionarAuto(s, 'SECRETARIA', Icons.support_agent_rounded, Colors.teal);
 
     for (var m in manuaisMap.values) {
@@ -974,7 +1008,7 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
               const SizedBox(width: 16),
               
               ElevatedButton.icon(
-                onPressed: () => _abrirModalAcessoManual(alunos, professores, responsaveis, secretaria, manuaisMap), 
+                onPressed: () => _abrirModalAcessoManual(alunos, professores, responsaveisList, secretaria, manuaisMap), 
                 style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
                 icon: const Icon(Icons.admin_panel_settings_rounded),
                 label: const Text('Novo Acesso Manual'),
@@ -1125,8 +1159,6 @@ class _AdminUsuariosFormTelaState extends ConsumerState<AdminUsuariosFormTela> w
                                             await ref.read(alunoServiceProvider).atualizarStatus(doc['matricula'], statusFinal);
                                           } else if (perfil == 'PROFESSOR') {
                                             await ref.read(professorServiceProvider).atualizarStatus(doc['id'], statusFinal);
-                                          } else if (perfil == 'RESPONSÁVEL') {
-                                            await ref.read(responsavelServiceProvider).atualizarStatus(doc['id'], statusFinal);
                                           } else if (perfil == 'SECRETARIA') {
                                             await ref.read(secretariaServiceProvider).atualizarStatus(doc['id'], statusFinal);
                                           } else {
