@@ -18,6 +18,7 @@ import '../estado/aluno_dashboard_provider.dart';
 class AlunoDashboardController {
   static void Function(String tenantId, String turmaId, String alunoDocId, Color cor)? abrirBoletim;
   static void Function(String tenantId, String turmaId, String matricula, Color cor)? abrirFrequencia;
+  static void Function(String tenantId, String turmaId, Color cor)? abrirMinhaTurma; // NOVO: Para abrir a turma
   
   static String tenantId = '';
   static String turmaId = '';
@@ -277,6 +278,33 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                   ],
                 );
               }
+            );
+          }
+        );
+      }
+    );
+  }
+
+  void _abrirMinhaTurma(String tenantId, String turmaId, Color corPrimaria) {
+    if (turmaId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sua matrícula não está vinculada a uma turma.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return _MinhaTurmaModal(
+              tenantId: tenantId,
+              turmaId: turmaId,
+              corPrimaria: corPrimaria,
+              scrollController: scrollController,
             );
           }
         );
@@ -797,6 +825,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
             AlunoDashboardController.corPrimaria = corPrimaria;
             AlunoDashboardController.abrirBoletim = _abrirBoletim;
             AlunoDashboardController.abrirFrequencia = _abrirFrequencia;
+            AlunoDashboardController.abrirMinhaTurma = _abrirMinhaTurma;
           });
 
           final avaliacoesAsync = ref.watch(avaliacoesAlunoStreamProvider(turmaId));
@@ -807,55 +836,52 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
               children: [
                 Container(
                   width: double.infinity,
-                  padding: EdgeInsets.fromLTRB(isMobile ? 24 : 40, 16, isMobile ? 24 : 40, 32),
+                  padding: EdgeInsets.fromLTRB(isMobile ? 20 : 40, 16, isMobile ? 20 : 40, 24),
                   decoration: BoxDecoration(
                     color: corPrimaria,
                     borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
                     boxShadow: [BoxShadow(color: corPrimaria.withAlpha(60), blurRadius: 10, offset: const Offset(0, 4))]
                   ),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                nomeEscola.toUpperCase(),
-                                style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-                                maxLines: 1, overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Olá,\n$nomeCompleto 👋',
-                                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, height: 1.2),
-                                maxLines: 3, 
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 16),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(16)),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.school_rounded, color: Colors.white, size: 12),
-                                    const SizedBox(width: 6),
-                                    Flexible(
-                                      child: Text(
-                                        turmaNome, 
-                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
-                                        maxLines: 1, overflow: TextOverflow.ellipsis,
-                                      ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              nomeEscola.toUpperCase(),
+                              style: const TextStyle(color: Colors.white70, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+                              maxLines: 1, overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Olá,\n$nomeCompleto 👋',
+                              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, height: 1.2),
+                              maxLines: 3, 
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 10),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(color: Colors.white.withAlpha(40), borderRadius: BorderRadius.circular(16)),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.school_rounded, color: Colors.white, size: 12),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      turmaNome, 
+                                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis,
                                     ),
-                                  ],
-                                ),
-                              )
-                            ],
-                          ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          ],
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -866,8 +892,8 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                             onTap: () => _abrirOpcoesFoto(tenantId, alunoDocId, fotoUrl),
                             borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              width: 80,
-                              height: 106, 
+                              width: 60,
+                              height: 80, 
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(12),
@@ -1840,6 +1866,112 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
           ),
         )
       ],
+    );
+  }
+}
+
+class _MinhaTurmaModal extends StatelessWidget {
+  final String tenantId;
+  final String turmaId;
+  final Color corPrimaria;
+  final ScrollController scrollController;
+
+  const _MinhaTurmaModal({
+    required this.tenantId, 
+    required this.turmaId, 
+    required this.corPrimaria, 
+    required this.scrollController
+  });
+
+  Future<Map<String, dynamic>> _buscarDadosTurma() async {
+    final turmaDoc = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).get();
+    final alunosQuery = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('alunos')
+        .where('turmaId', isEqualTo: turmaId).where('status', isEqualTo: 'Ativo').get();
+    
+    return {
+      'turma': turmaDoc.data() ?? {},
+      'alunos': alunosQuery.docs.map((d) => d.data()).toList()
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.groups_rounded, color: corPrimaria)),
+              const SizedBox(width: 16),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Minha Turma', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Professores e Colegas de Classe', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _buscarDadosTurma(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: corPrimaria));
+              if (!snapshot.hasData) return const Center(child: Text('Nenhum dado encontrado.'));
+              
+              final data = snapshot.data!;
+              final turma = data['turma'] as Map<String, dynamic>;
+              final alunos = data['alunos'] as List<dynamic>;
+              final profs = turma['professoresVinculados'] as List<dynamic>? ?? [];
+
+              alunos.sort((a, b) => (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()));
+              profs.sort((a, b) => (a['professorNome'] ?? '').toString().compareTo((b['professorNome'] ?? '').toString()));
+
+              final profsUnicos = <String, Map<String, dynamic>>{};
+              for (var p in profs) {
+                final pId = p['professorId'];
+                if (pId != null && !profsUnicos.containsKey(pId)) {
+                  profsUnicos[pId] = p;
+                } else if (pId != null) {
+                   profsUnicos[pId]!['disciplina'] = '${profsUnicos[pId]!['disciplina']} / ${p['disciplina']}';
+                }
+              }
+
+              return ListView(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                children: [
+                  Text('👨‍🏫 Nossos Professores (${profsUnicos.length})', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: corPrimaria)),
+                  const SizedBox(height: 12),
+                  if (profsUnicos.isEmpty) const Text('Nenhum professor vinculado.')
+                  else ...profsUnicos.values.map((p) => ListTile(
+                    leading: CircleAvatar(backgroundColor: corPrimaria.withAlpha(30), child: Icon(Icons.person, color: corPrimaria)),
+                    title: Text(p['professorNome'] ?? 'Professor', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    subtitle: Text(p['disciplina'] ?? 'Geral', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    contentPadding: EdgeInsets.zero,
+                  )),
+                  const Divider(height: 32),
+                  Text('🎓 Meus Colegas (${alunos.length})', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: corPrimaria)),
+                  const SizedBox(height: 12),
+                  if (alunos.isEmpty) const Text('Nenhum aluno encontrado.')
+                  else ...alunos.map((a) => ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.grey.shade200,
+                      backgroundImage: (a['fotoPortalUrl'] != null && a['fotoPortalUrl'].toString().isNotEmpty) 
+                         ? NetworkImage(a['fotoPortalUrl']) 
+                         : ((a['fotoUrl'] != null && a['fotoUrl'].toString().isNotEmpty) ? NetworkImage(a['fotoUrl']) : null),
+                      child: (a['fotoPortalUrl'] == null && a['fotoUrl'] == null) ? const Icon(Icons.person, color: Colors.grey) : null,
+                    ),
+                    title: Text(a['nome'] ?? 'Aluno', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                    contentPadding: EdgeInsets.zero,
+                  )),
+                ],
+              );
+            }
+          ),
+        )
+      ]
     );
   }
 }

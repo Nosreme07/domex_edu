@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../autenticacao/apresentacao/estado/auth_provider.dart';
-
 import '../apresentacao/telas/aluno_dashboard_tela.dart'; // <--- Import da tela para aceder ao Controller
 
 class AlunoLayout extends ConsumerStatefulWidget {
@@ -161,6 +160,36 @@ class _AlunoLayoutState extends ConsumerState<AlunoLayout> {
         ),
         
         _buildMenuItem(context, Icons.calendar_month_rounded, 'Calendário Escolar', '/aluno/calendario'),
+        
+        // ==============================================================================
+        // NOVO BOTÃO: MINHA TURMA (Chamada Direta Pelo Controlador Global)
+        // ==============================================================================
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: ListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            leading: const Icon(Icons.groups_rounded, color: Colors.white, size: 22),
+            title: const Text('Minha Turma', style: TextStyle(color: Colors.white, fontSize: 14)),
+            onTap: () {
+              if (MediaQuery.of(context).size.width < 800) Navigator.pop(context);
+              
+              // Evoca o PopUp modal presente na tela do Aluno_Dashboard
+              if (AlunoDashboardController.abrirMinhaTurma != null && AlunoDashboardController.turmaId.isNotEmpty) {
+                AlunoDashboardController.abrirMinhaTurma!(
+                  AlunoDashboardController.tenantId,
+                  AlunoDashboardController.turmaId,
+                  AlunoDashboardController.corPrimaria
+                );
+              } else {
+                // Caso o usuário tente acessar sem estar na tela principal, redireciona primeiro e exibe um erro
+                context.go('/aluno');
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Por favor, abra a sua turma a partir do ecrã inicial.'), backgroundColor: Colors.orange)
+                );
+              }
+            },
+          ),
+        ),
         
         const Spacer(),
         ListTile(
