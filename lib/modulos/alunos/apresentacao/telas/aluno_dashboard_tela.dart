@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
@@ -18,7 +16,7 @@ import '../estado/aluno_dashboard_provider.dart';
 class AlunoDashboardController {
   static void Function(String tenantId, String turmaId, String alunoDocId, Color cor)? abrirBoletim;
   static void Function(String tenantId, String turmaId, String matricula, Color cor)? abrirFrequencia;
-  static void Function(String tenantId, String turmaId, Color cor)? abrirMinhaTurma; // NOVO: Para abrir a turma
+  static void Function(String tenantId, String turmaId, Color cor)? abrirMinhaTurma; 
   
   static String tenantId = '';
   static String turmaId = '';
@@ -142,7 +140,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                 initAspectRatio: CropAspectRatioPreset.original,
                 lockAspectRatio: true,
               ),
-              IOSUiSettings(title: 'Enquadrar Foto 3x4', aspectRatioLockEnabled: true),
             ],
       );
 
@@ -358,6 +355,29 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
+  void _abrirAvisos(String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return _AvisosModal(
+              tenantId: tenantId,
+              turmaId: turmaId,
+              alunoDocId: alunoDocId,
+              corPrimaria: corPrimaria,
+              scrollController: scrollController,
+            );
+          }
+        );
+      }
+    );
+  }
+
   void _abrirTodasAvaliacoes(String tenantId, String? turmaId, String alunoDocId, Color corPrimaria) {
     if (turmaId == null || turmaId.isEmpty) return;
 
@@ -522,7 +542,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                 const SizedBox(height: 16),
               ],
 
-              // LÓGICA DE FEEDBACK (OBSERVAÇÕES E FOTOS DO PROFESSOR)
               if (obs.isNotEmpty || fotos.isNotEmpty) ...[
                 const Text('Feedback do Professor:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87)),
                 const SizedBox(height: 8),
@@ -581,52 +600,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
     );
   }
 
-  void _abrirHistoricoAvisos(List<dynamic> avisosAluno, String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.8, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
-          builder: (_, scrollController) {
-            return Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Row(
-                    children: [
-                      Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.history_edu_rounded, color: corPrimaria)),
-                      const SizedBox(width: 16),
-                      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Histórico de Avisos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        Text('Todas as mensagens recebidas', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                      ])),
-                      IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(ctx)),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: ListView.separated(
-                    controller: scrollController,
-                    padding: const EdgeInsets.all(20),
-                    itemCount: avisosAluno.length,
-                    separatorBuilder: (c, i) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      return _buildAvisoCard(avisosAluno[index], tenantId, turmaId, alunoDocId, corPrimaria);
-                    },
-                  ),
-                )
-              ],
-            );
-          }
-        );
-      }
-    );
-  }
-
   Widget _buildAtalho(String titulo, IconData icone, Color corPrimaria, VoidCallback onTap) {
     return Expanded(
       child: InkWell(
@@ -661,99 +634,6 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildAvisoCard(dynamic avisoData, String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
-    final aviso = avisoData as Map<String, dynamic>;
-    final dataEnvio = aviso['dataEnvio'];
-    final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
-    final isDireto = aviso['tipoDestinatario'] == 'ALUNO' || aviso['tipoDestinatario'] == 'RESPONSAVEL';
-    
-    final remetenteOriginal = (aviso['remetenteNome'] ?? 'Direção / Professor').toString();
-    bool isProfessor = remetenteOriginal.contains('Professor(a)');
-
-    final tagDestino = isDireto ? 'Apenas para você' : 'Para toda a turma';
-    final corDestino = isDireto ? Colors.red : Colors.blue;
-
-    final lidosPor = List<String>.from(aviso['lidosPor'] ?? []);
-    final isLido = lidosPor.contains(alunoDocId);
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDireto ? Colors.orange.shade50 : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDireto ? Colors.orange.shade200 : Colors.grey.shade200),
-        boxShadow: isDireto ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(isProfessor ? Icons.assignment_ind_rounded : Icons.admin_panel_settings_rounded, size: 16, color: isDireto ? Colors.orange.shade800 : corPrimaria),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        remetenteOriginal,
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? Colors.orange.shade900 : Colors.black87),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
-                  if (!isLido) ...[
-                    const SizedBox(height: 8),
-                    Tooltip(
-                      message: 'Marcar como lido',
-                      child: InkWell(
-                        onTap: () {
-                          FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').doc(aviso['id']).update({
-                            'lidosPor': FieldValue.arrayUnion([alunoDocId])
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle, border: Border.all(color: Colors.green.shade200)),
-                          child: Icon(Icons.remove_red_eye_rounded, size: 16, color: Colors.green.shade600),
-                        ),
-                      ),
-                    )
-                  ]
-                ],
-              )
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: corDestino.withAlpha(20), borderRadius: BorderRadius.circular(6)),
-            child: Text(tagDestino, style: TextStyle(color: corDestino, fontSize: 10, fontWeight: FontWeight.bold)),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(height: 1),
-          ),
-          Text(
-            aviso['mensagem'] ?? '',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
-          )
-        ],
       ),
     );
   }
@@ -1114,7 +994,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                           );
                         }
                       ),
-
+                      
                       const SizedBox(height: 40),
 
                       StreamBuilder<QuerySnapshot>(
@@ -1200,12 +1080,18 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                                         ),
                                       )
                                     else ...[
-                                      ...avisosAluno.take(5).map((aviso) => _buildAvisoCard(aviso, tenantId, turmaId, alunoDocId, corPrimaria)),
+                                      ...avisosAluno.take(5).map((aviso) => AvisoCardWidget(
+                                        aviso: aviso,
+                                        tenantId: tenantId,
+                                        turmaId: turmaId,
+                                        alunoDocId: alunoDocId,
+                                        corPrimaria: corPrimaria,
+                                      )),
                                       if (avisosAluno.length > 5)
                                         Padding(
                                           padding: const EdgeInsets.only(top: 8.0),
                                           child: TextButton.icon(
-                                            onPressed: () => _abrirHistoricoAvisos(avisosAluno, tenantId, turmaId, alunoDocId, corPrimaria), 
+                                            onPressed: () => _abrirAvisos(tenantId, turmaId, alunoDocId, corPrimaria), 
                                             icon: Icon(Icons.history_rounded, color: corPrimaria),
                                             label: Text('Ver todo o histórico', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria)),
                                           ),
@@ -1239,6 +1125,126 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
       if (partes.length == 3) return "${partes[2]}/${partes[1]}";
     } catch (_) {}
     return dataBanco;
+  }
+}
+
+// Widget isolado para os cards de aviso, deixando o código mais limpo
+class AvisoCardWidget extends StatelessWidget {
+  final Map<String, dynamic> aviso;
+  final String tenantId;
+  final String turmaId;
+  final String alunoDocId;
+  final Color corPrimaria;
+
+  const AvisoCardWidget({
+    super.key,
+    required this.aviso,
+    required this.tenantId,
+    required this.turmaId,
+    required this.alunoDocId,
+    required this.corPrimaria,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dataEnvio = aviso['dataEnvio'];
+    final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format(dataEnvio.toDate()) : '';
+    final isDireto = aviso['tipoDestinatario'] == 'ALUNO' || aviso['tipoDestinatario'] == 'RESPONSAVEL';
+    
+    final remetenteOriginal = (aviso['remetenteNome'] ?? 'Direção / Professor').toString();
+    bool isProfessor = remetenteOriginal.contains('Professor(a)');
+
+    String tagDestino = 'Para toda a turma';
+    Color corTag = Colors.blue;
+    
+    if (aviso['tipoDestinatario'] == 'ALUNO') {
+      tagDestino = 'Direcionado a você';
+      corTag = Colors.purple;
+    } else if (aviso['tipoDestinatario'] == 'RESPONSAVEL') {
+      tagDestino = 'Aviso ao seu Responsável';
+      corTag = Colors.red;
+    }
+
+    final lidosPor = List<String>.from(aviso['lidosPor'] ?? []);
+    final isLido = lidosPor.contains(alunoDocId);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDireto ? corTag.withAlpha(10) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: isDireto ? corTag.withAlpha(50) : Colors.grey.shade200),
+        boxShadow: isDireto ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(isProfessor ? Icons.assignment_ind_rounded : Icons.admin_panel_settings_rounded, size: 16, color: isDireto ? corTag : corPrimaria),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        remetenteOriginal,
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? corTag : Colors.black87),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                  if (!isLido) ...[
+                    const SizedBox(height: 8),
+                    Tooltip(
+                      message: 'Marcar como lido',
+                      child: InkWell(
+                        onTap: () {
+                          FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').doc(aviso['id']).update({
+                            'lidosPor': FieldValue.arrayUnion([alunoDocId])
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle, border: Border.all(color: Colors.green.shade200)),
+                          child: Icon(Icons.check_rounded, size: 12, color: Colors.green.shade600),
+                        ),
+                      ),
+                    )
+                  ]
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+            child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 10, fontWeight: FontWeight.bold)),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1),
+          ),
+          Text(
+            aviso['mensagem'] ?? '',
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
+          )
+        ],
+      ),
+    );
   }
 }
 
@@ -1388,488 +1394,6 @@ class _DiaGradeItemState extends State<_DiaGradeItem> {
   }
 }
 
-class _BoletimModal extends StatefulWidget {
-  final String tenantId;
-  final String turmaId;
-  final String alunoDocId;
-  final Color corPrimaria;
-  final ScrollController scrollController;
-
-  const _BoletimModal({
-    required this.tenantId,
-    required this.turmaId,
-    required this.alunoDocId,
-    required this.corPrimaria,
-    required this.scrollController,
-  });
-
-  @override
-  State<_BoletimModal> createState() => _BoletimModalState();
-}
-
-class _BoletimModalState extends State<_BoletimModal> {
-  String _bimestreAtivo = '1º Bimestre';
-
-  String _calcularBimestre(DateTime data) {
-    int mes = data.month;
-    if (mes >= 2 && mes <= 4) return '1º Bimestre';
-    if (mes >= 5 && mes <= 6) return '2º Bimestre';
-    if (mes >= 7 && mes <= 9) return '3º Bimestre';
-    return '4º Bimestre';
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _bimestreAtivo = _calcularBimestre(DateTime.now());
-  }
-
-  Future<Map<String, dynamic>> _buscarDadosBoletim() async {
-    final db = FirebaseFirestore.instance;
-    final turmaRef = db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId);
-    
-    final turmaSnap = await turmaRef.get();
-    final avaliacoesSnap = await turmaRef.collection('avaliacoes').where('bimestre', isEqualTo: _bimestreAtivo).get();
-    
-    List<String> disciplinas = [];
-    if (turmaSnap.exists) {
-      final data = turmaSnap.data() as Map<String, dynamic>;
-      if (data.containsKey('disciplinas') && data['disciplinas'] is List) {
-        disciplinas = List<String>.from(data['disciplinas']);
-      }
-    }
-    
-    return {
-      'disciplinas': disciplinas,
-      'avaliacoes': avaliacoesSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList(),
-    };
-  }
-
-  void _mostrarDetalhesDisciplina(String disciplina, List<Map<String, dynamic>> avaliacoes) {
-    final avaliacoesFiltradas = avaliacoes.where((a) => a['contaParaMedia'] != false).toList();
-    
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(disciplina, style: TextStyle(fontWeight: FontWeight.bold, color: widget.corPrimaria)),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: avaliacoesFiltradas.isEmpty 
-            ? const Text('Nenhuma avaliação lançada para a média nesta disciplina.')
-            : ListView.separated(
-                shrinkWrap: true,
-                itemCount: avaliacoesFiltradas.length,
-                separatorBuilder: (_, __) => const Divider(),
-                itemBuilder: (context, index) {
-                  final a = avaliacoesFiltradas[index];
-                  final double nota = a['nota'];
-                  final double max = a['maximo'];
-                  final bool valida = a['valida'];
-                  final bool isRec = a['isRecuperacao'];
-                  
-                  String sub = '';
-                  if (isRec && valida) sub = 'Nota Substituta (Recuperação)';
-                  if (isRec && !valida) sub = 'Descartada (Recuperação)';
-                  if (!isRec && !valida) sub = 'Substituída';
-
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(a['nome'] ?? 'Avaliação', style: TextStyle(decoration: valida ? null : TextDecoration.lineThrough, color: valida ? Colors.black : Colors.grey)),
-                    subtitle: sub.isNotEmpty ? Text(sub, style: TextStyle(color: valida ? Colors.purple : Colors.grey)) : null,
-                    trailing: Text('${nota.toStringAsFixed(1)} / ${max.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.bold, decoration: valida ? null : TextDecoration.lineThrough, color: valida ? widget.corPrimaria : Colors.grey)),
-                  );
-                }
-            )
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar'))
-        ]
-      )
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.analytics_rounded, color: widget.corPrimaria)),
-              const SizedBox(width: 16),
-              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Meu Boletim', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                Text('Notas consolidadas por disciplina', style: TextStyle(color: Colors.grey, fontSize: 13)),
-              ])),
-              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
-            ],
-          ),
-        ),
-        
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: '1º Bimestre', label: Text('1º Bim', style: TextStyle(fontSize: 12))), 
-                ButtonSegment(value: '2º Bimestre', label: Text('2º Bim', style: TextStyle(fontSize: 12))), 
-                ButtonSegment(value: '3º Bimestre', label: Text('3º Bim', style: TextStyle(fontSize: 12))), 
-                ButtonSegment(value: '4º Bimestre', label: Text('4º Bim', style: TextStyle(fontSize: 12)))
-              ],
-              selected: {_bimestreAtivo}, 
-              onSelectionChanged: (s) => setState(() => _bimestreAtivo = s.first),
-              style: SegmentedButton.styleFrom(selectedBackgroundColor: widget.corPrimaria.withAlpha(40), selectedForegroundColor: widget.corPrimaria),
-            ),
-          ),
-        ),
-
-        const Divider(height: 1),
-        Expanded(
-          child: FutureBuilder<Map<String, dynamic>>(
-            future: _buscarDadosBoletim(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
-              
-              final dados = snapshot.data ?? {};
-              final List<String> disciplinasTurma = dados['disciplinas'] ?? [];
-              final List<Map<String, dynamic>> avaliacoes = dados['avaliacoes'] ?? [];
-
-              Map<String, List<Map<String, dynamic>>> avaliacoesPorDisciplina = {};
-              
-              for (var d in disciplinasTurma) {
-                avaliacoesPorDisciplina[d] = [];
-              }
-              
-              for (var aval in avaliacoes) {
-                final disciplina = aval['disciplina'] ?? 'Geral';
-                final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
-                final isRecuperacao = aval['isRecuperacao'] == true;
-                final contaParaMedia = aval['contaParaMedia'] ?? true;
-                final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
-                final notaAluno = double.tryParse(notasMap[widget.alunoDocId]?.toString() ?? '0') ?? 0.0;
-
-                if (!avaliacoesPorDisciplina.containsKey(disciplina)) {
-                  avaliacoesPorDisciplina[disciplina] = [];
-                }
-                
-                avaliacoesPorDisciplina[disciplina]!.add({
-                  'nome': aval['nome'] ?? 'Avaliação',
-                  'nota': notaAluno,
-                  'maximo': maximo,
-                  'isRecuperacao': isRecuperacao,
-                  'contaParaMedia': contaParaMedia,
-                  'valida': true
-                });
-              }
-
-              if (avaliacoesPorDisciplina.isEmpty) {
-                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.assignment_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhuma disciplina ou nota neste bimestre.', style: TextStyle(color: Colors.grey.shade500))]));
-              }
-
-              Map<String, Map<String, dynamic>> boletim = {};
-
-              for (var disciplina in avaliacoesPorDisciplina.keys) {
-                var notasDaDisciplina = avaliacoesPorDisciplina[disciplina]!;
-                
-                var recuperacoes = notasDaDisciplina.where((n) => n['isRecuperacao'] == true && n['contaParaMedia'] != false).toList();
-                var normais = notasDaDisciplina.where((n) => n['isRecuperacao'] != true && n['contaParaMedia'] != false).toList();
-
-                for (var rec in recuperacoes) {
-                  if (normais.isEmpty) continue;
-                  
-                  normais.sort((a, b) => ((a['nota'] / a['maximo']).compareTo(b['nota'] / b['maxima'])));
-                  var piorNormal = normais.first;
-
-                  double aproveitamentoRec = rec['maximo'] > 0 ? rec['nota'] / rec['maximo'] : 0.0;
-                  double aproveitamentoPiorNormal = piorNormal['maximo'] > 0 ? piorNormal['nota'] / piorNormal['maximo'] : 0.0;
-
-                  if (aproveitamentoRec > aproveitamentoPiorNormal) {
-                    piorNormal['valida'] = false; 
-                  } else {
-                    rec['valida'] = false; 
-                  }
-                }
-
-                double somaNotas = 0.0;
-                double somaMaximos = 0.0;
-                for (var n in notasDaDisciplina) {
-                  if (n['contaParaMedia'] != false && n['valida'] == true) {
-                    somaNotas += n['nota'];
-                    somaMaximos += n['maximo'];
-                  }
-                }
-                
-                double notaBoletim = somaNotas;
-                if (notaBoletim > 10.0) notaBoletim = 10.0;
-
-                boletim[disciplina] = {
-                  'notaAluno': notaBoletim, 
-                  'maximo': somaMaximos, 
-                  'somaBruta': somaNotas,
-                  'avaliacoes': notasDaDisciplina
-                };
-              }
-
-              final disciplinasOrdem = boletim.keys.toList()..sort();
-
-              return ListView.separated(
-                controller: widget.scrollController,
-                padding: const EdgeInsets.all(20),
-                itemCount: disciplinasOrdem.length,
-                separatorBuilder: (c, i) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final disciplina = disciplinasOrdem[index];
-                  final dados = boletim[disciplina]!;
-                  final notaAluno = dados['notaAluno'] as double;
-                  final maximo = dados['maximo'] as double;
-                  final somaBruta = dados['somaBruta'] as double;
-                  final listaAvals = dados['avaliacoes'] as List<Map<String, dynamic>>;
-                  
-                  final bool acimaMedia = notaAluno >= 6.0; 
-                  final Color corNota = notaAluno == 0 ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
-
-                  return InkWell(
-                    onTap: () => _mostrarDetalhesDisciplina(disciplina, listaAvals),
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.grey.shade200),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Row(
-                              children: [
-                                Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                      Text('Pontos: ${somaBruta.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)} distribuídos', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
-                                    ]
-                                  )
-                                ),
-                              ],
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                            child: Text(
-                              '${notaAluno.toStringAsFixed(1)} / 10.0', 
-                              style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 16)
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        )
-      ],
-    );
-  }
-}
-
-class _FrequenciaModal extends StatefulWidget {
-  final String tenantId;
-  final String turmaId;
-  final String alunoMatricula;
-  final Color corPrimaria;
-  final ScrollController scrollController;
-
-  const _FrequenciaModal({
-    required this.tenantId,
-    required this.turmaId,
-    required this.alunoMatricula,
-    required this.corPrimaria,
-    required this.scrollController,
-  });
-
-  @override
-  State<_FrequenciaModal> createState() => _FrequenciaModalState();
-}
-
-class _FrequenciaModalState extends State<_FrequenciaModal> {
-  String _bimestreAtivo = '1º Bimestre';
-
-  String _calcularBimestre(DateTime data) {
-    int mes = data.month;
-    if (mes >= 2 && mes <= 4) return '1º Bimestre';
-    if (mes >= 5 && mes <= 6) return '2º Bimestre';
-    if (mes >= 7 && mes <= 9) return '3º Bimestre';
-    return '4º Bimestre';
-  }
-
-  bool _isDataNoBimestre(String dataStr, String bimestreAlvo) {
-    try {
-      final partes = dataStr.split('-');
-      final data = DateTime(int.parse(partes[0]), int.parse(partes[1]), int.parse(partes[2]));
-      return _calcularBimestre(data) == bimestreAlvo;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _bimestreAtivo = _calcularBimestre(DateTime.now());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(20),
-          child: Row(
-            children: [
-              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.fact_check_rounded, color: widget.corPrimaria)),
-              const SizedBox(width: 16),
-              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Frequência Escolar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                Text('Acompanhamento de faltas', style: TextStyle(color: Colors.grey, fontSize: 13)),
-              ])),
-              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
-            ],
-          ),
-        ),
-        
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: SizedBox(
-            width: double.infinity,
-            child: SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: '1º Bimestre', label: Text('1º Bim', style: TextStyle(fontSize: 12))), 
-                ButtonSegment(value: '2º Bimestre', label: Text('2º Bim', style: TextStyle(fontSize: 12))), 
-                ButtonSegment(value: '3º Bimestre', label: Text('3º Bim', style: TextStyle(fontSize: 12))), 
-                ButtonSegment(value: '4º Bimestre', label: Text('4º Bim', style: TextStyle(fontSize: 12)))
-              ],
-              selected: {_bimestreAtivo}, 
-              onSelectionChanged: (s) => setState(() => _bimestreAtivo = s.first),
-              style: SegmentedButton.styleFrom(selectedBackgroundColor: widget.corPrimaria.withAlpha(40), selectedForegroundColor: widget.corPrimaria),
-            ),
-          ),
-        ),
-
-        const Divider(height: 1),
-        Expanded(
-          child: FutureBuilder<QuerySnapshot>(
-            future: FirebaseFirestore.instance.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').get(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
-              
-              List<Map<String, String>> frequenciaBimestre = [];
-
-              if (snapshot.hasData) {
-                for (var doc in snapshot.data!.docs) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  if (data['status'] != 'NAO_INICIADA' && _isDataNoBimestre(doc.id, _bimestreAtivo)) {
-                    final freq = Map<String, String>.from(data['frequencia'] ?? {});
-                    final st = freq[widget.alunoMatricula] ?? 'P';
-                    
-                    final p = doc.id.split('-');
-                    frequenciaBimestre.add({
-                      'idSort': doc.id,
-                      'data': "${p[2]}/${p[1]}/${p[0]}", 
-                      'status': st 
-                    });
-                  }
-                }
-              }
-
-              frequenciaBimestre.sort((a,b) => b['idSort']!.compareTo(a['idSort']!));
-              
-              final int aulasBimestre = frequenciaBimestre.length;
-              final int faltas = frequenciaBimestre.where((f) => f['status'] == 'A' || f['status'] == 'J').length;
-
-              return Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.all(20),
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    decoration: BoxDecoration(color: faltas > 0 ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: faltas > 0 ? Colors.red.shade200 : Colors.green.shade200)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Total de Faltas no $_bimestreAtivo:', style: TextStyle(fontWeight: FontWeight.bold, color: faltas > 0 ? Colors.red.shade900 : Colors.green.shade900)),
-                        Text('$faltas / $aulasBimestre', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: faltas > 0 ? Colors.red.shade900 : Colors.green.shade900)),
-                      ],
-                    ),
-                  ),
-
-                  if (frequenciaBimestre.isEmpty)
-                    Expanded(child: Center(child: Text('Nenhuma aula registrada neste bimestre.', style: TextStyle(color: Colors.grey.shade500))))
-                  else
-                    Expanded(
-                      child: ListView.separated(
-                        controller: widget.scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: frequenciaBimestre.length,
-                        separatorBuilder: (c, i) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final f = frequenciaBimestre[index];
-                          final status = f['status'];
-                          
-                          Color corStatus = Colors.green;
-                          String textoStatus = 'Presente';
-                          IconData iconeStatus = Icons.check_circle_rounded;
-
-                          if (status == 'A') {
-                            corStatus = Colors.red;
-                            textoStatus = 'Falta';
-                            iconeStatus = Icons.cancel_rounded;
-                          } else if (status == 'J') {
-                            corStatus = Colors.orange;
-                            textoStatus = 'Falta Justificada';
-                            iconeStatus = Icons.info_rounded;
-                          }
-
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400),
-                            title: Text(f['data'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
-                              decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8)), 
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(iconeStatus, color: corStatus, size: 14),
-                                  const SizedBox(width: 4),
-                                  Text(textoStatus, style: TextStyle(color: corStatus, fontSize: 12, fontWeight: FontWeight.bold)),
-                                ],
-                              )
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-        )
-      ],
-    );
-  }
-}
-
 class _MinhaTurmaModal extends StatelessWidget {
   final String tenantId;
   final String turmaId;
@@ -1959,8 +1483,8 @@ class _MinhaTurmaModal extends StatelessWidget {
                     leading: CircleAvatar(
                       backgroundColor: Colors.grey.shade200,
                       backgroundImage: (a['fotoPortalUrl'] != null && a['fotoPortalUrl'].toString().isNotEmpty) 
-                         ? NetworkImage(a['fotoPortalUrl']) 
-                         : ((a['fotoUrl'] != null && a['fotoUrl'].toString().isNotEmpty) ? NetworkImage(a['fotoUrl']) : null),
+                          ? NetworkImage(a['fotoPortalUrl']) 
+                          : ((a['fotoUrl'] != null && a['fotoUrl'].toString().isNotEmpty) ? NetworkImage(a['fotoUrl']) : null),
                       child: (a['fotoPortalUrl'] == null && a['fotoUrl'] == null) ? const Icon(Icons.person, color: Colors.grey) : null,
                     ),
                     title: Text(a['nome'] ?? 'Aluno', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -1972,6 +1496,572 @@ class _MinhaTurmaModal extends StatelessWidget {
           ),
         )
       ]
+    );
+  }
+}
+
+class _BoletimModal extends StatefulWidget {
+  final String tenantId;
+  final String turmaId;
+  final String alunoDocId;
+  final Color corPrimaria;
+  final ScrollController scrollController;
+
+  const _BoletimModal({required this.tenantId, required this.turmaId, required this.alunoDocId, required this.corPrimaria, required this.scrollController});
+
+  @override
+  State<_BoletimModal> createState() => _BoletimModalState();
+}
+
+class _BoletimModalState extends State<_BoletimModal> {
+  String _bimestreAtivo = '1º Bimestre';
+
+  String _calcularBimestre(DateTime data) {
+    int mes = data.month;
+    if (mes >= 2 && mes <= 4) return '1º Bimestre';
+    if (mes >= 5 && mes <= 6) return '2º Bimestre';
+    if (mes >= 7 && mes <= 9) return '3º Bimestre';
+    return '4º Bimestre';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _bimestreAtivo = _calcularBimestre(DateTime.now());
+  }
+
+  Future<Map<String, dynamic>> _buscarDadosBoletim() async {
+    final db = FirebaseFirestore.instance;
+    final turmaRef = db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId);
+    
+    final turmaSnap = await turmaRef.get();
+    final avaliacoesSnap = await turmaRef.collection('avaliacoes').where('bimestre', isEqualTo: _bimestreAtivo).get();
+    
+    List<String> disciplinas = [];
+    if (turmaSnap.exists) {
+      final data = turmaSnap.data() as Map<String, dynamic>;
+      if (data.containsKey('disciplinas') && data['disciplinas'] is List) {
+        disciplinas = List<String>.from(data['disciplinas']);
+      }
+    }
+    
+    return {
+      'disciplinas': disciplinas,
+      'avaliacoes': avaliacoesSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList(),
+    };
+  }
+
+  void _mostrarDetalhesDisciplina(String disciplina, List<Map<String, dynamic>> avaliacoes) {
+    final avaliacoesFiltradas = avaliacoes.where((a) => a['contaParaMedia'] != false).toList();
+    
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(disciplina, style: TextStyle(fontWeight: FontWeight.bold, color: widget.corPrimaria)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: avaliacoesFiltradas.isEmpty 
+            ? const Text('Nenhuma avaliação lançada para a média nesta disciplina.')
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: avaliacoesFiltradas.length,
+                separatorBuilder: (ctx, idx) => const Divider(),
+                itemBuilder: (context, index) {
+                  final a = avaliacoesFiltradas[index];
+                  final nota = a['nota'];
+                  final double max = a['maximo'];
+                  final bool valida = a['valida'];
+                  final bool isRec = a['isRecuperacao'];
+                  final bool temNota = a['temNota'] ?? false;
+                  
+                  String sub = '';
+                  if (isRec && valida) sub = 'Nota Substituta (Recuperação)';
+                  if (isRec && !valida) sub = 'Descartada (Recuperação)';
+                  if (!isRec && !valida) sub = 'Substituída';
+
+                  final String textoNota = temNota ? '${nota.toStringAsFixed(1)} / ${max.toStringAsFixed(1)}' : '-';
+
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(a['nome'] ?? 'Avaliação', style: TextStyle(decoration: valida ? null : TextDecoration.lineThrough, color: valida ? Colors.black : Colors.grey)),
+                    subtitle: sub.isNotEmpty ? Text(sub, style: TextStyle(color: valida ? Colors.purple : Colors.grey)) : null,
+                    trailing: Text(textoNota, style: TextStyle(fontWeight: FontWeight.bold, decoration: valida ? null : TextDecoration.lineThrough, color: valida ? widget.corPrimaria : Colors.grey)),
+                  );
+                }
+            )
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar'))
+        ]
+      )
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.analytics_rounded, color: widget.corPrimaria)),
+              const SizedBox(width: 16),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Meu Boletim', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Notas consolidadas por disciplina', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '1º Bimestre', label: Text('1º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '2º Bimestre', label: Text('2º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '3º Bimestre', label: Text('3º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '4º Bimestre', label: Text('4º Bim', style: TextStyle(fontSize: 12)))
+              ],
+              selected: {_bimestreAtivo}, 
+              onSelectionChanged: (s) => setState(() => _bimestreAtivo = s.first),
+              style: SegmentedButton.styleFrom(selectedBackgroundColor: widget.corPrimaria.withAlpha(40), selectedForegroundColor: widget.corPrimaria),
+            ),
+          ),
+        ),
+
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _buscarDadosBoletim(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
+              
+              final dados = snapshot.data ?? {};
+              final List<String> disciplinasTurma = dados['disciplinas'] ?? [];
+              final List<Map<String, dynamic>> avaliacoes = dados['avaliacoes'] ?? [];
+
+              Map<String, List<Map<String, dynamic>>> avaliacoesPorDisciplina = {};
+              
+              for (var d in disciplinasTurma) {
+                avaliacoesPorDisciplina[d] = [];
+              }
+              
+              for (var aval in avaliacoes) {
+                final disciplina = aval['disciplina'] ?? 'Geral';
+                final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
+                final isRecuperacao = aval['isRecuperacao'] == true;
+                final contaParaMedia = aval['contaParaMedia'] ?? true;
+                
+                final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
+                final notaRaw = notasMap[widget.alunoDocId];
+                final bool temNotaLancada = notaRaw != null && notaRaw.toString().isNotEmpty;
+                final notaAluno = double.tryParse(notaRaw?.toString() ?? '0') ?? 0.0;
+
+                if (!avaliacoesPorDisciplina.containsKey(disciplina)) {
+                  avaliacoesPorDisciplina[disciplina] = [];
+                }
+                
+                avaliacoesPorDisciplina[disciplina]!.add({
+                  'nome': aval['nome'] ?? 'Avaliação',
+                  'nota': notaAluno,
+                  'maximo': maximo,
+                  'isRecuperacao': isRecuperacao,
+                  'contaParaMedia': contaParaMedia,
+                  'valida': true,
+                  'temNota': temNotaLancada,
+                });
+              }
+
+              if (avaliacoesPorDisciplina.isEmpty) {
+                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.assignment_outlined, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhuma disciplina ou nota neste bimestre.', style: TextStyle(color: Colors.grey.shade500))]));
+              }
+
+              Map<String, Map<String, dynamic>> boletim = {};
+
+              for (var disciplina in avaliacoesPorDisciplina.keys) {
+                var notasDaDisciplina = avaliacoesPorDisciplina[disciplina]!;
+                
+                var recuperacoes = notasDaDisciplina.where((n) => n['isRecuperacao'] == true && n['contaParaMedia'] != false).toList();
+                var normais = notasDaDisciplina.where((n) => n['isRecuperacao'] != true && n['contaParaMedia'] != false).toList();
+
+                for (var rec in recuperacoes) {
+                  if (normais.isEmpty) continue;
+                  
+                  normais.sort((a, b) => ((a['nota'] / a['maximo']).compareTo(b['nota'] / b['maxima'])));
+                  var piorNormal = normais.first;
+
+                  double aproveitamentoRec = rec['maximo'] > 0 ? rec['nota'] / rec['maximo'] : 0.0;
+                  double aproveitamentoPiorNormal = piorNormal['maximo'] > 0 ? piorNormal['nota'] / piorNormal['maximo'] : 0.0;
+
+                  if (aproveitamentoRec > aproveitamentoPiorNormal) {
+                    piorNormal['valida'] = false; 
+                  } else {
+                    rec['valida'] = false; 
+                  }
+                }
+
+                double somaNotas = 0.0;
+                double somaMaximos = 0.0;
+                bool possuiAlgumaNota = false;
+
+                for (var n in notasDaDisciplina) {
+                  if (n['contaParaMedia'] != false && n['valida'] == true) {
+                    if (n['temNota'] == true) {
+                      possuiAlgumaNota = true;
+                    }
+                    somaNotas += n['nota'];
+                    somaMaximos += n['maximo'];
+                  }
+                }
+                
+                double notaBoletim = somaNotas;
+                if (notaBoletim > 10.0) notaBoletim = 10.0;
+
+                boletim[disciplina] = {
+                  'notaAluno': possuiAlgumaNota ? notaBoletim : null, 
+                  'maximo': somaMaximos, 
+                  'somaBruta': somaNotas,
+                  'avaliacoes': notasDaDisciplina
+                };
+              }
+
+              final disciplinasOrdem = boletim.keys.toList()..sort();
+
+              return ListView.separated(
+                controller: widget.scrollController,
+                padding: const EdgeInsets.all(20),
+                itemCount: disciplinasOrdem.length,
+                separatorBuilder: (c, i) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  final disciplina = disciplinasOrdem[index];
+                  final dados = boletim[disciplina]!;
+                  final notaAluno = dados['notaAluno'] as double?;
+                  final maximo = dados['maximo'] as double;
+                  final somaBruta = dados['somaBruta'] as double;
+                  final listaAvals = dados['avaliacoes'] as List<Map<String, dynamic>>;
+                  
+                  final bool acimaMedia = notaAluno != null && notaAluno >= 6.0; 
+                  final Color corNota = notaAluno == null ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
+                  
+                  final String textoNota = notaAluno != null ? '${notaAluno.toStringAsFixed(1)} / 10.0' : '-';
+
+                  return InkWell(
+                    onTap: () => _mostrarDetalhesDisciplina(disciplina, listaAvals),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Icon(Icons.menu_book_rounded, color: Colors.blueGrey.shade300, size: 20),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                      Text(notaAluno == null ? 'Aguardando lançamento de notas' : 'Pontos: ${somaBruta.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)} distribuídos', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                                    ]
+                                  )
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                            child: Text(
+                              textoNota, 
+                              style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 16)
+                            ),
+                          )
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        )
+      ],
+    );
+  }
+}
+
+class _FrequenciaModal extends StatefulWidget {
+  final String tenantId;
+  final String turmaId;
+  final String alunoMatricula;
+  final Color corPrimaria;
+  final ScrollController scrollController;
+
+  const _FrequenciaModal({
+    required this.tenantId,
+    required this.turmaId,
+    required this.alunoMatricula,
+    required this.corPrimaria,
+    required this.scrollController,
+  });
+
+  @override
+  State<_FrequenciaModal> createState() => _FrequenciaModalState();
+}
+
+class _FrequenciaModalState extends State<_FrequenciaModal> {
+  String _bimestreAtivo = '1º Bimestre';
+
+  String _calcularBimestre(DateTime data) {
+    int mes = data.month;
+    if (mes >= 2 && mes <= 4) return '1º Bimestre';
+    if (mes >= 5 && mes <= 6) return '2º Bimestre';
+    if (mes >= 7 && mes <= 9) return '3º Bimestre';
+    return '4º Bimestre';
+  }
+
+  bool _isDataNoBimestre(String dataStr, String bimestreAlvo) {
+    try {
+      final partes = dataStr.split('-');
+      final data = DateTime(int.parse(partes[0]), int.parse(partes[1]), int.parse(partes[2]));
+      return _calcularBimestre(data) == bimestreAlvo;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _bimestreAtivo = _calcularBimestre(DateTime.now());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.fact_check_rounded, color: widget.corPrimaria)),
+              const SizedBox(width: 16),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Frequência Escolar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Acompanhamento de faltas por matéria', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+        
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: '1º Bimestre', label: Text('1º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '2º Bimestre', label: Text('2º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '3º Bimestre', label: Text('3º Bim', style: TextStyle(fontSize: 12))), 
+                ButtonSegment(value: '4º Bimestre', label: Text('4º Bim', style: TextStyle(fontSize: 12)))
+              ],
+              selected: {_bimestreAtivo}, 
+              onSelectionChanged: (s) => setState(() => _bimestreAtivo = s.first),
+              style: SegmentedButton.styleFrom(selectedBackgroundColor: widget.corPrimaria.withAlpha(40), selectedForegroundColor: widget.corPrimaria),
+            ),
+          ),
+        ),
+
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<QuerySnapshot>(
+            future: FirebaseFirestore.instance.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').get(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
+              
+              Map<String, List<Map<String, dynamic>>> frequenciaPorDisciplina = {};
+
+              if (snapshot.hasData) {
+                for (var doc in snapshot.data!.docs) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final dataDiarioStr = doc.id.split('_')[0]; 
+                  
+                  if (data['status'] != 'NAO_INICIADA' && _isDataNoBimestre(dataDiarioStr, _bimestreAtivo)) {
+                    final freq = Map<String, String>.from(data['frequencia'] ?? {});
+                    final st = freq[widget.alunoMatricula] ?? 'P';
+                    
+                    final p = dataDiarioStr.split('-');
+                    final disciplina = data['disciplina']?.toString() ?? 'Geral';
+                    
+                    if (!frequenciaPorDisciplina.containsKey(disciplina)) frequenciaPorDisciplina[disciplina] = [];
+                    
+                    frequenciaPorDisciplina[disciplina]!.add({
+                      'idSort': dataDiarioStr,
+                      'data': "${p[2]}/${p[1]}/${p[0]}", 
+                      'status': st 
+                    });
+                  }
+                }
+              }
+
+              if (frequenciaPorDisciplina.isEmpty) {
+                return Center(child: Text('Nenhuma aula registrada neste bimestre.', style: TextStyle(color: Colors.grey.shade500)));
+              }
+
+              final disciplinasKeys = frequenciaPorDisciplina.keys.toList()..sort();
+              
+              return ListView.builder(
+                controller: widget.scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                itemCount: disciplinasKeys.length,
+                itemBuilder: (context, index) {
+                  final disc = disciplinasKeys[index];
+                  final aulas = frequenciaPorDisciplina[disc]!..sort((a,b) => b['idSort']!.compareTo(a['idSort']!));
+                  
+                  final int totalAulas = aulas.length;
+                  final int faltas = aulas.where((f) => f['status'] == 'A' || f['status'] == 'J').length;
+
+                  return Card(
+                    elevation: 0,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                    child: Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        initiallyExpanded: faltas > 0, 
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        title: Text(disc, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        subtitle: Text(
+                          'Faltas no $_bimestreAtivo: $faltas / $totalAulas', 
+                          style: TextStyle(color: faltas > 0 ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12)
+                        ),
+                        children: aulas.map((f) {
+                          final status = f['status'];
+                          Color corStatus = Colors.green; 
+                          String textoStatus = 'Presente'; 
+                          IconData iconeStatus = Icons.check_circle_rounded;
+
+                          if (status == 'A') { corStatus = Colors.red; textoStatus = 'Falta'; iconeStatus = Icons.cancel_rounded; } 
+                          else if (status == 'J') { corStatus = Colors.orange; textoStatus = 'Falta Justificada'; iconeStatus = Icons.info_rounded; }
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                            leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400, size: 20),
+                            title: Text(f['data'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
+                              decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8)), 
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(iconeStatus, color: corStatus, size: 14), const SizedBox(width: 4),
+                                  Text(textoStatus, style: TextStyle(color: corStatus, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              )
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        )
+      ],
+    );
+  }
+}
+
+class _AvisosModal extends StatelessWidget {
+  final String tenantId;
+  final String turmaId;
+  final String alunoDocId;
+  final Color corPrimaria;
+  final ScrollController scrollController;
+
+  const _AvisosModal({
+    required this.tenantId, 
+    required this.turmaId, 
+    required this.alunoDocId, 
+    required this.corPrimaria, 
+    required this.scrollController
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.campaign_rounded, color: corPrimaria)),
+              const SizedBox(width: 16),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Mural de Avisos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Comunicações da escola', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').orderBy('dataEnvio', descending: true).snapshots(),
+            builder: (context, snapAvisos) {
+              if (snapAvisos.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: corPrimaria));
+
+              final todosAvisos = snapAvisos.data?.docs.map((d) {
+                final data = d.data() as Map<String, dynamic>; data['id'] = d.id; return data;
+              }).toList() ?? [];
+              
+              final avisosAluno = todosAvisos.where((aviso) {
+                final tipoDest = aviso['tipoDestinatario'];
+                final alvoId = aviso['alunoId'];
+                if (tipoDest == 'TURMA' || tipoDest == 'TODOS') return true;
+                if ((tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL') && alvoId == alunoDocId) return true;
+                return false;
+              }).toList();
+
+              if (avisosAluno.isEmpty) {
+                return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.notifications_off_rounded, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum aviso no mural.', style: TextStyle(color: Colors.grey.shade500))]));
+              }
+
+              return ListView.separated(
+                controller: scrollController, padding: const EdgeInsets.all(20),
+                itemCount: avisosAluno.length, separatorBuilder: (c, i) => const SizedBox(height: 12),
+                itemBuilder: (context, index) {
+                  return AvisoCardWidget(
+                    aviso: avisosAluno[index],
+                    tenantId: tenantId,
+                    turmaId: turmaId,
+                    alunoDocId: alunoDocId,
+                    corPrimaria: corPrimaria,
+                  );
+                },
+              );
+            },
+          ),
+        )
+      ],
     );
   }
 }

@@ -17,18 +17,34 @@ class ResponsavelDashboardTela extends ConsumerStatefulWidget {
 class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardTela> {
   
   // Função para buscar os alunos vinculados a este responsável
-  Future<List<Map<String, dynamic>>> _buscarDependentes(String tenantId, String responsavelId) async {
+  Future<List<Map<String, dynamic>>> _buscarDependentes(String tenantId, String emailLogado) async {
     try {
+      final loginChave = emailLogado.toLowerCase().trim();
+      final cpfPossivel = loginChave.split('@')[0].replaceAll(RegExp(r'[^0-9]'), '');
+
       final snapshot = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('alunos')
-          .where('responsavelId', isEqualTo: responsavelId)
           .where('status', isEqualTo: 'Ativo')
           .get();
 
-      return snapshot.docs.map((doc) {
+      List<Map<String, dynamic>> dependentes = [];
+      for (var doc in snapshot.docs) {
         final data = doc.data();
-        data['id'] = doc.id;
-        return data;
-      }).toList();
+        final resps = data['responsaveis'] as List? ?? [];
+        
+        bool isMeuFilho = resps.any((r) {
+          final cpfLimpo = (r['cpf']?.toString() ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+          final emailLimpo = (r['email']?.toString() ?? '').toLowerCase().trim();
+          
+          return (cpfLimpo.isNotEmpty && cpfLimpo == cpfPossivel) || 
+                 (emailLimpo.isNotEmpty && emailLimpo == loginChave);
+        });
+
+        if (isMeuFilho) {
+          data['id'] = doc.id;
+          dependentes.add(data);
+        }
+      }
+      return dependentes;
     } catch (e) {
       return [];
     }
@@ -87,7 +103,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
     if (usuarioLogado == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final tenantId = usuarioLogado.tenantId; 
-    final responsavelId = usuarioLogado.id;
+    final emailLogado = usuarioLogado.email;
     final nomeResponsavel = usuarioLogado.nome ?? 'Responsável';
     final corPrimaria = Theme.of(context).primaryColor; 
 
@@ -106,7 +122,6 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // CABEÇALHO
             Container(
               width: double.infinity,
               padding: EdgeInsets.fromLTRB(isMobile ? 20 : 40, 16, isMobile ? 20 : 40, 32),
@@ -125,7 +140,6 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
               ),
             ),
 
-            // LISTA DE DEPENDENTES
             Padding(
               padding: EdgeInsets.all(isMobile ? 24.0 : 40.0),
               child: Column(
@@ -141,7 +155,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                   const SizedBox(height: 24),
 
                   FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _buscarDependentes(tenantId, responsavelId),
+                    future: _buscarDependentes(tenantId, emailLogado),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return Center(child: CircularProgressIndicator(color: corPrimaria));
@@ -207,7 +221,18 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                           _abrirFrequencia(tenantId, turmaId, matricula, corPrimaria);
                                         }),
                                         _buildAcaoBotao(Icons.payments_rounded, 'Financeiro', Colors.orange.shade700, () {
-                                          context.go('/responsavel/financeiro');
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: const Row(
+                                                children: [
+                                                  Icon(Icons.construction_rounded, color: Colors.white),
+                                                  SizedBox(width: 8),
+                                                  Text('Módulo Financeiro em desenvolvimento! 🚀', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                ],
+                                              ),
+                                              backgroundColor: Colors.orange.shade800,
+                                            )
+                                          );
                                         }),
                                         _buildAcaoBotao(Icons.campaign_rounded, 'Avisos', Colors.blue.shade700, () {
                                           _abrirAvisos(tenantId, turmaId, alunoDocId, corPrimaria);
@@ -363,13 +388,21 @@ class _BoletimModalState extends State<_BoletimModal> {
                 final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
                 final isRecuperacao = aval['isRecuperacao'] == true;
                 final contaParaMedia = aval['contaParaMedia'] ?? true;
+                
                 final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
-                final notaAluno = double.tryParse(notasMap[widget.alunoDocId]?.toString() ?? '0') ?? 0.0;
+                final notaRaw = notasMap[widget.alunoDocId];
+                final bool temNotaLancada = notaRaw != null && notaRaw.toString().isNotEmpty;
+                final notaAluno = double.tryParse(notaRaw?.toString() ?? '0') ?? 0.0;
 
                 if (!avaliacoesPorDisciplina.containsKey(disciplina)) avaliacoesPorDisciplina[disciplina] = [];
                 
                 avaliacoesPorDisciplina[disciplina]!.add({
-                  'nota': notaAluno, 'maximo': maximo, 'isRecuperacao': isRecuperacao, 'contaParaMedia': contaParaMedia, 'valida': true
+                  'nota': notaAluno, 
+                  'maximo': maximo, 
+                  'isRecuperacao': isRecuperacao, 
+                  'contaParaMedia': contaParaMedia, 
+                  'valida': true,
+                  'temNota': temNotaLancada,
                 });
               }
 
@@ -397,15 +430,23 @@ class _BoletimModalState extends State<_BoletimModal> {
                 }
 
                 double somaNotas = 0.0, somaMaximos = 0.0;
+                bool possuiAlgumaNota = false;
+                
                 for (var n in notasDaDisciplina) {
                   if (n['contaParaMedia'] != false && n['valida'] == true) {
-                    somaNotas += n['nota']; somaMaximos += n['maximo'];
+                    if (n['temNota'] == true) {
+                      possuiAlgumaNota = true;
+                    }
+                    somaNotas += n['nota']; 
+                    somaMaximos += n['maximo'];
                   }
                 }
                 double notaBoletim = somaNotas > 10.0 ? 10.0 : somaNotas;
 
                 boletim[disciplina] = {
-                  'notaAluno': notaBoletim, 'maximo': somaMaximos, 'somaBruta': somaNotas,
+                  'notaAluno': possuiAlgumaNota ? notaBoletim : null, // Se for nulo, ainda não foi avaliado
+                  'maximo': somaMaximos, 
+                  'somaBruta': somaNotas,
                 };
               }
 
@@ -419,12 +460,13 @@ class _BoletimModalState extends State<_BoletimModal> {
                 itemBuilder: (context, index) {
                   final disciplina = disciplinasOrdem[index];
                   final dados = boletim[disciplina]!;
-                  final notaAluno = dados['notaAluno'] as double;
+                  final notaAluno = dados['notaAluno'] as double?;
                   final maximo = dados['maximo'] as double;
-                  final somaBruta = dados['somaBruta'] as double;
                   
-                  final bool acimaMedia = notaAluno >= 6.0; 
-                  final Color corNota = notaAluno == 0 ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
+                  final bool acimaMedia = notaAluno != null && notaAluno >= 6.0; 
+                  final Color corNota = notaAluno == null ? Colors.grey : (acimaMedia ? Colors.green.shade700 : Colors.red.shade700);
+                  
+                  final String textoNota = notaAluno != null ? '${notaAluno.toStringAsFixed(1)} / 10.0' : '-';
 
                   return Container(
                     padding: const EdgeInsets.all(16),
@@ -442,7 +484,7 @@ class _BoletimModalState extends State<_BoletimModal> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(disciplina, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                    Text('Pontos: ${somaBruta.toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)}', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
+                                    Text(notaAluno == null ? 'Aguardando lançamento de notas' : 'Pontos: ${(dados['somaBruta'] as double).toStringAsFixed(1)} / ${maximo.toStringAsFixed(1)}', style: TextStyle(color: Colors.grey.shade600, fontSize: 11)),
                                   ]
                                 )
                               ),
@@ -452,7 +494,7 @@ class _BoletimModalState extends State<_BoletimModal> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(color: corNota.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                          child: Text('${notaAluno.toStringAsFixed(1)} / 10.0', style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 16)),
+                          child: Text(textoNota, style: TextStyle(color: corNota, fontWeight: FontWeight.bold, fontSize: 16)),
                         )
                       ],
                     ),
@@ -468,7 +510,7 @@ class _BoletimModalState extends State<_BoletimModal> {
 }
 
 // ============================================================================
-// MODAL DE FREQUENCIA
+// MODAL DE FREQUENCIA POR DISCIPLINA
 // ============================================================================
 class _FrequenciaModal extends StatefulWidget {
   final String tenantId;
@@ -520,7 +562,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
               const SizedBox(width: 16),
               const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Frequência Escolar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                Text('Acompanhamento de faltas', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                Text('Acompanhamento de faltas por matéria', style: TextStyle(color: Colors.grey, fontSize: 13)),
               ])),
               IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
             ],
@@ -550,58 +592,74 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
               
-              List<Map<String, String>> frequenciaBimestre = [];
+              Map<String, List<Map<String, dynamic>>> frequenciaPorDisciplina = {};
 
               if (snapshot.hasData) {
                 for (var doc in snapshot.data!.docs) {
                   final data = doc.data() as Map<String, dynamic>;
-                  if (data['status'] != 'NAO_INICIADA' && _isDataNoBimestre(doc.id, _bimestreAtivo)) {
+                  final dataDiarioStr = doc.id.split('_')[0]; // Extração limpa garantindo suporte retroativo
+                  
+                  if (data['status'] != 'NAO_INICIADA' && _isDataNoBimestre(dataDiarioStr, _bimestreAtivo)) {
                     final freq = Map<String, String>.from(data['frequencia'] ?? {});
                     final st = freq[widget.alunoMatricula] ?? 'P';
-                    final p = doc.id.split('-');
-                    frequenciaBimestre.add({'idSort': doc.id, 'data': "${p[2]}/${p[1]}/${p[0]}", 'status': st});
+                    final p = dataDiarioStr.split('-');
+                    final disciplina = data['disciplina']?.toString() ?? 'Geral';
+                    
+                    if (!frequenciaPorDisciplina.containsKey(disciplina)) frequenciaPorDisciplina[disciplina] = [];
+                    
+                    frequenciaPorDisciplina[disciplina]!.add({
+                      'idSort': dataDiarioStr, 
+                      'data': "${p[2]}/${p[1]}/${p[0]}", 
+                      'status': st
+                    });
                   }
                 }
               }
 
-              frequenciaBimestre.sort((a,b) => b['idSort']!.compareTo(a['idSort']!));
-              final int aulasBimestre = frequenciaBimestre.length;
-              final int faltas = frequenciaBimestre.where((f) => f['status'] == 'A' || f['status'] == 'J').length;
+              if (frequenciaPorDisciplina.isEmpty) {
+                return Center(child: Text('Nenhuma aula registrada neste bimestre.', style: TextStyle(color: Colors.grey.shade500)));
+              }
 
-              return Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.all(20), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    decoration: BoxDecoration(color: faltas > 0 ? Colors.red.shade50 : Colors.green.shade50, borderRadius: BorderRadius.circular(12), border: Border.all(color: faltas > 0 ? Colors.red.shade200 : Colors.green.shade200)),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Total de Faltas no $_bimestreAtivo:', style: TextStyle(fontWeight: FontWeight.bold, color: faltas > 0 ? Colors.red.shade900 : Colors.green.shade900)),
-                        Text('$faltas / $aulasBimestre', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: faltas > 0 ? Colors.red.shade900 : Colors.green.shade900)),
-                      ],
-                    ),
-                  ),
+              final disciplinasKeys = frequenciaPorDisciplina.keys.toList()..sort();
 
-                  if (frequenciaBimestre.isEmpty)
-                    Expanded(child: Center(child: Text('Nenhuma aula registrada neste bimestre.', style: TextStyle(color: Colors.grey.shade500))))
-                  else
-                    Expanded(
-                      child: ListView.separated(
-                        controller: widget.scrollController, padding: const EdgeInsets.symmetric(horizontal: 20),
-                        itemCount: frequenciaBimestre.length, separatorBuilder: (c, i) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final f = frequenciaBimestre[index];
+              return ListView.builder(
+                controller: widget.scrollController,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                itemCount: disciplinasKeys.length,
+                itemBuilder: (context, index) {
+                  final disc = disciplinasKeys[index];
+                  final aulas = frequenciaPorDisciplina[disc]!..sort((a,b) => b['idSort']!.compareTo(a['idSort']!));
+                  
+                  final int totalAulas = aulas.length;
+                  final int faltas = aulas.where((f) => f['status'] == 'A' || f['status'] == 'J').length;
+
+                  return Card(
+                    elevation: 0,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                    child: Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        initiallyExpanded: faltas > 0, // Abre automaticamente as matérias onde o aluno faltou
+                        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        title: Text(disc, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        subtitle: Text(
+                          'Faltas no $_bimestreAtivo: $faltas / $totalAulas', 
+                          style: TextStyle(color: faltas > 0 ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12)
+                        ),
+                        children: aulas.map((f) {
                           final status = f['status'];
-                          
-                          Color corStatus = Colors.green; String textoStatus = 'Presente'; IconData iconeStatus = Icons.check_circle_rounded;
+                          Color corStatus = Colors.green; 
+                          String textoStatus = 'Presente'; 
+                          IconData iconeStatus = Icons.check_circle_rounded;
 
                           if (status == 'A') { corStatus = Colors.red; textoStatus = 'Falta'; iconeStatus = Icons.cancel_rounded; } 
                           else if (status == 'J') { corStatus = Colors.orange; textoStatus = 'Falta Justificada'; iconeStatus = Icons.info_rounded; }
 
                           return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400),
-                            title: Text(f['data'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                            leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400, size: 20),
+                            title: Text(f['data'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                             trailing: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
                               decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8)), 
@@ -614,10 +672,11 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                               )
                             ),
                           );
-                        },
+                        }).toList(),
                       ),
                     ),
-                ],
+                  );
+                },
               );
             },
           ),
@@ -627,9 +686,6 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
   }
 }
 
-// ============================================================================
-// MODAL DE AVISOS
-// ============================================================================
 class _AvisosModal extends StatelessWidget {
   final String tenantId;
   final String turmaId;
@@ -687,26 +743,39 @@ class _AvisosModal extends StatelessWidget {
                   final aviso = avisosAluno[index];
                   final dataEnvio = aviso['dataEnvio'];
                   final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
-                  final isDireto = aviso['tipoDestinatario'] == 'ALUNO' || aviso['tipoDestinatario'] == 'RESPONSAVEL';
+                  
+                  final tipoDest = aviso['tipoDestinatario'];
+                  final isDireto = tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL';
+                  
+                  String tagDestino = 'Para toda a turma';
+                  Color corTag = Colors.blue;
+                  
+                  if (tipoDest == 'ALUNO') {
+                    tagDestino = 'Direcionado ao Aluno';
+                    corTag = Colors.purple;
+                  } else if (tipoDest == 'RESPONSAVEL') {
+                    tagDestino = 'Apenas para você (Responsável)';
+                    corTag = Colors.red;
+                  }
                   
                   return Container(
                     padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: isDireto ? Colors.orange.shade50 : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDireto ? Colors.orange.shade200 : Colors.grey.shade200)),
+                    decoration: BoxDecoration(color: isDireto ? corTag.withAlpha(10) : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDireto ? corTag.withAlpha(50) : Colors.grey.shade200)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(aviso['remetenteNome'] ?? 'Direção', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? Colors.orange.shade900 : Colors.black87)),
+                            Text(aviso['remetenteNome'] ?? 'Direção', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? corTag.withAlpha(200) : Colors.black87)),
                             Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
                           ],
                         ),
                         const SizedBox(height: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(color: (isDireto ? Colors.red : Colors.blue).withAlpha(20), borderRadius: BorderRadius.circular(6)),
-                          child: Text(isDireto ? 'Apenas para você' : 'Para toda a turma', style: TextStyle(color: isDireto ? Colors.red : Colors.blue, fontSize: 10, fontWeight: FontWeight.bold)),
+                          decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+                          child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 10, fontWeight: FontWeight.bold)),
                         ),
                         const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
                         Text(aviso['mensagem'] ?? '', style: TextStyle(fontSize: 14, color: Colors.grey.shade800))

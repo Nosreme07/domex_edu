@@ -8,7 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
 import '../estado/turma_provider.dart';
-import '../estado/secretaria_provider.dart'; // <-- NOVO: Import do provedor de funcionários
+import '../estado/secretaria_provider.dart'; 
 
 // Provedor de autenticação (usado internamente pelos outros provedores para achar a escola)
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
@@ -36,9 +36,7 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
     final estadoAlunos = ref.watch(alunosStreamProvider);
     final estadoProfs = ref.watch(professoresStreamProvider);
     final estadoTurmas = ref.watch(turmasStreamProvider);
-    final estadoSecretaria = ref.watch(
-      secretariaStreamProvider,
-    ); // <-- NOVO: Escutando os funcionários
+    final estadoSecretaria = ref.watch(secretariaStreamProvider);
 
     // ========================================================================
     // LÓGICA DO SELETOR DE ANO LETIVO
@@ -61,9 +59,28 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
       _anoSelecionado = listaAnos.first;
     }
 
+    int qtdAlunos = 0;
+    if (estadoAlunos.hasValue) {
+      qtdAlunos = estadoAlunos.value!.where((a) => a['status'] != 'Inativo' && a['status'] != 'Transferido').length;
+    }
+
+    int qtdProfs = 0;
+    if (estadoProfs.hasValue) {
+      qtdProfs = estadoProfs.value!.where((p) => p['status'] == 'Ativo').length;
+    }
+
+    int qtdSec = 0;
+    if (estadoSecretaria.hasValue) {
+      qtdSec = estadoSecretaria.value!.where((s) => s['status'] == 'Ativo').length;
+    }
+
+    int qtdTurmas = 0;
+    if (estadoTurmas.hasValue) {
+      qtdTurmas = estadoTurmas.value!.where((t) => t['anoLetivo']?.toString() == _anoSelecionado && t['status'] != 'Inativa').length;
+    }
+
     return Scaffold(
-      backgroundColor:
-          Colors.grey.shade50, // Fundo cinza bem clarinho (moderno)
+      backgroundColor: Colors.grey.shade50, // Fundo cinza bem clarinho (moderno)
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(32.0),
         child: Column(
@@ -88,7 +105,7 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                     const SizedBox(height: 4),
                     Text(
                       'Resumo dos dados da escola para o ano letivo de $_anoSelecionado',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                      style: const TextStyle(fontSize: 16, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -139,8 +156,9 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                             fontSize: 16,
                           ),
                           onChanged: (novoAno) {
-                            if (novoAno != null)
+                            if (novoAno != null) {
                               setState(() => _anoSelecionado = novoAno);
+                            }
                           },
                           items: listaAnos
                               .map(
@@ -162,81 +180,21 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
             // ================================================================
             // INDICADORES DE DESEMPENHO (KPIs - OS 4 CARDS SUPERIORES)
             // ================================================================
-            Row(
-              children: [
-                Expanded(
-                  child: _ConstruirCardResumo(
-                    titulo: 'Alunos Ativos',
-                    icone: Icons.school_rounded,
-                    cor: Colors
-                        .blue, // Cores mantidas fixas para padrão visual de Dashboards (cada métrica uma cor)
-                    estado: estadoAlunos,
-                    calculo: (dados) => dados
-                        .where(
-                          (a) =>
-                              a['status'] != 'Inativo' &&
-                              a['status'] != 'Transferido',
-                        )
-                        .length
-                        .toString(),
-                    onTap: () => context.go('/admin/cadastros', extra: 0),
-                  ),
-                ),
-                const SizedBox(
-                  width: 16,
-                ), // Espaçamento levemente reduzido para caber 4 cards bem
-                Expanded(
-                  child: _ConstruirCardResumo(
-                    titulo: 'Professores Ativos',
-                    icone: Icons.assignment_ind_rounded,
-                    cor: Colors.green,
-                    estado: estadoProfs,
-                    calculo: (dados) => dados
-                        .where((p) => p['status'] == 'Ativo')
-                        .length
-                        .toString(),
-                    onTap: () => context.go('/admin/cadastros', extra: 2),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // --- NOVO CARD DE FUNCIONÁRIOS DA SECRETARIA ---
-                Expanded(
-                  child: _ConstruirCardResumo(
-                    titulo: 'Funcionários Ativos',
-                    icone: Icons.support_agent_rounded,
-                    cor: Colors
-                        .teal, // Cor verde-água para diferenciar dos professores
-                    estado: estadoSecretaria,
-                    calculo: (dados) => dados
-                        .where((s) => s['status'] == 'Ativo')
-                        .length
-                        .toString(),
-                    onTap: () => context.go(
-                      '/admin/cadastros',
-                      extra: 3,
-                    ), // Aba 3 é a de Secretaria
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: _ConstruirCardResumo(
-                    titulo: 'Turmas ($_anoSelecionado)',
-                    icone: Icons.meeting_room_rounded,
-                    cor: Colors.orange,
-                    estado: estadoTurmas,
-                    calculo: (dados) => dados
-                        .where(
-                          (t) =>
-                              t['anoLetivo'] == _anoSelecionado &&
-                              t['status'] != 'Inativa',
-                        )
-                        .length
-                        .toString(),
-                    onTap: () => context.go('/admin/cadastros', extra: 4),
-                  ),
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final double cardWidth = (constraints.maxWidth - (16 * 3)) / 4;
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildMetricCard(context, 'Alunos', qtdAlunos.toString(), Icons.school_rounded, Colors.blue, 0, cardWidth), // ABA 0 (Alunos)
+                    _buildMetricCard(context, 'Professores', qtdProfs.toString(), Icons.assignment_ind_rounded, Colors.green, 1, cardWidth), // ABA 1 (Professores)
+                    _buildMetricCard(context, 'Funcionários', qtdSec.toString(), Icons.support_agent_rounded, Colors.teal, 2, cardWidth), // ABA 2 (Secretaria)
+                    _buildMetricCard(context, 'Turmas ($_anoSelecionado)', qtdTurmas.toString(), Icons.meeting_room_rounded, Colors.orange, 3, cardWidth), // ABA 3 (Turmas)
+                  ],
+                );
+              },
             ),
+            
             const SizedBox(height: 32),
 
             // ================================================================
@@ -282,38 +240,31 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                                 titulo: 'Novo Aluno',
                                 icone: Icons.person_add_alt_1_rounded,
                                 cor: Colors.blue,
-                                onTap: () =>
-                                    context.push('/admin/cadastros/aluno/novo'),
+                                onTap: () => context.push('/admin/cadastros/aluno/novo'),
                               ),
                               _BotaoAtalho(
                                 titulo: 'Novo Professor',
                                 icone: Icons.person_add_alt_rounded,
                                 cor: Colors.green,
-                                onTap: () => context.push(
-                                  '/admin/cadastros/professor/novo',
-                                ),
+                                onTap: () => context.push('/admin/cadastros/professor/novo'),
                               ),
                               _BotaoAtalho(
                                 titulo: 'Novo Funcionário',
                                 icone: Icons.support_agent_rounded,
                                 cor: Colors.teal,
-                                onTap: () => context.push(
-                                  '/admin/cadastros/secretaria/novo',
-                                ),
+                                onTap: () => context.push('/admin/cadastros/secretaria/novo'),
                               ),
                               _BotaoAtalho(
                                 titulo: 'Nova Turma',
                                 icone: Icons.meeting_room_rounded,
                                 cor: Colors.orange,
-                                onTap: () =>
-                                    context.push('/admin/cadastros/turma/novo'),
+                                onTap: () => context.push('/admin/cadastros/turma/novo'),
                               ),
                               _BotaoAtalho(
-                                titulo: 'Novo Acesso',
+                                titulo: 'Usuários',
                                 icone: Icons.manage_accounts_rounded,
                                 cor: Colors.deepPurple,
-                                onTap: () =>
-                                    context.go('/admin/cadastros', extra: 5),
+                                onTap: () => context.go('/admin/cadastros', extra: 4), // ABA 4 (Usuários)
                               ),
                             ],
                           ),
@@ -385,108 +336,71 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
       ),
     );
   }
-}
 
-// ============================================================================
-// WIDGETS AUXILIARES (Designers dos Componentes da Tela)
-// ============================================================================
-
-// --- Molde dos 4 Cards Coloridos Superiores ---
-class _ConstruirCardResumo extends StatelessWidget {
-  final String titulo;
-  final IconData icone;
-  final Color cor;
-  final AsyncValue<List<Map<String, dynamic>>> estado;
-  final String Function(List<Map<String, dynamic>>) calculo;
-  final VoidCallback? onTap;
-
-  const _ConstruirCardResumo({
-    required this.titulo,
-    required this.icone,
-    required this.cor,
-    required this.estado,
-    required this.calculo,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      shadowColor: cor.withAlpha(40),
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: cor.withAlpha(50), width: 1.5),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: cor.withAlpha(30),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(icone, color: cor),
+  Widget _buildMetricCard(BuildContext context, String titulo, String valor, IconData icone, MaterialColor cor, int indexAba, double width) {
+    return InkWell(
+      onTap: () {
+        context.go('/admin/cadastros', extra: indexAba);
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: width,
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: cor.shade200),
+          boxShadow: [
+            BoxShadow(
+              color: cor.withAlpha(20),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cor.shade50,
+                    shape: BoxShape.circle,
                   ),
-                  const Spacer(),
-                  Icon(
-                    Icons.arrow_outward_rounded,
-                    color: Colors.grey.shade400,
-                    size: 20,
-                  ), // Ícone de "Ir para" moderno
-                ],
+                  child: Icon(icone, color: cor.shade700),
+                ),
+                Icon(Icons.arrow_outward_rounded, color: Colors.grey.shade400, size: 20),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text(
+              valor,
+              style: const TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 24),
-              // Trata a leitura dos dados do Firebase (Carregando, Erro ou os Dados Prontos)
-              estado.when(
-                loading: () => const SizedBox(
-                  height: 38,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: CircularProgressIndicator(),
-                  ),
-                ),
-                error: (e, s) => Text(
-                  'Erro',
-                  style: TextStyle(
-                    color: Colors.red.shade700,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                data: (dados) => Text(
-                  calculo(dados),
-                  style: const TextStyle(
-                    fontSize: 38,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              titulo,
+              style: TextStyle(
+                color: Colors.grey.shade700,
+                fontWeight: FontWeight.w500,
               ),
-              const SizedBox(height: 4),
-              Text(
-                titulo,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: Colors.grey.shade700,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
+            )
+          ],
         ),
       ),
     );
   }
 }
+
+// ============================================================================
+// WIDGETS AUXILIARES (Designers dos Componentes da Tela)
+// ============================================================================
 
 // --- Molde dos Botões Quadrados de "Ações Rápidas" ---
 class _BotaoAtalho extends StatelessWidget {
