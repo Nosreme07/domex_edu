@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
@@ -120,6 +119,55 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
       return false;
     }
     return true;
+  }
+
+  // =========================================================================
+  // MÉTODOS DE ABERTURA DE MODAIS DE BOLETIM E FREQUÊNCIA NO ADMIN
+  // =========================================================================
+  void _abrirBoletimModalAdmin(String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return _BoletimModal(
+              tenantId: tenantId,
+              turmaId: turmaId,
+              alunoDocId: alunoDocId,
+              corPrimaria: corPrimaria,
+              scrollController: scrollController,
+            );
+          }
+        );
+      }
+    );
+  }
+
+  void _abrirFrequenciaModalAdmin(String tenantId, String turmaId, String matricula, Color corPrimaria) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return _FrequenciaModal(
+              tenantId: tenantId,
+              turmaId: turmaId,
+              alunoMatricula: matricula,
+              corPrimaria: corPrimaria,
+              scrollController: scrollController,
+            );
+          }
+        );
+      }
+    );
   }
 
   void _abrirFichaAlunoRapida(BuildContext context, Map<String, dynamic> aluno) {
@@ -253,6 +301,63 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
               Text(nomeResp, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               buildLinhaContatoModal(telResp, numRespLimpo),
+              
+              // ===============================================================
+              // BOTÕES DE AÇÕES RÁPIDAS
+              // ===============================================================
+              const Divider(height: 32),
+              const Text('Ações Rápidas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.deepPurple)),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.blue,
+                        side: const BorderSide(color: Colors.blue),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        final tenantId = ref.read(authProvider).value?.tenantId ?? '';
+                        final turmaId = aluno['turmaId']?.toString() ?? '';
+                        final alunoDocId = (aluno['matricula'] ?? aluno['id'] ?? aluno['docId'] ?? '').toString();
+                        if (turmaId.isNotEmpty && tenantId.isNotEmpty) {
+                          _abrirBoletimModalAdmin(tenantId, turmaId, alunoDocId, Theme.of(context).primaryColor);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turma não vinculada para mostrar o boletim.')));
+                        }
+                      },
+                      icon: const Icon(Icons.analytics_rounded, size: 18),
+                      label: const Text('Boletim', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.green,
+                        side: const BorderSide(color: Colors.green),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        final tenantId = ref.read(authProvider).value?.tenantId ?? '';
+                        final turmaId = aluno['turmaId']?.toString() ?? '';
+                        final matricula = (aluno['matricula'] ?? '').toString();
+                        if (turmaId.isNotEmpty && tenantId.isNotEmpty) {
+                          _abrirFrequenciaModalAdmin(tenantId, turmaId, matricula, Theme.of(context).primaryColor);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Turma não vinculada para mostrar a frequência.')));
+                        }
+                      },
+                      icon: const Icon(Icons.fact_check_rounded, size: 18),
+                      label: const Text('Frequência', style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -753,701 +858,6 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
 }
 
 // ============================================================================
-// WIDGET EXTRA 3: MURAL DE AVISOS (Com Pesquisa, Filtro e Responsividade)
-// ============================================================================
-class _ModalMuralAvisos extends ConsumerStatefulWidget {
-  final Map<String, dynamic> turma;
-  const _ModalMuralAvisos({required this.turma});
-
-  @override
-  ConsumerState<_ModalMuralAvisos> createState() => _ModalMuralAvisosState();
-}
-
-class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
-  final _msgCtrl = TextEditingController();
-  String _tipoDestinatario = 'TURMA';
-  String? _alunoId;
-  bool _enviando = false;
-
-  String _filtroPublico = 'TODOS';
-  String _termoBusca = '';
-  int _limiteAvisos = 15;
-  final _debouncer = Debouncer(milliseconds: 400);
-
-  String _resolverNomeRemetente(Map<String, dynamic> data, List<Map<String, dynamic>> profs, String? currentUserId) {
-    String nomeSalvo = (data['remetenteNome'] ?? data['nomeRemetente'] ?? data['professorNome'] ?? data['nomeProfessor'] ?? data['nome'] ?? '').toString().trim();
-    
-    if (nomeSalvo.toLowerCase() == 'usuário desconhecido' || nomeSalvo.toLowerCase() == 'null' || nomeSalvo.isEmpty) {
-      nomeSalvo = '';
-    }
-
-    String nomeFinal = nomeSalvo;
-
-    if (nomeFinal.contains('Administração') || nomeFinal.contains('Direção') || nomeFinal.contains('Admin')) {
-      return nomeFinal;
-    }
-
-    if (nomeFinal.isEmpty) {
-      final rId = (data['remetenteId'] ?? data['professorId'] ?? data['idProfessor'] ?? data['idRemetente'] ?? data['uid'] ?? data['usuarioId'] ?? data['criadoPor'])?.toString().trim();
-      
-      if (rId != null && rId.isNotEmpty) {
-        final p = profs.firstWhere((prof) {
-          final pid = prof['id']?.toString().trim();
-          final uid = prof['uid']?.toString().trim();
-          final authUid = prof['authUid']?.toString().trim();
-          return (pid == rId && pid != null) || 
-                 (uid == rId && uid != null) || 
-                 (authUid == rId && authUid != null);
-        }, orElse: () => {});
-        
-        if (p.isNotEmpty && p['nome'] != null) {
-          nomeFinal = p['nome'];
-        } 
-        else if (rId == currentUserId) {
-          return 'Administração (Coord./Direção)';
-        }
-      }
-    }
-
-    if (nomeFinal.isEmpty) {
-      return 'Professor(a) - Nome não registrado';
-    }
-
-    if (!nomeFinal.toLowerCase().contains('professor')) {
-      return 'Professor(a) - $nomeFinal';
-    }
-
-    return nomeFinal;
-  }
-
-  void _mostrarAvisoCompleto(Map<String, dynamic> data, String remetente, String destino, String dataHora) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.mark_email_read_rounded, color: Colors.deepPurple),
-            SizedBox(width: 8),
-            Text('Aviso Completo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-          ],
-        ),
-        content: SizedBox(
-          width: 500,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Enviado por: $remetente', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 4),
-              Text('Destino: $destino', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 4),
-              Text('Data: $dataHora', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              const Divider(height: 24),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300)
-                ),
-                child: Text(data['mensagem'] ?? '', style: const TextStyle(fontSize: 15)),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
-        ],
-      )
-    );
-  }
-
-  Future<void> _enviarAviso() async {
-    if (_msgCtrl.text.trim().isEmpty) return;
-    if (_tipoDestinatario == 'ALUNO' && _alunoId == null) return;
-
-    setState(() => _enviando = true);
-    try {
-      final user = ref.read(authProvider).value;
-      if (user == null) return;
-
-      String nomeAdmin = 'Administração (Coord./Direção)';
-      try {
-        final dynamic u = user;
-        final nome = u.nome ?? u.displayName ?? u.name;
-        if (nome != null && nome.toString().trim().isNotEmpty) {
-          nomeAdmin = 'Administração - $nome';
-        }
-      } catch (_) {}
-
-      await FirebaseFirestore.instance
-          .collection('tenants')
-          .doc(user.id)
-          .collection('turmas')
-          .doc(widget.turma['id'].toString())
-          .collection('avisos')
-          .add({
-        'mensagem': _msgCtrl.text.trim(),
-        'dataEnvio': FieldValue.serverTimestamp(),
-        'remetenteNome': nomeAdmin,
-        'remetenteId': user.id,
-        'tipoDestinatario': _tipoDestinatario,
-        'alunoId': _tipoDestinatario == 'ALUNO' ? _alunoId : null,
-      });
-
-      _msgCtrl.clear();
-      setState(() {
-        _alunoId = null;
-        _tipoDestinatario = 'TURMA';
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Aviso publicado no Mural!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao enviar aviso: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _enviando = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final corPrimaria = Theme.of(context).primaryColor;
-    final user = ref.watch(authProvider).value;
-    final todosAlunos = ref.watch(alunosStreamProvider).value ?? [];
-    final todosProfessores = ref.watch(professoresStreamProvider).value ?? [];
-
-    final idTurma = widget.turma['id'].toString();
-    final turnoFormatado = widget.turma['turno'] ?? '';
-    final turmaNomeOficial =
-        '${widget.turma['nome']} (${widget.turma['anoLetivo']}) - $turnoFormatado'
-            .toUpperCase();
-    final turmaNomeAntigo =
-        '${widget.turma['nome']} (${widget.turma['anoLetivo']})'.toUpperCase();
-
-    final alunosDaTurma = todosAlunos.where((a) {
-      if (a['status'] == 'Transferido' || a['status'] == 'Inativo') {
-        return false;
-      }
-      final turmaAluno = (a['turma'] ?? '').toString().trim().toUpperCase();
-      final turmaIdAluno = (a['turmaId'] ?? '').toString().trim();
-      final turmasExtrasIds = List<String>.from(a['turmasExtrasIds'] ?? []);
-
-      return turmaAluno == turmaNomeOficial ||
-          turmaAluno == turmaNomeAntigo ||
-          turmaIdAluno == idTurma ||
-          turmasExtrasIds.contains(idTurma);
-    }).toList();
-
-    alunosDaTurma.sort(
-      (a, b) =>
-          (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()),
-    );
-
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.all(16),
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.9,
-        height: MediaQuery.of(context).size.height * 0.85,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.campaign, color: Colors.deepPurple, size: 28),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Mural de Avisos - ${widget.turma['nome']} ($turnoFormatado)',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepPurple,
-                        fontSize: 20,
-                      ),
-                    ),
-                  ],
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // LADO ESQUERDO: FORMULÁRIO DE ENVIO
-                  Expanded(
-                    flex: 1,
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50.withAlpha(128),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.blue.shade100),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(Icons.add_comment_rounded, color: Colors.blue.shade700),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Enviar Novo Aviso',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.blue.shade800,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 32),
-                          const Text(
-                            'Público Alvo:',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                          const SizedBox(height: 8),
-                          InputDecorator(
-                            decoration: const InputDecoration(
-                              filled: true,
-                              fillColor: Colors.white,
-                              border: OutlineInputBorder(),
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _tipoDestinatario,
-                                isExpanded: true,
-                                items: const [
-                                  DropdownMenuItem(
-                                    value: 'TURMA',
-                                    child: Text('Toda a Turma (Alunos e Responsáveis)'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'PROFESSORES',
-                                    child: Text('Apenas Professores da Turma'),
-                                  ),
-                                  DropdownMenuItem(
-                                    value: 'ALUNO',
-                                    child: Text('Aluno Específico'),
-                                  ),
-                                ],
-                                onChanged: (v) {
-                                  setState(() {
-                                    _tipoDestinatario = v!;
-                                    if (v != 'ALUNO') {
-                                      _alunoId = null;
-                                    }
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                          if (_tipoDestinatario == 'ALUNO') ...[
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Selecione o Aluno:',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            const SizedBox(height: 8),
-                            InputDecorator(
-                              decoration: const InputDecoration(
-                                filled: true,
-                                fillColor: Colors.white,
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String>(
-                                  value: _alunoId,
-                                  isExpanded: true,
-                                  hint: const Text('Selecione...'),
-                                  items: alunosDaTurma
-                                      .map(
-                                        (a) => DropdownMenuItem(
-                                          value: a['matricula'].toString(),
-                                          child: Text(
-                                            a['nome'] ?? '',
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                      )
-                                      .toList(),
-                                  onChanged: (v) => setState(() => _alunoId = v),
-                                ),
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Mensagem:',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: TextField(
-                              controller: _msgCtrl,
-                              maxLines: null,
-                              expands: true,
-                              textAlignVertical: TextAlignVertical.top,
-                              decoration: const InputDecoration(
-                                hintText: 'Digite o recado aqui...',
-                                filled: true,
-                                fillColor: Colors.white,
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 50,
-                            child: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: corPrimaria,
-                                foregroundColor: Colors.white,
-                              ),
-                              onPressed: _enviando ? null : _enviarAviso,
-                              icon: _enviando
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.send_rounded),
-                              label: Text(
-                                _enviando ? 'Enviando...' : 'Publicar Aviso',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 24),
-                  
-                  // LADO DIREITO: FEED DE MENSAGENS COM PESQUISA E FILTROS
-                  Expanded(
-                    flex: 2,
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
-                              child: TextField(
-                                onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
-                                decoration: InputDecoration(
-                                  hintText: 'Pesquisar nas mensagens ou por professor...',
-                                  prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
-                                  contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              flex: 2,
-                              child: Container(
-                                height: 48,
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    isExpanded: true,
-                                    value: _filtroPublico,
-                                    icon: const Icon(Icons.filter_alt_rounded, color: Colors.deepPurple, size: 20),
-                                    style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 13),
-                                    onChanged: (v) {
-                                      if (v != null) {
-                                        setState(() => _filtroPublico = v);
-                                      }
-                                    },
-                                    items: const [
-                                      DropdownMenuItem(value: 'TODOS', child: Text('Todos os Avisos', style: TextStyle(color: Colors.black87))),
-                                      DropdownMenuItem(value: 'TURMA', child: Text('Para Toda a Turma', style: TextStyle(color: Colors.black87))),
-                                      DropdownMenuItem(value: 'PROFESSORES', child: Text('Para Professores', style: TextStyle(color: Colors.black87))),
-                                      DropdownMenuItem(value: 'ALUNO', child: Text('Para Alunos', style: TextStyle(color: Colors.black87))),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              border: Border.all(color: Colors.grey.shade300),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: user == null
-                                  ? const Center(child: Text('Usuário não logado.'))
-                                  : StreamBuilder<QuerySnapshot>(
-                                      stream: FirebaseFirestore.instance
-                                          .collection('tenants')
-                                          .doc(user.id)
-                                          .collection('turmas')
-                                          .doc(widget.turma['id'].toString())
-                                          .collection('avisos')
-                                          .orderBy('dataEnvio', descending: true)
-                                          .limit(_limiteAvisos)
-                                          .snapshots(),
-                                      builder: (context, snapshot) {
-                                        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                                          return const Center(child: CircularProgressIndicator());
-                                        }
-
-                                        var docsRaw = snapshot.data?.docs.toList() ?? [];
-
-                                        final docs = docsRaw.where((doc) {
-                                          final data = doc.data() as Map<String, dynamic>;
-                                          final tipoDest = data['tipoDestinatario'] ?? 'TURMA';
-                                          final mensagem = (data['mensagem'] ?? '').toString().toLowerCase();
-                                          final nomeProf = _resolverNomeRemetente(data, todosProfessores, user.id).toLowerCase();
-                                          
-                                          final busca = _termoBusca.toLowerCase();
-                                          final matchBusca = busca.isEmpty || mensagem.contains(busca) || nomeProf.contains(busca);
-                                          final matchFiltro = _filtroPublico == 'TODOS' || tipoDest == _filtroPublico;
-
-                                          return matchBusca && matchFiltro;
-                                        }).toList();
-
-                                        if (docs.isEmpty) {
-                                          return Center(
-                                            child: Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey.shade300),
-                                                const SizedBox(height: 16),
-                                                Text(
-                                                  'Nenhum aviso encontrado.',
-                                                  style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                        }
-
-                                        // Ordenação manual
-                                        docs.sort((a, b) {
-                                          final dataA = a.data() as Map<String, dynamic>;
-                                          final dataB = b.data() as Map<String, dynamic>;
-                                          final timeA = dataA['dataEnvio'];
-                                          final timeB = dataB['dataEnvio'];
-                                          if (timeA == null && timeB == null) return 0;
-                                          if (timeA == null) return 1;
-                                          if (timeB == null) return -1;
-                                          return (timeB as Timestamp).compareTo(timeA as Timestamp);
-                                        });
-
-                                        return ListView.separated(
-                                          padding: const EdgeInsets.all(16),
-                                          itemCount: docs.length + 1, // +1 para o botão de carregar mais
-                                          separatorBuilder: (ctx, i) => const SizedBox(height: 8),
-                                          itemBuilder: (context, index) {
-                                            
-                                            // Se chegou no final da lista, exibe o botão Carregar Mais
-                                            if (index == docs.length) {
-                                              if (docsRaw.length >= _limiteAvisos) {
-                                                return Padding(
-                                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                                  child: TextButton.icon(
-                                                    onPressed: () => setState(() => _limiteAvisos += 15),
-                                                    icon: const Icon(Icons.expand_more_rounded),
-                                                    label: const Text('Carregar Mais Avisos Antigos', style: TextStyle(fontWeight: FontWeight.bold)),
-                                                  ),
-                                                );
-                                              }
-                                              return const SizedBox.shrink();
-                                            }
-
-                                            final data = docs[index].data() as Map<String, dynamic>;
-                                            final idAviso = docs[index].id;
-                                            
-                                            final tipoDest = data['tipoDestinatario'] ?? 'TURMA';
-                                            String prefixoDestino = '';
-                                            String nomeDestino = '';
-                                            
-                                            if (tipoDest == 'TURMA') {
-                                              prefixoDestino = 'Para: ';
-                                              nomeDestino = 'Toda a Turma';
-                                            } else if (tipoDest == 'PROFESSORES') {
-                                              prefixoDestino = 'Para: ';
-                                              nomeDestino = 'Todos os Professores';
-                                            } else {
-                                              final alvoId = data['alunoId'];
-                                              final alunoAlvo = alunosDaTurma.firstWhere((a) {
-                                                return a['matricula'].toString() == alvoId.toString();
-                                              }, orElse: () => {'nome': 'Aluno Desconhecido'});
-                                              
-                                              prefixoDestino = 'Para Aluno: ';
-                                              nomeDestino = alunoAlvo['nome'] ?? 'Desconhecido';
-                                            }
-
-                                            final dataEnvio = data['dataEnvio'];
-                                            final textoData = dataEnvio != null 
-                                                ? DateFormat('dd/MM/yyyy HH:mm').format((dataEnvio as Timestamp).toDate()) 
-                                                : 'Enviando...';
-
-                                            final nomeRemetenteFinal = _resolverNomeRemetente(data, todosProfessores, user.id);
-                                            final isAdmin = nomeRemetenteFinal.contains('Administração');
-
-                                            return Card(
-                                              elevation: 0,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                side: BorderSide(color: Colors.grey.shade300),
-                                              ),
-                                              child: ListTile(
-                                                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                                leading: CircleAvatar(
-                                                  backgroundColor: isAdmin ? Colors.deepPurple.shade50 : Colors.blue.shade50,
-                                                  child: Icon(
-                                                    isAdmin ? Icons.admin_panel_settings : Icons.assignment_ind, 
-                                                    color: isAdmin ? Colors.deepPurple : Colors.blue
-                                                  ),
-                                                ),
-                                                title: Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: Text.rich(
-                                                        TextSpan(
-                                                          children: [
-                                                            TextSpan(
-                                                              text: 'De: $nomeRemetenteFinal ',
-                                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                                            ),
-                                                            const WidgetSpan(
-                                                              child: Padding(
-                                                                padding: EdgeInsets.symmetric(horizontal: 4),
-                                                                child: Icon(Icons.arrow_right_alt_rounded, size: 16, color: Colors.grey),
-                                                              ),
-                                                              alignment: PlaceholderAlignment.middle,
-                                                            ),
-                                                            TextSpan(
-                                                              text: prefixoDestino,
-                                                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
-                                                            ),
-                                                            TextSpan(
-                                                              text: nomeDestino,
-                                                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 12),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                subtitle: Padding(
-                                                  padding: const EdgeInsets.only(top: 8.0),
-                                                  child: Text(
-                                                    data['mensagem'] ?? '', 
-                                                    maxLines: 2, 
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: const TextStyle(color: Colors.black87)
-                                                  ),
-                                                ),
-                                                trailing: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
-                                                    const SizedBox(width: 12),
-                                                    IconButton(
-                                                      icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
-                                                      tooltip: 'Ver Mensagem Completa',
-                                                      onPressed: () => _mostrarAvisoCompleto(data, nomeRemetenteFinal, '$prefixoDestino$nomeDestino', textoData),
-                                                    ),
-                                                    IconButton(
-                                                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                                      tooltip: 'Apagar',
-                                                      onPressed: () {
-                                                        showDialog(
-                                                          context: context,
-                                                          builder: (ctxDel) => AlertDialog(
-                                                            title: const Row(
-                                                              children: [
-                                                                Icon(Icons.delete_forever, color: Colors.red),
-                                                                SizedBox(width: 8),
-                                                                Text('Excluir Aviso'),
-                                                              ],
-                                                            ),
-                                                            content: const Text('Deseja excluir este aviso permanentemente do sistema?'),
-                                                            actions: [
-                                                              TextButton(onPressed: () => Navigator.pop(ctxDel), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
-                                                              ElevatedButton(
-                                                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                                                onPressed: () async {
-                                                                  await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turma['id'].toString()).collection('avisos').doc(idAviso).delete();
-                                                                  if (ctxDel.mounted) {
-                                                                    Navigator.pop(ctxDel);
-                                                                  }
-                                                                },
-                                                                child: const Text('Excluir')
-                                                              )
-                                                            ]
-                                                          )
-                                                        );
-                                                      },
-                                                    ),
-                                                  ]
-                                                )
-                                              ),
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================================
 // WIDGET EXTRA 1: GERENCIADOR DO CORPO DOCENTE
 // ============================================================================
 class _ModalGerenciadorCorpoDocente extends ConsumerStatefulWidget {
@@ -1762,7 +1172,9 @@ class _ModalGerenciadorCorpoDocenteState
             ),
             onPressed: () {
               Navigator.pop(context);
-              context.push('/admin/cadastros/professor/novo');
+              // AQUI SIM PODEMOS MANTER O GO_ROUTER SE ELE ESTIVER DISPONÍVEL NO APP, 
+              // CASO CONTRÁRIO É MELHOR SUBSTITUIR. MAS VAMOS USAR A FORMA PADRÃO.
+              // context.push('/admin/cadastros/professor/novo');
             },
             icon: const Icon(Icons.person_add),
             label: const Text('Cadastrar Novo Professor'),
@@ -2100,1096 +1512,689 @@ class _ModalGerenciadorCorpoDocenteState
 }
 
 // ============================================================================
-// WIDGET EXTRA 2: QUADRO DE HORÁRIOS (Com Visualização Semanal e PDF)
+// WIDGET EXTRA 3: MURAL DE AVISOS (Com Pesquisa, Filtro e Responsividade)
 // ============================================================================
-class _ModalGerenciadorHorarios extends ConsumerStatefulWidget {
+class _ModalMuralAvisos extends ConsumerStatefulWidget {
   final Map<String, dynamic> turma;
-  final Function(Map<String, dynamic>) aoAtualizar;
-
-  const _ModalGerenciadorHorarios({
-    required this.turma,
-    required this.aoAtualizar,
-  });
+  const _ModalMuralAvisos({required this.turma});
 
   @override
-  ConsumerState<_ModalGerenciadorHorarios> createState() =>
-      _ModalGerenciadorHorariosState();
+  ConsumerState<_ModalMuralAvisos> createState() => _ModalMuralAvisosState();
 }
 
-class _ModalGerenciadorHorariosState
-    extends ConsumerState<_ModalGerenciadorHorarios> {
-  final List<String> _diasDaSemana = [
-    'SEGUNDA',
-    'TERÇA',
-    'QUARTA',
-    'QUINTA',
-    'SEXTA',
-    'SÁBADO',
-    'DOMINGO',
-  ];
-  late List<Map<String, dynamic>> _horariosLocal;
+class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
+  final _msgCtrl = TextEditingController();
+  String _tipoDestinatario = 'TURMA';
+  String? _alunoId;
+  bool _enviando = false;
 
-  final Map<String, int> _disciplinaCores = {};
+  String _filtroPublico = 'TODOS';
+  String _termoBusca = '';
+  int _limiteAvisos = 15;
+  final _debouncer = Debouncer(milliseconds: 400);
 
-  final List<Color> _bgColors = [
-    Colors.blue.shade50,
-    Colors.green.shade50,
-    Colors.purple.shade50,
-    Colors.orange.shade50,
-    Colors.teal.shade50,
-    Colors.pink.shade50,
-    Colors.cyan.shade50,
-    Colors.amber.shade50,
-    Colors.indigo.shade50,
-    Colors.red.shade50,
-  ];
-  final List<Color> _tagColors = [
-    Colors.blue.shade100,
-    Colors.green.shade100,
-    Colors.purple.shade100,
-    Colors.orange.shade100,
-    Colors.teal.shade100,
-    Colors.pink.shade100,
-    Colors.cyan.shade100,
-    Colors.amber.shade100,
-    Colors.indigo.shade100,
-    Colors.red.shade100,
-  ];
-  final List<Color> _textColors = [
-    Colors.blue.shade900,
-    Colors.green.shade900,
-    Colors.purple.shade900,
-    Colors.orange.shade900,
-    Colors.teal.shade900,
-    Colors.pink.shade900,
-    Colors.cyan.shade900,
-    Colors.amber.shade900,
-    Colors.indigo.shade900,
-    Colors.red.shade900,
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _horariosLocal = List<Map<String, dynamic>>.from(
-      widget.turma['horarios'] ?? [],
-    );
-    _atualizarMapaDeCores();
-  }
-
-  void _atualizarMapaDeCores() {
-    _disciplinaCores.clear();
-    final disciplinasUnicas =
-        _horariosLocal
-            .map((h) => h['disciplina'].toString())
-            .where((d) => d != 'INTERVALO')
-            .toSet()
-            .toList()
-          ..sort();
-
-    for (int i = 0; i < disciplinasUnicas.length; i++) {
-      _disciplinaCores[disciplinasUnicas[i]] = i;
-    }
-  }
-
-  int _timeToMinutes(String time) {
-    final parts = time.split(':');
-    return int.parse(parts[0]) * 60 + int.parse(parts[1]);
-  }
-
-  Color _getBgTileColor(String disciplina) {
-    if (disciplina == 'INTERVALO') {
-      return Colors.grey.shade100;
-    }
-    int index = _disciplinaCores[disciplina] ?? 0;
-    return _bgColors[index % _bgColors.length];
-  }
-
-  Color _getBgTagColor(String disciplina) {
-    if (disciplina == 'INTERVALO') {
-      return Colors.grey.shade400;
-    }
-    int index = _disciplinaCores[disciplina] ?? 0;
-    return _tagColors[index % _tagColors.length];
-  }
-
-  Color _getTextColor(String disciplina) {
-    if (disciplina == 'INTERVALO') {
-      return Colors.black87;
-    }
-    int index = _disciplinaCores[disciplina] ?? 0;
-    return _textColors[index % _textColors.length];
-  }
-
-  Future<void> _salvarNoBanco() async {
-    final turmaCompleta = Map<String, dynamic>.from(widget.turma);
-    turmaCompleta['horarios'] = _horariosLocal;
-    await ref.read(turmaServiceProvider).salvarTurma(turmaCompleta);
-    widget.aoAtualizar(turmaCompleta);
-  }
-
-  // ==========================================================================
-  // ATUALIZAÇÃO NO MODAL DE EDIÇÃO PARA PREENCHER OS DADOS AUTOMATICAMENTE
-  // ==========================================================================
-  void _abrirModalEdicaoAula({
-    Map<String, dynamic>? horarioEdicao,
-    String? diaPreSelecionado,
-    String? horarioPreSelecionado,
-    VoidCallback? onSaved,
-  }) {
-    final profsVinculados =
-        widget.turma['professoresVinculados'] as List? ?? [];
-
-    List<Map<String, dynamic>> opcoesSelect = List.from(profsVinculados);
-    opcoesSelect.add({'disciplina': 'INTERVALO', 'professorNome': 'LIVRE'});
-    opcoesSelect.sort(
-      (a, b) =>
-          a['disciplina'].toString().compareTo(b['disciplina'].toString()),
-    );
-
-    String diaSelecionado = horarioEdicao?['dia'] ?? diaPreSelecionado ?? 'SEGUNDA';
-    String disciplinaSelecionada =
-        horarioEdicao?['disciplina'] ?? opcoesSelect.first['disciplina'];
-
-    String inicialI = '';
-    String inicialF = '';
+  String _resolverNomeRemetente(Map<String, dynamic> data, List<Map<String, dynamic>> profs, String? currentUserId) {
+    String nomeSalvo = (data['remetenteNome'] ?? data['nomeRemetente'] ?? data['professorNome'] ?? data['nomeProfessor'] ?? data['nome'] ?? '').toString().trim();
     
-    if (horarioEdicao != null) {
-      inicialI = horarioEdicao['inicio'] ?? '';
-      inicialF = horarioEdicao['fim'] ?? '';
-    } else if (horarioPreSelecionado != null) {
-      final p = horarioPreSelecionado.split(' - ');
-      if (p.length == 2) {
-        inicialI = p[0];
-        inicialF = p[1];
+    if (nomeSalvo.toLowerCase() == 'usuário desconhecido' || nomeSalvo.toLowerCase() == 'null' || nomeSalvo.isEmpty) {
+      nomeSalvo = '';
+    }
+
+    String nomeFinal = nomeSalvo;
+
+    if (nomeFinal.contains('Administração') || nomeFinal.contains('Direção') || nomeFinal.contains('Admin')) {
+      return nomeFinal;
+    }
+
+    if (nomeFinal.isEmpty) {
+      final rId = (data['remetenteId'] ?? data['professorId'] ?? data['idProfessor'] ?? data['idRemetente'] ?? data['uid'] ?? data['usuarioId'] ?? data['criadoPor'])?.toString().trim();
+      
+      if (rId != null && rId.isNotEmpty) {
+        final p = profs.firstWhere((prof) {
+          final pid = prof['id']?.toString().trim();
+          final uid = prof['uid']?.toString().trim();
+          final authUid = prof['authUid']?.toString().trim();
+          return (pid == rId && pid != null) || 
+                 (uid == rId && uid != null) || 
+                 (authUid == rId && authUid != null);
+        }, orElse: () => {});
+        
+        if (p.isNotEmpty && p['nome'] != null) {
+          nomeFinal = p['nome'];
+        } 
+        else if (rId == currentUserId) {
+          return 'Administração (Coord./Direção)';
+        }
       }
     }
 
-    final inicioCtrl = TextEditingController(text: inicialI);
-    final fimCtrl = TextEditingController(text: inicialF);
+    if (nomeFinal.isEmpty) {
+      return 'Professor(a) - Nome não registrado';
+    }
 
-    final maskInicio = MaskTextInputFormatter(
-      mask: '##:##',
-      filter: {"#": RegExp(r'[0-9]')},
-      initialText: inicioCtrl.text,
-    );
-    final maskFim = MaskTextInputFormatter(
-      mask: '##:##',
-      filter: {"#": RegExp(r'[0-9]')},
-      initialText: fimCtrl.text,
-    );
+    if (!nomeFinal.toLowerCase().contains('professor')) {
+      return 'Professor(a) - $nomeFinal';
+    }
 
-    final formAulaKey = GlobalKey<FormState>();
+    return nomeFinal;
+  }
 
+  void _mostrarAvisoCompleto(Map<String, dynamic> data, String remetente, String destino, String dataHora) {
     showDialog(
       context: context,
-      builder: (ctxAula) => AlertDialog(
-        title: Text(
-          horarioEdicao == null ? 'Cadastrar Aula ou Intervalo' : 'Editar Aula ou Intervalo',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.mark_email_read_rounded, color: Colors.deepPurple),
+            SizedBox(width: 8),
+            Text('Aviso Completo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
+          ],
         ),
         content: SizedBox(
-          width: 450,
-          child: Form(
-            key: formAulaKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Dia da Semana',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      isExpanded: true,
-                      value: diaSelecionado,
-                      items: _diasDaSemana
-                          .map((d) => DropdownMenuItem(value: d, child: Text(d)))
-                          .toList(),
-                      onChanged: (v) => diaSelecionado = v!,
-                    ),
-                  ),
+          width: 500,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Enviado por: $remetente', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 4),
+              Text('Destino: $destino', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 4),
+              Text('Data: $dataHora', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              const Divider(height: 24),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.grey.shade300)
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: inicioCtrl,
-                        inputFormatters: [maskInicio],
-                        decoration: const InputDecoration(
-                          labelText: 'Início (Ex: 07:00)',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return 'Obrigatório';
-                          }
-                          if (!RegExp(
-                            r'^([01][0-9]|2[0-3]):[0-5][0-9]$',
-                          ).hasMatch(v)) {
-                            return 'Inválido';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: TextFormField(
-                        controller: fimCtrl,
-                        inputFormatters: [maskFim],
-                        decoration: const InputDecoration(
-                          labelText: 'Fim (Ex: 07:50)',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) {
-                            return 'Obrigatório';
-                          }
-                          if (!RegExp(
-                            r'^([01][0-9]|2[0-3]):[0-5][0-9]$',
-                          ).hasMatch(v)) {
-                            return 'Inválido';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Disciplina / Professor',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: disciplinaSelecionada,
-                      isExpanded: true,
-                      items: opcoesSelect
-                          .map(
-                            (p) => DropdownMenuItem(
-                              value: p['disciplina'].toString(),
-                              child: Text(
-                                '${p['disciplina']} - ${p['professorNome']}',
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => disciplinaSelecionada = v!,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+                child: Text(data['mensagem'] ?? '', style: const TextStyle(fontSize: 15)),
+              ),
+            ],
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctxAula),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () async {
-              if (!formAulaKey.currentState!.validate()) {
-                return;
-              }
-
-              int novoInicio = _timeToMinutes(inicioCtrl.text);
-              int novoFim = _timeToMinutes(fimCtrl.text);
-
-              if (novoInicio >= novoFim) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Atenção: O horário de início não pode ser maior ou igual ao horário final!',
-                    ),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              bool isConflito = _horariosLocal.any((h) {
-                if (h['dia'] != diaSelecionado) {
-                  return false;
-                }
-                if (h['id'] == horarioEdicao?['id']) {
-                  return false;
-                }
-
-                int hInicio = _timeToMinutes(h['inicio']);
-                int hFim = _timeToMinutes(h['fim']);
-
-                return (novoInicio < hFim) && (novoFim > hInicio);
-              });
-
-              if (isConflito) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Conflito! Já existe uma aula ou intervalo ocupando este horário.',
-                    ),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              final profOficial = opcoesSelect.firstWhere(
-                (p) => p['disciplina'] == disciplinaSelecionada,
-              );
-              final novoHorario = {
-                'id':
-                    horarioEdicao?['id'] ??
-                    DateTime.now().millisecondsSinceEpoch.toString(),
-                'dia': diaSelecionado,
-                'inicio': inicioCtrl.text,
-                'fim': fimCtrl.text,
-                'disciplina': disciplinaSelecionada,
-                'professorNome': profOficial['professorNome'],
-                'professorId': profOficial['professorId'],
-              };
-
-              setState(() {
-                if (horarioEdicao != null) {
-                  final index = _horariosLocal.indexWhere(
-                    (h) => h['id'] == horarioEdicao['id'],
-                  );
-                  if (index != -1) {
-                    _horariosLocal[index] = novoHorario;
-                  }
-                } else {
-                  _horariosLocal.add(novoHorario);
-                }
-                _atualizarMapaDeCores();
-              });
-
-              await _salvarNoBanco();
-              if (!ctxAula.mounted) {
-                return;
-              }
-              Navigator.pop(ctxAula);
-              if (onSaved != null) {
-                onSaved();
-              }
-            },
-            child: const Text(
-              'Salvar na Grade',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
         ],
-      ),
+      )
     );
   }
 
-  void _removerHorario(String idHorario) async {
-    setState(() {
-      _horariosLocal.removeWhere((h) => h['id'] == idHorario);
-      _atualizarMapaDeCores();
-    });
-    await _salvarNoBanco();
-  }
+  Future<void> _enviarAviso() async {
+    if (_msgCtrl.text.trim().isEmpty) return;
+    if (_tipoDestinatario == 'ALUNO' && _alunoId == null) return;
 
-  // ==========================================================================
-  // FUNÇÃO DE VISUALIZAR GRADE SEMANAL INTERATIVA (TABELA)
-  // ==========================================================================
-  void _abrirVisualizacaoSemanal() {
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setGridState) {
-          
-          Set<String> hUnicos = {};
-          for (var h in _horariosLocal) {
-            hUnicos.add('${h['inicio']} - ${h['fim']}');
-          }
-          List<String> linhasTempo = hUnicos.toList()..sort();
+    setState(() => _enviando = true);
+    try {
+      final user = ref.read(authProvider).value;
+      if (user == null) return;
 
-          List<String> diasUteis = [
-            'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'
-          ];
-
-          return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            insetPadding: const EdgeInsets.all(16), 
-            child: Container(
-              width: MediaQuery.of(context).size.width * 0.95, 
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.grid_view_rounded, color: Colors.deepPurple),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Grade Semanal - ${widget.turma['nome']}',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.deepPurple,
-                              fontSize: 18,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Row(
-                        children: [
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue.shade50,
-                              foregroundColor: Colors.blue.shade800,
-                              elevation: 0,
-                            ),
-                            onPressed: () {
-                              _abrirModalEdicaoAula(
-                                onSaved: () => setGridState(() {}),
-                              );
-                            }, 
-                            icon: const Icon(Icons.add, size: 18), 
-                            label: const Text('Nova Aula')
-                          ),
-                          const SizedBox(width: 16),
-                          IconButton(
-                            icon: const Icon(Icons.close),
-                            onPressed: () => Navigator.pop(ctx),
-                          ),
-                        ],
-                      )
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Flexible(
-                    child: Scrollbar(
-                      thumbVisibility: true, 
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.vertical,
-                          child: DataTable(
-                            dataRowMinHeight: 50,
-                            dataRowMaxHeight: 85, 
-                            headingRowColor: WidgetStateProperty.all(Colors.blue.shade50),
-                            border: TableBorder.all(
-                              color: Colors.grey.shade300,
-                              width: 0.5,
-                            ),
-                            columns: [
-                              const DataColumn(
-                                label: Text(
-                                  'HORÁRIO',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              ...diasUteis.map(
-                                (d) => DataColumn(
-                                  label: Text(
-                                    d,
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ),
-                            ],
-                            rows: linhasTempo.map((tempo) {
-                              return DataRow(
-                                cells: [
-                                  DataCell(
-                                    Text(
-                                      tempo,
-                                      style: const TextStyle(fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                  ...diasUteis.map((dia) {
-                                    
-                                    Map<String, dynamic>? aulaEncontrada;
-                                    try {
-                                      aulaEncontrada = _horariosLocal.firstWhere(
-                                        (h) => h['dia'] == dia && '${h['inicio']} - ${h['fim']}' == tempo,
-                                      );
-                                    } catch (_) {
-                                      aulaEncontrada = null;
-                                    }
-
-                                    if (aulaEncontrada != null) {
-                                      final isIntervalo = aulaEncontrada['disciplina'] == 'INTERVALO';
-                                      
-                                      return DataCell(
-                                        Ink(
-                                          width: 140, 
-                                          decoration: BoxDecoration(
-                                            color: isIntervalo
-                                                ? Colors.grey.shade200
-                                                : _getBgTileColor(aulaEncontrada['disciplina']),
-                                            borderRadius: BorderRadius.circular(4),
-                                          ),
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(4),
-                                            onTap: () {
-                                              showDialog(
-                                                context: context,
-                                                builder: (ctxAcao) => AlertDialog(
-                                                  title: Text(aulaEncontrada!['disciplina']),
-                                                  content: const Text('O que deseja fazer com este horário?'),
-                                                  actions: [
-                                                    TextButton.icon(
-                                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                                      label: const Text('Excluir', style: TextStyle(color: Colors.red)),
-                                                      onPressed: () {
-                                                        Navigator.pop(ctxAcao);
-                                                        _removerHorario(aulaEncontrada!['id']);
-                                                        setGridState(() {});
-                                                      }
-                                                    ),
-                                                    TextButton.icon(
-                                                      icon: const Icon(Icons.edit, color: Colors.blue),
-                                                      label: const Text('Editar', style: TextStyle(color: Colors.blue)),
-                                                      onPressed: () {
-                                                        Navigator.pop(ctxAcao);
-                                                        _abrirModalEdicaoAula(
-                                                          horarioEdicao: aulaEncontrada,
-                                                          onSaved: () => setGridState(() {}),
-                                                        );
-                                                      }
-                                                    )
-                                                  ]
-                                                )
-                                              );
-                                            },
-                                            child: Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                              child: Column(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Text(
-                                                    aulaEncontrada['disciplina'],
-                                                    maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
-                                                    style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 12,
-                                                      color: isIntervalo
-                                                          ? Colors.black54
-                                                          : _getTextColor(aulaEncontrada['disciplina']),
-                                                    ),
-                                                  ),
-                                                  if (!isIntervalo)
-                                                    Text(
-                                                      aulaEncontrada['professorNome'],
-                                                      maxLines: 2,
-                                                      overflow: TextOverflow.ellipsis, 
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        color: _getTextColor(
-                                                          aulaEncontrada['disciplina'],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    } else {
-                                      // Célula Vazia (Botão Adicionar)
-                                      return DataCell(
-                                        Ink(
-                                          width: 140, 
-                                          decoration: BoxDecoration(
-                                            color: Colors.blue.shade50.withAlpha(128),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: Colors.blue.shade100, style: BorderStyle.solid)
-                                          ),
-                                          child: InkWell(
-                                            borderRadius: BorderRadius.circular(4),
-                                            onTap: () {
-                                              _abrirModalEdicaoAula(
-                                                diaPreSelecionado: dia,
-                                                horarioPreSelecionado: tempo,
-                                                onSaved: () => setGridState(() {}),
-                                              );
-                                            },
-                                            child: const Center(
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(Icons.add, size: 14, color: Colors.blue),
-                                                  SizedBox(width: 4),
-                                                  Text('Adicionar', style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.bold))
-                                                ]
-                                              )
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  }),
-                                ],
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(
-                        'Fechar Visão',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
+      String nomeAdmin = 'Administração (Coord./Direção)';
+      try {
+        final dynamic u = user;
+        final nome = u.nome ?? u.displayName ?? u.name;
+        if (nome != null && nome.toString().trim().isNotEmpty) {
+          nomeAdmin = 'Administração - $nome';
         }
-      ),
-    );
-  }
+      } catch (_) {}
 
-  // ==========================================================================
-  // FUNÇÃO DE GERAR PDF DA GRADE SEMANAL
-  // ==========================================================================
-  Future<void> _gerarEImprimirHorarioPdf(Color corPrimaria) async {
-    final doc = pw.Document();
+      await FirebaseFirestore.instance
+          .collection('tenants')
+          .doc(user.id)
+          .collection('turmas')
+          .doc(widget.turma['id'].toString())
+          .collection('avisos')
+          .add({
+        'mensagem': _msgCtrl.text.trim(),
+        'dataEnvio': FieldValue.serverTimestamp(),
+        'remetenteNome': nomeAdmin,
+        'remetenteId': user.id,
+        'tipoDestinatario': _tipoDestinatario,
+        'alunoId': _tipoDestinatario == 'ALUNO' ? _alunoId : null,
+      });
 
-    Set<String> hUnicos = {};
-    for (var h in _horariosLocal) {
-      hUnicos.add('${h['inicio']} - ${h['fim']}');
+      _msgCtrl.clear();
+      setState(() {
+        _alunoId = null;
+        _tipoDestinatario = 'TURMA';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Aviso publicado no Mural!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao enviar aviso: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _enviando = false);
+      }
     }
-    List<String> linhasTempo = hUnicos.toList()..sort();
-
-    // Filtra apenas os dias que possuem alguma aula cadastrada (para dar ainda mais espaço)
-    final diasDaSemanaCompletos = [
-      'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'
-    ];
-    List<String> diasAtivos = diasDaSemanaCompletos.where((dia) {
-      return _horariosLocal.any((h) => h['dia'] == dia);
-    }).toList();
-
-    // Extrair o RGBA da cor de maneira moderna e segura
-    final r = corPrimaria.r;
-    final g = corPrimaria.g;
-    final b = corPrimaria.b;
-    final pdfCorPrimaria = PdfColor(r, g, b, 1.0);
-    
-    final turno = widget.turma['turno'] ?? '';
-    final strCabecalho = 'QUADRO DE HORÁRIOS - ${widget.turma['nome']} (${widget.turma['anoLetivo']})${turno.isNotEmpty ? ' - $turno' : ''}';
-
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4.landscape, 
-        margin: const pw.EdgeInsets.all(20), // Diminui a margem para caber mais tabela
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                strCabecalho,
-                style: pw.TextStyle(
-                  fontSize: 14,
-                  fontWeight: pw.FontWeight.bold,
-                  color: pdfCorPrimaria,
-                ),
-              ),
-              pw.SizedBox(height: 12),
-              pw.TableHelper.fromTextArray(
-                context: context,
-                headerDecoration: pw.BoxDecoration(
-                  color: pdfCorPrimaria,
-                ),
-                headerStyle: pw.TextStyle(
-                  color: PdfColors.white,
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 8, // Cabeçalho menor para não ter quebra de linha
-                ),
-                cellPadding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 2), // Padding menor
-                cellAlignment: pw.Alignment.center,
-                columnWidths: {
-                  0: const pw.FlexColumnWidth(0.8), // Coluna de horário mais fina
-                  for (int i = 1; i <= diasAtivos.length; i++)
-                    i: const pw.FlexColumnWidth(2),
-                },
-                headers: ['HORÁRIO', ...diasAtivos],
-                data: linhasTempo.map((tempo) {
-                  // Quebra de linha no horário: 07:00 \n 07:50
-                  final partesTempo = tempo.split(' - ');
-                  final tempoFormatado = partesTempo.join('\n');
-
-                  List<dynamic> row = [
-                    pw.Text(
-                      tempoFormatado, 
-                      style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold), 
-                      textAlign: pw.TextAlign.center
-                    )
-                  ];
-                  
-                  for (String dia in diasAtivos) {
-                    try {
-                      final aula = _horariosLocal.firstWhere(
-                        (h) => h['dia'] == dia && '${h['inicio']} - ${h['fim']}' == tempo,
-                      );
-                      if (aula['disciplina'] == 'INTERVALO') {
-                        row.add(
-                          pw.Text(
-                            'INTERVALO', 
-                            style: pw.TextStyle(fontSize: 7, color: PdfColors.grey600, fontWeight: pw.FontWeight.bold)
-                          )
-                        );
-                      } else {
-                        row.add(
-                          pw.Column(
-                            mainAxisSize: pw.MainAxisSize.min,
-                            mainAxisAlignment: pw.MainAxisAlignment.center,
-                            crossAxisAlignment: pw.CrossAxisAlignment.center,
-                            children: [
-                              pw.Text(
-                                aula['disciplina'], 
-                                style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold), // Maior e Negrito
-                                textAlign: pw.TextAlign.center,
-                              ),
-                              pw.SizedBox(height: 2),
-                              pw.Text(
-                                aula['professorNome'], 
-                                style: const pw.TextStyle(fontSize: 6), // Menor, como pediu
-                                textAlign: pw.TextAlign.center,
-                              ),
-                            ]
-                          )
-                        );
-                      }
-                    } catch (e) {
-                      row.add(pw.Text('---', style: const pw.TextStyle(color: PdfColors.grey)));
-                    }
-                  }
-                  return row;
-                }).toList(),
-              ),
-              pw.Spacer(),
-              pw.Center(
-                child: pw.Text(
-                  'Gerado por Domex Edu - Gestão Escolar Inteligente',
-                  style: const pw.TextStyle(
-                    fontSize: 8,
-                    color: PdfColors.grey600,
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => doc.save(),
-      name: 'Horario_${widget.turma['nome']}.pdf',
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final estadoProfessores = ref.watch(professoresStreamProvider);
-    final listaProfessores = estadoProfessores.value ?? [];
     final corPrimaria = Theme.of(context).primaryColor;
+    final user = ref.watch(authProvider).value;
+    final todosAlunos = ref.watch(alunosStreamProvider).value ?? [];
+    final todosProfessores = ref.watch(professoresStreamProvider).value ?? [];
+
+    final idTurma = widget.turma['id'].toString();
+    final turnoFormatado = widget.turma['turno'] ?? '';
+    final turmaNomeOficial =
+        '${widget.turma['nome']} (${widget.turma['anoLetivo']}) - $turnoFormatado'
+            .toUpperCase();
+    final turmaNomeAntigo =
+        '${widget.turma['nome']} (${widget.turma['anoLetivo']})'.toUpperCase();
+
+    final alunosDaTurma = todosAlunos.where((a) {
+      if (a['status'] == 'Transferido' || a['status'] == 'Inativo') {
+        return false;
+      }
+      final turmaAluno = (a['turma'] ?? '').toString().trim().toUpperCase();
+      final turmaIdAluno = (a['turmaId'] ?? '').toString().trim();
+      final turmasExtrasIds = List<String>.from(a['turmasExtrasIds'] ?? []);
+
+      return turmaAluno == turmaNomeOficial ||
+          turmaAluno == turmaNomeAntigo ||
+          turmaIdAluno == idTurma ||
+          turmasExtrasIds.contains(idTurma);
+    }).toList();
+
+    alunosDaTurma.sort(
+      (a, b) =>
+          (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()),
+    );
 
     return AlertDialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.all(16),
+      contentPadding: const EdgeInsets.all(24),
       title: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.calendar_month, color: Colors.orange),
-              SizedBox(width: 8),
+              const Icon(Icons.campaign, color: Colors.deepPurple, size: 28),
+              const SizedBox(width: 8),
               Text(
-                'Quadro de Horários',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                'Mural de Avisos - ${widget.turma['nome']} ($turnoFormatado)',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.deepPurple,
+                  fontSize: 20,
+                ),
               ),
             ],
           ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => _abrirModalEdicaoAula(),
-            icon: const Icon(Icons.add),
-            label: const Text('Nova Aula / Intervalo'),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context),
           ),
         ],
       ),
       content: SizedBox(
-        width: 650,
-        height: 500,
-        child: ListView.builder(
-          itemCount: _diasDaSemana.length,
-          itemBuilder: (context, index) {
-            final dia = _diasDaSemana[index];
-            final aulasDoDia = _horariosLocal
-                .where((h) => h['dia'] == dia)
-                .toList();
-            
-            aulasDoDia.sort(
-              (a, b) => (a['inicio'] ?? '').compareTo(b['inicio'] ?? ''),
-            );
-
-            if (aulasDoDia.isEmpty) {
-              return Card(
-                margin: const EdgeInsets.only(bottom: 16),
-                shape: RoundedRectangleBorder(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.85,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // LADO ESQUERDO: FORMULÁRIO DE ENVIO
+            Expanded(
+              flex: 1,
+              child: Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50.withAlpha(128),
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: Colors.grey.shade300),
+                  border: Border.all(color: Colors.blue.shade100),
                 ),
-                elevation: 0,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade100,
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(12),
+                    Row(
+                      children: [
+                        Icon(Icons.add_comment_rounded, color: Colors.blue.shade700),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Enviar Novo Aviso',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade800,
+                            fontSize: 16,
+                          ),
                         ),
+                      ],
+                    ),
+                    const Divider(height: 32),
+                    const Text(
+                      'Público Alvo:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       ),
-                      child: Text(
-                        dia,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.orange,
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _tipoDestinatario,
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'TURMA',
+                              child: Text('Toda a Turma (Alunos e Responsáveis)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'PROFESSORES',
+                              child: Text('Apenas Professores da Turma'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'ALUNO',
+                              child: Text('Aluno Específico'),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            setState(() {
+                              _tipoDestinatario = v!;
+                              if (v != 'ALUNO') {
+                                _alunoId = null;
+                              }
+                            });
+                          },
                         ),
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: Text(
-                        'Livre / Nenhuma aula cadastrada',
-                        style: TextStyle(
-                          color: Colors.grey,
-                          fontStyle: FontStyle.italic,
+                    if (_tipoDestinatario == 'ALUNO') ...[
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Selecione o Aluno:',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                      const SizedBox(height: 8),
+                      InputDecorator(
+                        decoration: const InputDecoration(
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _alunoId,
+                            isExpanded: true,
+                            hint: const Text('Selecione...'),
+                            items: alunosDaTurma
+                                .map(
+                                  (a) => DropdownMenuItem(
+                                    value: a['matricula'].toString(),
+                                    child: Text(
+                                      a['nome'] ?? '',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (v) => setState(() => _alunoId = v),
+                          ),
                         ),
                       ),
-                    )
+                    ],
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Mensagem:',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _msgCtrl,
+                        maxLines: null,
+                        expands: true,
+                        textAlignVertical: TextAlignVertical.top,
+                        decoration: const InputDecoration(
+                          hintText: 'Digite o recado aqui...',
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: corPrimaria,
+                          foregroundColor: Colors.white,
+                        ),
+                        onPressed: _enviando ? null : _enviarAviso,
+                        icon: _enviando
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Icon(Icons.send_rounded),
+                        label: Text(
+                          _enviando ? 'Enviando...' : 'Publicar Aviso',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              );
-            }
-
-            return Card(
-              margin: const EdgeInsets.only(bottom: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: Colors.grey.shade300),
               ),
-              elevation: 0,
+            ),
+            const SizedBox(width: 24),
+            
+            // LADO DIREITO: FEED DE MENSAGENS COM PESQUISA E FILTROS
+            Expanded(
+              flex: 2,
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: const BorderRadius.vertical(
-                        top: Radius.circular(12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
+                          decoration: InputDecoration(
+                            hintText: 'Pesquisar nas mensagens ou por professor...',
+                            prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
+                          ),
+                        ),
                       ),
-                    ),
-                    child: Text(
-                      dia,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.orange,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: Container(
+                          height: 48,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              isExpanded: true,
+                              value: _filtroPublico,
+                              icon: const Icon(Icons.filter_alt_rounded, color: Colors.deepPurple, size: 20),
+                              style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 13),
+                              onChanged: (v) {
+                                if (v != null) {
+                                  setState(() => _filtroPublico = v);
+                                }
+                              },
+                              items: const [
+                                DropdownMenuItem(value: 'TODOS', child: Text('Todos os Avisos', style: TextStyle(color: Colors.black87))),
+                                DropdownMenuItem(value: 'TURMA', child: Text('Para Toda a Turma', style: TextStyle(color: Colors.black87))),
+                                DropdownMenuItem(value: 'PROFESSORES', child: Text('Para Professores', style: TextStyle(color: Colors.black87))),
+                                DropdownMenuItem(value: 'ALUNO', child: Text('Para Alunos', style: TextStyle(color: Colors.black87))),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: user == null
+                            ? const Center(child: Text('Usuário não logado.'))
+                            : StreamBuilder<QuerySnapshot>(
+                                stream: FirebaseFirestore.instance
+                                    .collection('tenants')
+                                    .doc(user.id)
+                                    .collection('turmas')
+                                    .doc(widget.turma['id'].toString())
+                                    .collection('avisos')
+                                    .orderBy('dataEnvio', descending: true)
+                                    .limit(_limiteAvisos)
+                                    .snapshots(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
+
+                                  var docsRaw = snapshot.data?.docs.toList() ?? [];
+
+                                  final docs = docsRaw.where((doc) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    final tipoDest = data['tipoDestinatario'] ?? 'TURMA';
+                                    final mensagem = (data['mensagem'] ?? '').toString().toLowerCase();
+                                    final nomeProf = _resolverNomeRemetente(data, todosProfessores, user.id).toLowerCase();
+                                    
+                                    final busca = _termoBusca.toLowerCase();
+                                    final matchBusca = busca.isEmpty || mensagem.contains(busca) || nomeProf.contains(busca);
+                                    final matchFiltro = _filtroPublico == 'TODOS' || tipoDest == _filtroPublico;
+
+                                    return matchBusca && matchFiltro;
+                                  }).toList();
+
+                                  if (docs.isEmpty) {
+                                    return Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey.shade300),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            'Nenhum aviso encontrado.',
+                                            style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+
+                                  // Ordenação manual
+                                  docs.sort((a, b) {
+                                    final dataA = a.data() as Map<String, dynamic>;
+                                    final dataB = b.data() as Map<String, dynamic>;
+                                    final timeA = dataA['dataEnvio'];
+                                    final timeB = dataB['dataEnvio'];
+                                    if (timeA == null && timeB == null) return 0;
+                                    if (timeA == null) return 1;
+                                    if (timeB == null) return -1;
+                                    return (timeB as Timestamp).compareTo(timeA as Timestamp);
+                                  });
+
+                                  return ListView.separated(
+                                    padding: const EdgeInsets.all(16),
+                                    itemCount: docs.length + 1, // +1 para o botão de carregar mais
+                                    separatorBuilder: (ctx, i) => const SizedBox(height: 8),
+                                    itemBuilder: (context, index) {
+                                      
+                                      // Se chegou no final da lista, exibe o botão Carregar Mais
+                                      if (index == docs.length) {
+                                        if (docsRaw.length >= _limiteAvisos) {
+                                          return Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 16),
+                                            child: TextButton.icon(
+                                              onPressed: () => setState(() => _limiteAvisos += 15),
+                                              icon: const Icon(Icons.expand_more_rounded),
+                                              label: const Text('Carregar Mais Avisos Antigos', style: TextStyle(fontWeight: FontWeight.bold)),
+                                            ),
+                                          );
+                                        }
+                                        return const SizedBox.shrink();
+                                      }
+
+                                      final data = docs[index].data() as Map<String, dynamic>;
+                                      final idAviso = docs[index].id;
+                                      
+                                      final tipoDest = data['tipoDestinatario'] ?? 'TURMA';
+                                      String prefixoDestino = '';
+                                      String nomeDestino = '';
+                                      
+                                      if (tipoDest == 'TURMA') {
+                                        prefixoDestino = 'Para: ';
+                                        nomeDestino = 'Toda a Turma';
+                                      } else if (tipoDest == 'PROFESSORES') {
+                                        prefixoDestino = 'Para: ';
+                                        nomeDestino = 'Todos os Professores';
+                                      } else {
+                                        final alvoId = data['alunoId'];
+                                        final alunoAlvo = alunosDaTurma.firstWhere((a) {
+                                          return a['matricula'].toString() == alvoId.toString();
+                                        }, orElse: () => {'nome': 'Aluno Desconhecido'});
+                                        
+                                        prefixoDestino = 'Para Aluno: ';
+                                        nomeDestino = alunoAlvo['nome'] ?? 'Desconhecido';
+                                      }
+
+                                      final dataEnvio = data['dataEnvio'];
+                                      final textoData = dataEnvio != null 
+                                          ? DateFormat('dd/MM/yyyy HH:mm').format((dataEnvio as Timestamp).toDate()) 
+                                          : 'Enviando...';
+
+                                      final nomeRemetenteFinal = _resolverNomeRemetente(data, todosProfessores, user.id);
+                                      final isAdmin = nomeRemetenteFinal.contains('Administração');
+
+                                      return Card(
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                          side: BorderSide(color: Colors.grey.shade300),
+                                        ),
+                                        child: ListTile(
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                          leading: CircleAvatar(
+                                            backgroundColor: isAdmin ? Colors.deepPurple.shade50 : Colors.blue.shade50,
+                                            child: Icon(
+                                              isAdmin ? Icons.admin_panel_settings : Icons.assignment_ind, 
+                                              color: isAdmin ? Colors.deepPurple : Colors.blue
+                                            ),
+                                          ),
+                                          title: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text.rich(
+                                                  TextSpan(
+                                                    children: [
+                                                      TextSpan(
+                                                        text: 'De: $nomeRemetenteFinal ',
+                                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                                      ),
+                                                      const WidgetSpan(
+                                                        child: Padding(
+                                                          padding: EdgeInsets.symmetric(horizontal: 4),
+                                                          child: Icon(Icons.arrow_right_alt_rounded, size: 16, color: Colors.grey),
+                                                        ),
+                                                        alignment: PlaceholderAlignment.middle,
+                                                      ),
+                                                      TextSpan(
+                                                        text: prefixoDestino,
+                                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
+                                                      ),
+                                                      TextSpan(
+                                                        text: nomeDestino,
+                                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 12),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          subtitle: Padding(
+                                            padding: const EdgeInsets.only(top: 8.0),
+                                            child: Text(
+                                              data['mensagem'] ?? '', 
+                                              maxLines: 2, 
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(color: Colors.black87)
+                                            ),
+                                          ),
+                                          trailing: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                                              const SizedBox(width: 12),
+                                              IconButton(
+                                                icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
+                                                tooltip: 'Ver Mensagem Completa',
+                                                onPressed: () => _mostrarAvisoCompleto(data, nomeRemetenteFinal, '$prefixoDestino$nomeDestino', textoData),
+                                              ),
+                                              IconButton(
+                                                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                                tooltip: 'Apagar',
+                                                onPressed: () {
+                                                  showDialog(
+                                                    context: context,
+                                                    builder: (ctxDel) => AlertDialog(
+                                                      title: const Row(
+                                                        children: [
+                                                          Icon(Icons.delete_forever, color: Colors.red),
+                                                          SizedBox(width: 8),
+                                                          Text('Excluir Aviso'),
+                                                        ],
+                                                      ),
+                                                      content: const Text('Deseja excluir este aviso permanentemente do sistema?'),
+                                                      actions: [
+                                                        TextButton(onPressed: () => Navigator.pop(ctxDel), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
+                                                        ElevatedButton(
+                                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                                          onPressed: () async {
+                                                            await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turma['id'].toString()).collection('avisos').doc(idAviso).delete();
+                                                            if (ctxDel.mounted) {
+                                                              Navigator.pop(ctxDel);
+                                                            }
+                                                          },
+                                                          child: const Text('Excluir')
+                                                        )
+                                                      ]
+                                                    )
+                                                  );
+                                                },
+                                              ),
+                                            ]
+                                          )
+                                        )
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
                       ),
                     ),
                   ),
-                  ...aulasDoDia.map((aula) {
-                    bool isIntervalo = aula['disciplina'] == 'INTERVALO';
-
-                    String? fotoProfessor;
-                    if (!isIntervalo) {
-                      final profEncontrado = listaProfessores.firstWhere(
-                        (p) =>
-                            (aula['professorId'] != null &&
-                                p['id'] == aula['professorId']) ||
-                            (p['nome'] ?? '')
-                                    .toString()
-                                    .trim()
-                                    .toUpperCase() ==
-                                (aula['professorNome'] ?? '')
-                                    .toString()
-                                    .trim()
-                                    .toUpperCase(),
-                        orElse: () => {},
-                      );
-                      if (profEncontrado.isNotEmpty) {
-                        fotoProfessor = profEncontrado['fotoUrl'];
-                      }
-                    }
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 2),
-                      decoration: BoxDecoration(
-                        color: _getBgTileColor(aula['disciplina']),
-                        border: Border(
-                          bottom: BorderSide(color: Colors.grey.shade200),
-                        ),
-                      ),
-                      child: ListTile(
-                        leading: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: _getBgTagColor(aula['disciplina']),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${aula['inicio']} - ${aula['fim']}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: _getTextColor(aula['disciplina']),
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                        title: Row(
-                          children: [
-                            Text(
-                              aula['disciplina'],
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: _getTextColor(aula['disciplina']),
-                              ),
-                            ),
-                            if (!isIntervalo) ...[
-                              const SizedBox(width: 8),
-                              InkWell(
-                                borderRadius: BorderRadius.circular(14),
-                                onTap: fotoProfessor != null
-                                    ? () => _mostrarFotoAmpliada(
-                                        context,
-                                        fotoProfessor!,
-                                      )
-                                    : null,
-                                child: CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: Colors.white,
-                                  backgroundImage: fotoProfessor != null
-                                      ? NetworkImage(fotoProfessor)
-                                      : null,
-                                  child: fotoProfessor == null
-                                      ? Icon(
-                                          Icons.person,
-                                          size: 14,
-                                          color: _getTextColor(
-                                            aula['disciplina'],
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                        subtitle: isIntervalo
-                            ? null
-                            : Text(
-                                'Prof. ${aula['professorNome']}',
-                                style: TextStyle(
-                                  color: _getTextColor(
-                                    aula['disciplina'],
-                                  ).withOpacity(0.7),
-                                ),
-                              ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(
-                                Icons.edit,
-                                color: Colors.blue,
-                                size: 20,
-                              ),
-                              onPressed: () => _abrirModalEdicaoAula(
-                                horarioEdicao: aula,
-                              ),
-                            ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete,
-                                color: Colors.red,
-                                size: 20,
-                              ),
-                              onPressed: () =>
-                                  _removerHorario(aula['id']),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
                 ],
               ),
-            );
-          },
+            ),
+          ],
         ),
       ),
-      actionsPadding: const EdgeInsets.all(24),
-      actions: [
-        if (_horariosLocal.isNotEmpty) ...[
-          TextButton.icon(
-            onPressed: _abrirVisualizacaoSemanal,
-            icon: const Icon(Icons.grid_view_rounded, color: Colors.deepPurple),
-            label: const Text(
-              'Visualizar Grade',
-              style: TextStyle(color: Colors.deepPurple),
-            ),
-          ),
-          TextButton.icon(
-            onPressed: () => _gerarEImprimirHorarioPdf(corPrimaria),
-            icon: const Icon(Icons.print_rounded, color: Colors.blue),
-            label: const Text(
-              'Exportar PDF',
-              style: TextStyle(color: Colors.blue),
-            ),
-          ),
-        ],
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text(
-            'Fechar Painel',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ),
-      ],
     );
   }
 }

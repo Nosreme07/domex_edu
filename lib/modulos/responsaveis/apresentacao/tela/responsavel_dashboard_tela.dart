@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-// Import com o caminho corrigido (dois níveis ../../)
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
 class ResponsavelDashboardTela extends ConsumerStatefulWidget {
@@ -825,7 +824,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
 
               final double percPresencaGeral = totalDiasComAula == 0 ? 100.0 : (presencasGeral / totalDiasComAula) * 100;
 
-              // FILTRA A MATÉRIA 'GERAL' DA LISTA DE SANFONAS
+              // FILTRA A MATÉRIA 'GERAL' DA LISTA DE SANFONAS (pois agora temos o Visão Geral do Mês)
               final disciplinasKeys = frequenciaPorDisciplina.keys
                   .where((k) => k.toUpperCase() != 'GERAL')
                   .toList()..sort();
@@ -1043,12 +1042,47 @@ class _AvisosModal extends StatelessWidget {
                 controller: scrollController, padding: const EdgeInsets.all(20),
                 itemCount: avisosAluno.length, separatorBuilder: (c, i) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
-                  return AvisoCardWidget(
-                    aviso: avisosAluno[index],
-                    tenantId: tenantId,
-                    turmaId: turmaId,
-                    alunoDocId: alunoDocId,
-                    corPrimaria: corPrimaria,
+                  final aviso = avisosAluno[index];
+                  final dataEnvio = aviso['dataEnvio'];
+                  final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as dynamic).toDate()) : '';
+                  
+                  final tipoDest = aviso['tipoDestinatario'];
+                  final isDireto = tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL';
+                  
+                  String tagDestino = 'Para toda a turma';
+                  Color corTag = Colors.blue;
+                  
+                  if (tipoDest == 'ALUNO') {
+                    tagDestino = 'Direcionado ao Aluno';
+                    corTag = Colors.purple;
+                  } else if (tipoDest == 'RESPONSAVEL') {
+                    tagDestino = 'Apenas para você';
+                    corTag = Colors.red;
+                  }
+                  
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(color: isDireto ? corTag.withAlpha(10) : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDireto ? corTag.withAlpha(50) : Colors.grey.shade200)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(aviso['remetenteNome'] ?? 'Direção', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? corTag.withAlpha(200) : Colors.black87)),
+                            Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+                          child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ),
+                        const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+                        Text(aviso['mensagem'] ?? '', style: TextStyle(fontSize: 14, color: Colors.grey.shade800))
+                      ],
+                    ),
                   );
                 },
               );
@@ -1056,126 +1090,6 @@ class _AvisosModal extends StatelessWidget {
           ),
         )
       ],
-    );
-  }
-}
-
-// Widget isolado para os cards de aviso, deixando o código mais limpo
-class AvisoCardWidget extends StatelessWidget {
-  final Map<String, dynamic> aviso;
-  final String tenantId;
-  final String turmaId;
-  final String alunoDocId;
-  final Color corPrimaria;
-
-  const AvisoCardWidget({
-    super.key,
-    required this.aviso,
-    required this.tenantId,
-    required this.turmaId,
-    required this.alunoDocId,
-    required this.corPrimaria,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final dataEnvio = aviso['dataEnvio'];
-    final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format(dataEnvio.toDate()) : '';
-    final isDireto = aviso['tipoDestinatario'] == 'ALUNO' || aviso['tipoDestinatario'] == 'RESPONSAVEL';
-    
-    final remetenteOriginal = (aviso['remetenteNome'] ?? 'Direção / Professor').toString();
-    bool isProfessor = remetenteOriginal.contains('Professor(a)');
-
-    String tagDestino = 'Para toda a turma';
-    Color corTag = Colors.blue;
-    
-    if (aviso['tipoDestinatario'] == 'ALUNO') {
-      tagDestino = 'Direcionado a você';
-      corTag = Colors.purple;
-    } else if (aviso['tipoDestinatario'] == 'RESPONSAVEL') {
-      tagDestino = 'Aviso ao seu Responsável';
-      corTag = Colors.red;
-    }
-
-    final lidosPor = List<String>.from(aviso['lidosPor'] ?? []);
-    final isLido = lidosPor.contains(alunoDocId);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDireto ? corTag.withAlpha(10) : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDireto ? corTag.withAlpha(50) : Colors.grey.shade200),
-        boxShadow: isDireto ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(isProfessor ? Icons.assignment_ind_rounded : Icons.admin_panel_settings_rounded, size: 16, color: isDireto ? corTag : corPrimaria),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        remetenteOriginal,
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? corTag : Colors.black87),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
-                  if (!isLido) ...[
-                    const SizedBox(height: 8),
-                    Tooltip(
-                      message: 'Marcar como lido',
-                      child: InkWell(
-                        onTap: () {
-                          FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').doc(aviso['id']).update({
-                            'lidosPor': FieldValue.arrayUnion([alunoDocId])
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle, border: Border.all(color: Colors.green.shade200)),
-                          child: Icon(Icons.check_rounded, size: 12, color: Colors.green.shade600),
-                        ),
-                      ),
-                    )
-                  ]
-                ],
-              )
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(6)),
-            child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 10, fontWeight: FontWeight.bold)),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(height: 1),
-          ),
-          Text(
-            aviso['mensagem'] ?? '',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
-          )
-        ],
-      ),
     );
   }
 }
