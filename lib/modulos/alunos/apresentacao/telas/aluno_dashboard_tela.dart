@@ -140,6 +140,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                 initAspectRatio: CropAspectRatioPreset.original,
                 lockAspectRatio: true,
               ),
+              IOSUiSettings(title: 'Enquadrar Foto 3x4', aspectRatioLockEnabled: true),
             ],
       );
 
@@ -1825,22 +1826,42 @@ class _FrequenciaModal extends StatefulWidget {
 
 class _FrequenciaModalState extends State<_FrequenciaModal> {
   String _bimestreAtivo = '1º Bimestre';
+  int _mesAtivo = DateTime.now().month;
+
+  List<int> _getMesesDoBimestre(String bimestre) {
+    if (bimestre == '1º Bimestre') return [1, 2, 3, 4];
+    if (bimestre == '2º Bimestre') return [5, 6];
+    if (bimestre == '3º Bimestre') return [7, 8, 9];
+    return [10, 11, 12];
+  }
+
+  String _getNomeMes(int mes) {
+    const nomes = {
+      1: 'Janeiro', 2: 'Fevereiro', 3: 'Março', 4: 'Abril',
+      5: 'Maio', 6: 'Junho', 7: 'Julho', 8: 'Agosto',
+      9: 'Setembro', 10: 'Outubro', 11: 'Novembro', 12: 'Dezembro'
+    };
+    return nomes[mes] ?? '';
+  }
 
   String _calcularBimestre(DateTime data) {
     int mes = data.month;
-    if (mes >= 2 && mes <= 4) return '1º Bimestre';
+    if (mes >= 1 && mes <= 4) return '1º Bimestre';
     if (mes >= 5 && mes <= 6) return '2º Bimestre';
     if (mes >= 7 && mes <= 9) return '3º Bimestre';
     return '4º Bimestre';
   }
 
-  bool _isDataNoBimestre(String dataStr, String bimestreAlvo) {
-    try {
-      final partes = dataStr.split('-');
-      final data = DateTime(int.parse(partes[0]), int.parse(partes[1]), int.parse(partes[2]));
-      return _calcularBimestre(data) == bimestreAlvo;
-    } catch (_) {
-      return false;
+  String _obterDiaSemanaAbrev(int weekday) {
+    switch (weekday) {
+      case 1: return 'Seg';
+      case 2: return 'Ter';
+      case 3: return 'Qua';
+      case 4: return 'Qui';
+      case 5: return 'Sex';
+      case 6: return 'Sáb';
+      case 7: return 'Dom';
+      default: return '';
     }
   }
 
@@ -1848,10 +1869,17 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
   void initState() {
     super.initState();
     _bimestreAtivo = _calcularBimestre(DateTime.now());
+    
+    final mesesDoBimestre = _getMesesDoBimestre(_bimestreAtivo);
+    if (!mesesDoBimestre.contains(_mesAtivo)) {
+      _mesAtivo = mesesDoBimestre.last;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final mesesValidos = _getMesesDoBimestre(_bimestreAtivo);
+
     return Column(
       children: [
         Padding(
@@ -1881,9 +1909,37 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                 ButtonSegment(value: '4º Bimestre', label: Text('4º Bim', style: TextStyle(fontSize: 12)))
               ],
               selected: {_bimestreAtivo}, 
-              onSelectionChanged: (s) => setState(() => _bimestreAtivo = s.first),
+              onSelectionChanged: (s) {
+                setState(() {
+                  _bimestreAtivo = s.first;
+                  _mesAtivo = _getMesesDoBimestre(_bimestreAtivo).first;
+                });
+              },
               style: SegmentedButton.styleFrom(selectedBackgroundColor: widget.corPrimaria.withAlpha(40), selectedForegroundColor: widget.corPrimaria),
             ),
+          ),
+        ),
+
+        // Sub-aba de Meses
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Row(
+            children: mesesValidos.map((m) => Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(_getNomeMes(m)),
+                selected: _mesAtivo == m,
+                selectedColor: widget.corPrimaria.withAlpha(40),
+                labelStyle: TextStyle(
+                  color: _mesAtivo == m ? widget.corPrimaria : Colors.black87,
+                  fontWeight: _mesAtivo == m ? FontWeight.bold : FontWeight.normal
+                ),
+                onSelected: (val) {
+                  if (val) setState(() => _mesAtivo = m);
+                }
+              ),
+            )).toList(),
           ),
         ),
 
@@ -1894,47 +1950,190 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
               
+              int currentYear = DateTime.now().year;
+              
+              Map<String, List<Map<String, dynamic>>> diariPorDiaGeral = {}; 
               Map<String, List<Map<String, dynamic>>> frequenciaPorDisciplina = {};
 
               if (snapshot.hasData) {
                 for (var doc in snapshot.data!.docs) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final dataDiarioStr = doc.id.split('_')[0]; 
+                  final docIdPartes = doc.id.split('_');
+                  final dataDiarioStr = docIdPartes[0]; 
                   
-                  if (data['status'] != 'NAO_INICIADA' && _isDataNoBimestre(dataDiarioStr, _bimestreAtivo)) {
-                    final freq = Map<String, String>.from(data['frequencia'] ?? {});
-                    final st = freq[widget.alunoMatricula] ?? 'P';
-                    
+                  try {
                     final p = dataDiarioStr.split('-');
-                    final disciplina = data['disciplina']?.toString() ?? 'Geral';
-                    
-                    if (!frequenciaPorDisciplina.containsKey(disciplina)) frequenciaPorDisciplina[disciplina] = [];
-                    
-                    frequenciaPorDisciplina[disciplina]!.add({
-                      'idSort': dataDiarioStr,
-                      'data': "${p[2]}/${p[1]}/${p[0]}", 
-                      'status': st 
-                    });
-                  }
+                    final docYear = int.parse(p[0]);
+                    final docMonth = int.parse(p[1]);
+                    currentYear = docYear; 
+
+                    if (data['status'] != 'NAO_INICIADA' && docMonth == _mesAtivo) {
+                      final freq = Map<String, String>.from(data['frequencia'] ?? {});
+                      final st = freq[widget.alunoMatricula] ?? 'P';
+                      final disciplina = data['disciplina']?.toString() ?? 'Geral';
+                      
+                      if (!frequenciaPorDisciplina.containsKey(disciplina)) frequenciaPorDisciplina[disciplina] = [];
+                      frequenciaPorDisciplina[disciplina]!.add({
+                        'idSort': dataDiarioStr,
+                        'data': "${p[2]}/${p[1]} (${_obterDiaSemanaAbrev(DateTime(docYear, docMonth, int.parse(p[2])).weekday)})", 
+                        'status': st 
+                      });
+
+                      if (!diariPorDiaGeral.containsKey(dataDiarioStr)) diariPorDiaGeral[dataDiarioStr] = [];
+                      diariPorDiaGeral[dataDiarioStr]!.add(data);
+                    }
+                  } catch (_) {}
                 }
               }
 
-              if (frequenciaPorDisciplina.isEmpty) {
-                return Center(child: Text('Nenhuma aula registrada neste bimestre.', style: TextStyle(color: Colors.grey.shade500)));
+              // ==========================================
+              // CÁLCULO DA ABA GERAL (Todos os dias do mês)
+              // ==========================================
+              int daysInMonth = DateUtils.getDaysInMonth(currentYear, _mesAtivo);
+              List<Map<String, dynamic>> diasGeralList = [];
+              int totalDiasComAula = 0;
+              int faltasGeral = 0;
+              int presencasGeral = 0;
+
+              for (int d = 1; d <= daysInMonth; d++) {
+                final dataAtual = DateTime(currentYear, _mesAtivo, d);
+                final dateStr = "$currentYear-${_mesAtivo.toString().padLeft(2, '0')}-${d.toString().padLeft(2, '0')}";
+                final diaSemana = _obterDiaSemanaAbrev(dataAtual.weekday);
+                final displayDate = "${d.toString().padLeft(2, '0')}/${_mesAtivo.toString().padLeft(2, '0')} ($diaSemana)";
+
+                if (diariPorDiaGeral.containsKey(dateStr)) {
+                  totalDiasComAula++;
+                  final aulasDoDia = diariPorDiaGeral[dateStr]!;
+                  bool temP = false;
+                  bool temA = false;
+                  bool temJ = false;
+                  
+                  for (var aula in aulasDoDia) {
+                    final freq = Map<String, String>.from(aula['frequencia'] ?? {});
+                    final st = freq[widget.alunoMatricula] ?? 'P';
+                    if (st == 'P') temP = true;
+                    else if (st == 'A') temA = true;
+                    else if (st == 'J') temJ = true;
+                  }
+
+                  String statusDia = 'P';
+                  if (temP) {
+                    statusDia = 'P';
+                    presencasGeral++;
+                  } else if (temA) {
+                    statusDia = 'A';
+                    faltasGeral++;
+                  } else {
+                    statusDia = 'J';
+                    faltasGeral++; 
+                  }
+
+                  diasGeralList.add({
+                    'display': displayDate,
+                    'status': statusDia,
+                  });
+                } else {
+                  diasGeralList.add({
+                    'display': displayDate,
+                    'status': 'SEM_AULA',
+                  });
+                }
               }
 
-              final disciplinasKeys = frequenciaPorDisciplina.keys.toList()..sort();
+              final double percPresencaGeral = totalDiasComAula == 0 ? 100.0 : (presencasGeral / totalDiasComAula) * 100;
+
+              // FILTRA A MATÉRIA 'GERAL' DA LISTA DE SANFONAS (pois agora temos o Visão Geral do Mês)
+              final disciplinasKeys = frequenciaPorDisciplina.keys
+                  .where((k) => k.toUpperCase() != 'GERAL')
+                  .toList()..sort();
               
               return ListView.builder(
                 controller: widget.scrollController,
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                itemCount: disciplinasKeys.length,
+                itemCount: disciplinasKeys.length + 1, 
                 itemBuilder: (context, index) {
-                  final disc = disciplinasKeys[index];
+
+                  // =======================
+                  // ABA GERAL (Primeiro Item)
+                  // =======================
+                  if (index == 0) {
+                    return Card(
+                      elevation: 0,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300, width: 1.5)),
+                      child: Theme(
+                        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                        child: ExpansionTile(
+                          initiallyExpanded: faltasGeral > 0, 
+                          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          title: const Text('Visão Geral do Mês', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Row(
+                              children: [
+                                Text(
+                                  'Faltas: $faltasGeral / $totalDiasComAula', 
+                                  style: TextStyle(color: faltasGeral > 0 ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12)
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  'Presença: ${percPresencaGeral.toStringAsFixed(1)}%', 
+                                  style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold, fontSize: 12)
+                                ),
+                              ],
+                            ),
+                          ),
+                          children: diasGeralList.map((d) {
+                            final status = d['status'];
+                            
+                            if (status == 'SEM_AULA') {
+                              return ListTile(
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                                leading: Icon(Icons.event_busy_rounded, color: Colors.grey.shade300, size: 20),
+                                title: Text(d['display'], style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w500, fontSize: 13)),
+                                trailing: Text('-', style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.bold, fontSize: 16)),
+                              );
+                            }
+
+                            Color corStatus = Colors.green; 
+                            String textoStatus = 'Presente'; 
+                            IconData iconeStatus = Icons.check_circle_rounded;
+
+                            if (status == 'A') { corStatus = Colors.red; textoStatus = 'Falta'; iconeStatus = Icons.cancel_rounded; } 
+                            else if (status == 'J') { corStatus = Colors.orange; textoStatus = 'Falta Justificada'; iconeStatus = Icons.info_rounded; }
+
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                              leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400, size: 20),
+                              title: Text(d['display'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), 
+                                decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8)), 
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(iconeStatus, color: corStatus, size: 14), const SizedBox(width: 4),
+                                    Text(textoStatus, style: TextStyle(color: corStatus, fontSize: 12, fontWeight: FontWeight.bold)),
+                                  ],
+                                )
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    );
+                  }
+
+                  // =======================
+                  // DISCIPLINAS ESPECÍFICAS
+                  // =======================
+                  final disc = disciplinasKeys[index - 1];
                   final aulas = frequenciaPorDisciplina[disc]!..sort((a,b) => b['idSort']!.compareTo(a['idSort']!));
                   
                   final int totalAulas = aulas.length;
                   final int faltas = aulas.where((f) => f['status'] == 'A' || f['status'] == 'J').length;
+                  final int presencas = totalAulas - faltas;
+                  final double percPresenca = totalAulas == 0 ? 100.0 : (presencas / totalAulas) * 100;
 
                   return Card(
                     elevation: 0,
@@ -1945,10 +2144,22 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                       child: ExpansionTile(
                         initiallyExpanded: faltas > 0, 
                         tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                        title: Text(disc, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                        subtitle: Text(
-                          'Faltas no $_bimestreAtivo: $faltas / $totalAulas', 
-                          style: TextStyle(color: faltas > 0 ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12)
+                        title: Text(disc.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Faltas: $faltas / $totalAulas', 
+                                style: TextStyle(color: faltas > 0 ? Colors.red.shade700 : Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 12)
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Presença: ${percPresenca.toStringAsFixed(1)}%', 
+                                style: TextStyle(color: Colors.blue.shade700, fontWeight: FontWeight.bold, fontSize: 12)
+                              ),
+                            ],
+                          ),
                         ),
                         children: aulas.map((f) {
                           final status = f['status'];
