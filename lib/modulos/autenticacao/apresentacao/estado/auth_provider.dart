@@ -2,17 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart'; 
-import 'package:firebase_core/firebase_core.dart'; // NOVO: Necessário para criar a instância temporária do Firebase
+import 'package:firebase_core/firebase_core.dart'; 
 
 class UsuarioSessao {
   final String id;
-  final String tenantId; // NOVO: Garante que sabemos de qual escola este usuário é!
+  final String tenantId; 
   final String nome;
   final String email;
   final String perfil; 
   final String? nomeEscola;
   final String? dominioPersonalizado; 
   final Color corPrimaria;
+  
+  // === NOVO: CAMPO DE PERMISSÕES ===
+  final List<String> permissoes;
 
   String get codigoEscola {
     if (dominioPersonalizado != null && dominioPersonalizado!.trim().isNotEmpty) {
@@ -30,9 +33,15 @@ class UsuarioSessao {
   }
 
   UsuarioSessao({
-    required this.id, required this.tenantId, required this.nome, required this.email,
-    required this.perfil, this.nomeEscola, this.dominioPersonalizado,
+    required this.id, 
+    required this.tenantId, 
+    required this.nome, 
+    required this.email,
+    required this.perfil, 
+    this.nomeEscola, 
+    this.dominioPersonalizado,
     this.corPrimaria = const Color(0xFF2C3E50), 
+    this.permissoes = const [], // Inicia vazio por padrão
   });
 }
 
@@ -46,7 +55,8 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         if (emailsMaster.contains(usuarioFirebase.email)) {
           return UsuarioSessao(
             id: 'MASTER-01', tenantId: 'MASTER-01', nome: 'Emerson Fernandes', 
-            email: usuarioFirebase.email!, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900
+            email: usuarioFirebase.email!, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900,
+            permissoes: const ['admin'] // Master tem tudo
           );
         }
         return await _buscarDadosNoFirestore(usuarioFirebase.email!);
@@ -72,7 +82,7 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
   Future<UsuarioSessao> _buscarDadosNoFirestore(String emailAuthFirebase) async {
     String emailCompleto = emailAuthFirebase.toLowerCase().trim();
     
-    // 1. TENTA ACHAR A ESCOLA PRIMEIRO
+    // 1. TENTA ACHAR A ESCOLA PRIMEIRO (Dono da escola)
     final snapshotEscola = await FirebaseFirestore.instance.collection('tenants').where('email', isEqualTo: emailCompleto).get();
     
     if (snapshotEscola.docs.isNotEmpty) {
@@ -88,6 +98,7 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         nomeEscola: dadosEscola['nomeEscola'] ?? dadosEscola['nome'], 
         dominioPersonalizado: dadosEscola['dominio'], 
         corPrimaria: _safelyParseColor(dadosEscola), 
+        permissoes: const ['admin'], // Dono tem tudo liberado
       );
     }
 
@@ -171,15 +182,40 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
         corDaEscola = _safelyParseColor(dadosE);
       }
 
+      // =========================================================
+      // BUSCA DE PERMISSÕES DA SECRETARIA
+      // =========================================================
+      List<String> listaPermissoes = [];
+      
+      // Verifica se a permissão já veio salva no registro global (dependendo de como foi salvo)
+      if (dadosUsuarioEncontrado.containsKey('permissoes') && dadosUsuarioEncontrado['permissoes'] is List) {
+        listaPermissoes = List<String>.from(dadosUsuarioEncontrado['permissoes']);
+      } else if (perfilEncontrado == 'secretaria' || perfilEncontrado == 'admin_escola') {
+        // Se for Secretaria/Admin, tenta resgatar da coleção de usuários do tenant
+        final uidRef = dadosUsuarioEncontrado['uid'] ?? dadosUsuarioEncontrado['id'];
+        if (uidRef != null) {
+          final docUserLocal = await FirebaseFirestore.instance.collection('tenants').doc(idEscolaEncontrada).collection('usuarios').doc(uidRef).get();
+          if (docUserLocal.exists && docUserLocal.data()!.containsKey('permissoes')) {
+             listaPermissoes = List<String>.from(docUserLocal.data()!['permissoes'] ?? []);
+          }
+        }
+      }
+      
+      // Garante que dono de escola tenha a chave 'admin'
+      if (perfilEncontrado == 'admin_escola' && !listaPermissoes.contains('admin')) {
+        listaPermissoes.add('admin');
+      }
+
       return UsuarioSessao(
         id: dadosUsuarioEncontrado['id'] ?? dadosUsuarioEncontrado['matricula'] ?? dadosUsuarioEncontrado['cpf'] ?? prefixo,
-        tenantId: idEscolaEncontrada, // <--- SALVA O ID DA ESCOLA AQUI
+        tenantId: idEscolaEncontrada, 
         nome: dadosUsuarioEncontrado['nome'] ?? 'Usuário', 
         email: emailCompleto, 
         perfil: perfilEncontrado, 
         nomeEscola: nomeEscola, 
         dominioPersonalizado: dominioEscola,
         corPrimaria: corDaEscola,
+        permissoes: listaPermissoes, // <--- INJETA AS PERMISSÕES AQUI
       );
     }
 
@@ -191,7 +227,11 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
     state = await AsyncValue.guard(() async {
       final List<String> emailsMaster = ['emerson.fernandesantos@gmail.com', 'suporte@jpsmicromaq.com.br'];
       if (emailsMaster.contains(email) && senha == '123456') {
-        return UsuarioSessao(id: 'MASTER-01', tenantId: 'MASTER-01', nome: 'Emerson Fernandes', email: email, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900);
+        return UsuarioSessao(
+          id: 'MASTER-01', tenantId: 'MASTER-01', nome: 'Emerson Fernandes', 
+          email: email, perfil: 'super_admin', corPrimaria: Colors.deepPurple.shade900,
+          permissoes: const ['admin']
+        );
       } 
       
       try {
@@ -224,32 +264,28 @@ class AuthController extends AsyncNotifier<UsuarioSessao?> {
     if (usuarioLogado == null) throw Exception('Administrador não logado.');
 
     try {
-      // 1. Cria uma instância temporária do Firebase
       FirebaseApp tempApp = await Firebase.initializeApp(
         name: 'TempAuth_${DateTime.now().millisecondsSinceEpoch}',
         options: Firebase.app().options,
       );
 
-      // 2. Cria o login na instância temporária
       UserCredential userCred = await FirebaseAuth.instanceFor(app: tempApp)
           .createUserWithEmailAndPassword(email: email, password: senha);
 
       final uid = userCred.user!.uid;
 
-      // 3. Salva a ficha de acesso no banco de dados central ('usuarios')
       await FirebaseFirestore.instance.collection('usuarios').doc(uid).set({
         'id': uid,
-        'idLogin': email.split('@')[0], // Salva a parte antes do @ (CPF ou Matrícula limpa) para a busca no login
+        'idLogin': email.split('@')[0], 
         'nome': nome,
         'email': email,
-        'perfil': perfil, // 'responsavel', 'professor', ou 'admin_escola'
-        'escolaId': usuarioLogado.tenantId, // Prende o usuário à escola correta
+        'perfil': perfil, 
+        'escolaId': usuarioLogado.tenantId, 
         'codigoEscola': usuarioLogado.codigoEscola,
         'status': 'Ativo',
         'dataCadastro': FieldValue.serverTimestamp(),
       });
 
-      // 4. Apaga a instância temporária
       await tempApp.delete();
 
     } on FirebaseAuthException catch (e) {

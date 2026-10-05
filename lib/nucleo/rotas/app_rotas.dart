@@ -28,6 +28,8 @@ import '../../modulos/admin/apresentacao/telas/admin_turma_form_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_configuracoes_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_turma_painel_tela.dart';
 import '../../modulos/admin/apresentacao/telas/admin_calendario_tela.dart';
+// === NOVO IMPORT: TELA DE MENSAGENS ===
+import '../../modulos/admin/apresentacao/telas/admin_mensagens_tela.dart';
 
 // ============================================================================
 // IMPORTS: PAINEL MASTER (SUPER ADMIN / DONO DO SAAS)
@@ -56,7 +58,8 @@ import '../../modulos/alunos/apresentacao/telas/aluno_calendario_tela.dart';
 // IMPORTS: PAINEL DO RESPONSÁVEL
 // ============================================================================
 import '../../modulos/responsaveis/layout/responsavel_layout.dart';
-import '../../modulos/responsaveis/apresentacao/tela/responsavel_dashboard_tela.dart'; // <-- Caminho corrigido aqui
+import '../../modulos/responsaveis/apresentacao/tela/responsavel_dashboard_tela.dart'; 
+
 class AppRotas {
   // Construtor privado para evitar a instanciação acidental desta classe
   AppRotas._();
@@ -134,6 +137,12 @@ class AppRotas {
           GoRoute(
             path: '/admin/calendario',
             builder: (context, state) => const AdminCalendarioTela(),
+          ),
+
+          // === NOVA ROTA: MENSAGENS ===
+          GoRoute(
+            path: '/admin/mensagens',
+            builder: (context, state) => const AdminMensagensTela(),
           ),
 
           GoRoute(

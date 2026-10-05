@@ -108,15 +108,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
-      appBar: AppBar(
-        backgroundColor: corPrimaria,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('Portal da Família', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        leading: isMobile 
-            ? IconButton(icon: const Icon(Icons.menu_rounded, color: Colors.white), onPressed: () => Scaffold.maybeOf(context)?.openDrawer())
-            : null,
-      ),
+      // AppBar removido para evitar duplicação com a estrutura de rotas/shell externa
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,13 +121,16 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
                 boxShadow: [BoxShadow(color: corPrimaria.withAlpha(60), blurRadius: 10, offset: const Offset(0, 4))]
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Bem-vindo(a),', style: TextStyle(color: Colors.white70, fontSize: 14)),
-                  const SizedBox(height: 4),
-                  Text(nomeResponsavel, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
-                ],
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Bem-vindo(a),', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    const SizedBox(height: 4),
+                    Text(nomeResponsavel, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
+                  ],
+                ),
               ),
             ),
 
@@ -213,10 +208,11 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                       spacing: 12, runSpacing: 12,
                                       alignment: WrapAlignment.spaceEvenly,
                                       children: [
-                                        _buildAcaoBotao(Icons.analytics_rounded, 'Boletim', corPrimaria, () {
+                                        // Cores alteradas aqui para diferenciação
+                                        _buildAcaoBotao(Icons.analytics_rounded, 'Boletim', Colors.blue.shade700, () {
                                           _abrirBoletim(tenantId, turmaId, alunoDocId, corPrimaria);
                                         }),
-                                        _buildAcaoBotao(Icons.fact_check_rounded, 'Frequência', corPrimaria, () {
+                                        _buildAcaoBotao(Icons.fact_check_rounded, 'Frequência', Colors.green.shade700, () {
                                           _abrirFrequencia(tenantId, turmaId, matricula, corPrimaria);
                                         }),
                                         _buildAcaoBotao(Icons.payments_rounded, 'Financeiro', Colors.orange.shade700, () {
@@ -233,7 +229,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                             )
                                           );
                                         }),
-                                        _buildAcaoBotao(Icons.campaign_rounded, 'Avisos', Colors.blue.shade700, () {
+                                        _buildAcaoBotao(Icons.campaign_rounded, 'Avisos', Colors.purple.shade700, () {
                                           _abrirAvisos(tenantId, turmaId, alunoDocId, corPrimaria);
                                         }),
                                       ],
@@ -256,19 +252,20 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
     );
   }
 
+  // Função ajustada: Ícones maiores e mais espaçados
   Widget _buildAcaoBotao(IconData icone, String titulo, Color cor, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 80,
+        width: 85, // Largura levemente ajustada para o ícone maior
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: cor.withAlpha(20), shape: BoxShape.circle),
-              child: Icon(icone, color: cor, size: 24),
+              padding: const EdgeInsets.all(16), // Aumentado de 12 para 16
+              decoration: BoxDecoration(color: cor.withAlpha(25), shape: BoxShape.circle),
+              child: Icon(icone, color: cor, size: 36), // Aumentado de 24 para 36
             ),
             const SizedBox(height: 8),
             Text(titulo, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
@@ -1068,8 +1065,18 @@ class _AvisosModal extends StatelessWidget {
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(aviso['remetenteNome'] ?? 'Direção', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? corTag.withAlpha(200) : Colors.black87)),
+                            // Adicionado o Expanded aqui para corrigir o overflow
+                            Expanded(
+                              child: Text(
+                                aviso['remetenteNome'] ?? 'Direção', 
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isDireto ? corTag.withAlpha(200) : Colors.black87),
+                                maxLines: 1, // Limita a 1 linha
+                                overflow: TextOverflow.ellipsis, // Coloca "..." se for muito grande
+                              ),
+                            ),
+                            const SizedBox(width: 12), // Espaço entre o nome e a data
                             Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
                           ],
                         ),

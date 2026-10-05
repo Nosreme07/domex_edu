@@ -146,11 +146,20 @@ class _LoginTelaState extends ConsumerState<LoginTela> {
           if (usuario != null) {
             final perfil = usuario.perfil.toLowerCase();
             
-            if (perfil == 'super_admin') context.go('/super-admin');
-            else if (perfil == 'admin_escola') context.go('/admin');
-            else if (perfil == 'professor') context.go('/professor');
-            else if (perfil == 'aluno') context.go('/aluno'); 
-            else if (perfil == 'responsavel' || perfil == 'responsável') context.go('/responsavel');
+            // =========================================================
+            // CORREÇÃO DOS AVISOS AZUIS (Adição das Chaves { })
+            // =========================================================
+            if (perfil == 'super_admin') {
+              context.go('/super-admin');
+            } else if (perfil == 'admin_escola' || perfil == 'secretaria') {
+              context.go('/admin');
+            } else if (perfil == 'professor') {
+              context.go('/professor');
+            } else if (perfil == 'aluno') {
+              context.go('/aluno');
+            } else if (perfil == 'responsavel' || perfil == 'responsável') {
+              context.go('/responsavel');
+            }
           }
         },
       );

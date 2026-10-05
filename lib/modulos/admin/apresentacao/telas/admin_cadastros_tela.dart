@@ -64,7 +64,7 @@ class Debouncer {
 }
 
 // ============================================================================
-// TELA PRINCIPAL DE CADASTROS (TAB BAR)
+// TELA PRINCIPAL DE CADASTROS (TAB BAR DINÂMICA)
 // ============================================================================
 class AdminCadastrosTela extends ConsumerStatefulWidget {
   final int abaInicial;
@@ -78,10 +78,45 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
   @override
   Widget build(BuildContext context) {
     final corPrimaria = Theme.of(context).primaryColor;
+    
+    // 1. Pegar o usuário logado para checar o perfil
+    final usuario = ref.watch(authProvider).value;
+    final perfil = usuario?.perfil ?? 'secretaria'; // Se for null, assume menor privilégio
+    final isAdmin = perfil == 'admin_escola' || perfil == 'direcao';
+
+    // 2. Montar as abas dinamicamente baseadas na permissão
+    List<Widget> abas = [
+      const Tab(icon: Icon(Icons.school_rounded), text: 'Alunos'),
+      const Tab(icon: Icon(Icons.assignment_ind_rounded), text: 'Professores'),
+    ];
+    
+    List<Widget> telas = [
+      const _GestaoAlunosAba(),
+      const _GestaoProfessoresAba(),
+    ];
+
+    // Se for Admin, ele pode gerenciar outros membros da secretaria
+    if (isAdmin) {
+      abas.add(const Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretaria'));
+      telas.add(const _GestaoSecretariaAba());
+    }
+
+    // Todos podem ver turmas
+    abas.add(const Tab(icon: Icon(Icons.meeting_room_rounded), text: 'Turmas'));
+    telas.add(const _GestaoTurmasAba());
+
+    // Apenas Admin pode gerenciar acessos e senhas do sistema
+    if (isAdmin) {
+      abas.add(const Tab(icon: Icon(Icons.admin_panel_settings_rounded), text: 'Usuários'));
+      telas.add(const AdminUsuariosFormTela());
+    }
+
+    // Validação caso a aba inicial passada por rota seja maior que as abas disponíveis
+    final initialIndex = widget.abaInicial >= abas.length ? 0 : widget.abaInicial;
 
     return DefaultTabController(
-      length: 5, 
-      initialIndex: widget.abaInicial,
+      length: abas.length, 
+      initialIndex: initialIndex,
       child: Scaffold(
         appBar: AppBar(
           backgroundColor: Colors.white,
@@ -98,29 +133,16 @@ class _AdminCadastrosTelaState extends ConsumerState<AdminCadastrosTela> {
             indicatorWeight: 3,
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            tabs: const [
-              Tab(icon: Icon(Icons.school_rounded), text: 'Alunos'),
-              Tab(icon: Icon(Icons.assignment_ind_rounded), text: 'Professores'),
-              Tab(icon: Icon(Icons.support_agent_rounded), text: 'Secretaria'),
-              Tab(icon: Icon(Icons.meeting_room_rounded), text: 'Turmas'),
-              Tab(icon: Icon(Icons.admin_panel_settings_rounded), text: 'Usuários'),
-            ],
+            tabs: abas, // Injeta as abas dinâmicas aqui
           ),
         ),
-        body: const TabBarView(
-          children: [
-            _GestaoAlunosAba(),
-            _GestaoProfessoresAba(),
-            _GestaoSecretariaAba(),
-            _GestaoTurmasAba(),
-            AdminUsuariosFormTela(), 
-          ],
+        body: TabBarView(
+          children: telas, // Injeta as telas correspondentes aqui
         ),
       ),
     );
   }
 }
-
 // ============================================================================
 // 1. ABA DE ALUNOS
 // ============================================================================

@@ -69,6 +69,17 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
 
   bool _isAtivo = true;
 
+  // === NOVO: PERMISSÕES DE ACESSO ===
+  final List<Map<String, String>> _todasPermissoes = [
+    {'id': 'alunos', 'nome': 'Gestão de Alunos'},
+    {'id': 'professores', 'nome': 'Gestão de Professores'},
+    {'id': 'turmas', 'nome': 'Gestão de Turmas'},
+    {'id': 'financeiro', 'nome': 'Módulo Financeiro'},
+    {'id': 'avisos', 'nome': 'Mural de Avisos'},
+    {'id': 'admin', 'nome': 'Acesso Total (Equipe e Senhas)'},
+  ];
+  List<String> _permissoesSelecionadas = ['alunos', 'professores', 'turmas']; // Padrão sugerido
+
   @override
   void initState() {
     super.initState();
@@ -97,6 +108,11 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
           _funcaoSelecionada = 'OUTROS';
           _funcaoCustomizadaCtrl.text = funcaoSalva;
         }
+      }
+
+      // === NOVO: RECUPERAR PERMISSÕES SE FOR EDIÇÃO ===
+      if (mem['permissoes'] != null && mem['permissoes'] is List) {
+        _permissoesSelecionadas = List<String>.from(mem['permissoes']);
       }
     }
   }
@@ -224,6 +240,8 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'CPF: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _cpfCtrl.text)]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Função: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: funcaoFinal)]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'E-mail: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _emailCtrl.text)]))),
+                    // === MOSTRA AS PERMISSÕES NA REVISÃO ===
+                    Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Permissões: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _permissoesSelecionadas.isEmpty ? 'NENHUMA' : '${_permissoesSelecionadas.length} módulos liberados.')]))),
                     Padding(padding: const EdgeInsets.only(bottom: 8.0), child: RichText(text: TextSpan(style: const TextStyle(color: Colors.black87, fontSize: 14), children: [const TextSpan(text: 'Status: ', style: TextStyle(fontWeight: FontWeight.bold)), TextSpan(text: _isAtivo ? 'Ativo' : 'Inativo')]))),
                   ],
                 ),
@@ -257,6 +275,7 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                       'funcao': funcaoFinal,
                       'endereco': {'rua': _ruaCtrl.text, 'numero': _numeroCtrl.text, 'bairro': _bairroCtrl.text, 'cidade': _cidadeCtrl.text},
                       'status': _isAtivo ? 'Ativo' : 'Inativo',
+                      'permissoes': _permissoesSelecionadas, // === SALVANDO AS PERMISSÕES AQUI ===
                       'dataCadastro': isEdicao ? widget.membroParaEditar!['dataCadastro'] : DateTime.now().toIso8601String(),
                     };
 
@@ -305,6 +324,7 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                           'nome': _nomeCtrl.text.trim(),
                           'email': emailFuncionario,
                           'perfil': 'secretaria',
+                          'permissoes': _permissoesSelecionadas, // === PERMISSÕES VÃO PARA O LOGIN TAMBÉM ===
                           'status': _isAtivo ? 'Ativo' : 'Inativo',
                           'telefone': _telefoneCtrl.text.trim(),
                           'dataCadastro': DateTime.now().toIso8601String(),
@@ -478,6 +498,61 @@ class _AdminSecretariaFormTelaState extends ConsumerState<AdminSecretariaFormTel
                             value: _isAtivo,
                             onChanged: (v) => setState(() => _isAtivo = v),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // =========================================================
+                  // NOVO BLOCO: PERMISSÕES DE ACESSO DO COLABORADOR
+                  // =========================================================
+                  Card(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Icon(Icons.security_rounded, color: corPrimaria), 
+                            const SizedBox(width: 8), 
+                            const Text('Permissões de Acesso no Sistema', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold))
+                          ]),
+                          const Divider(height: 32),
+                          Text(
+                            'Selecione quais módulos e funcionalidades este funcionário terá acesso no Portal da Secretaria:', 
+                            style: TextStyle(color: Colors.grey.shade700, fontSize: 14)
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: _todasPermissoes.map((perm) {
+                              final isSelecionado = _permissoesSelecionadas.contains(perm['id']);
+                              return FilterChip(
+                                label: Text(perm['nome']!),
+                                labelStyle: TextStyle(
+                                  fontWeight: isSelecionado ? FontWeight.bold : FontWeight.normal,
+                                  color: isSelecionado ? corPrimaria : Colors.black87
+                                ),
+                                selected: isSelecionado,
+                                selectedColor: corPrimaria.withAlpha(40),
+                                checkmarkColor: corPrimaria,
+                                side: BorderSide(color: isSelecionado ? corPrimaria : Colors.grey.shade300),
+                                backgroundColor: Colors.white,
+                                onSelected: (bool selected) {
+                                  setState(() {
+                                    if (selected) {
+                                      _permissoesSelecionadas.add(perm['id']!);
+                                    } else {
+                                      _permissoesSelecionadas.remove(perm['id']!);
+                                    }
+                                  });
+                                },
+                              );
+                            }).toList(),
+                          )
                         ],
                       ),
                     ),
