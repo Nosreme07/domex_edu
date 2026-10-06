@@ -117,7 +117,7 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
         source: source, 
         imageQuality: 50,  
         maxWidth: 600,     
-        maxHeight: 600,    
+        maxHeight: 600,   
       );
       
       if (fotoOriginal == null) return;
@@ -311,6 +311,10 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
   }
 
   void _abrirBoletim(String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
+    if (turmaId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sua matrícula não está vinculada a uma turma.'), backgroundColor: Colors.red));
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -334,6 +338,10 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
   }
 
   void _abrirFrequencia(String tenantId, String turmaId, String matricula, Color corPrimaria) {
+    if (turmaId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sua matrícula não está vinculada a uma turma.'), backgroundColor: Colors.red));
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -357,6 +365,10 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
   }
 
   void _abrirAvisos(String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
+    if (turmaId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sua matrícula não está vinculada a uma turma.'), backgroundColor: Colors.red));
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1011,14 +1023,17 @@ class _AlunoDashboardTelaState extends ConsumerState<AlunoDashboardTela> {
                             return data;
                           }).toList() ?? [];
                           
+                          // ========================================================
+                          // LÓGICA ATUALIZADA: NÃO MOSTRAR AVISOS DO RESPONSÁVEL
+                          // ========================================================
                           final avisosAluno = todosAvisos.where((aviso) {
                             final tipoDest = aviso['tipoDestinatario'];
                             final alvoId = aviso['alunoId'];
 
                             if (tipoDest == 'TURMA' || tipoDest == 'TODOS') return true;
-                            if ((tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL') && alvoId == alunoDocId) return true;
+                            if (tipoDest == 'ALUNO' && alvoId == alunoDocId) return true;
                             
-                            return false;
+                            return false; // RESPONSAVEL E OUTROS SÃO IGNORADOS AQUI
                           }).toList();
 
                           int qtdNaoLidos = avisosAluno.where((a) => !(List<String>.from(a['lidosPor'] ?? [])).contains(alunoDocId)).length;
@@ -1150,7 +1165,8 @@ class AvisoCardWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final dataEnvio = aviso['dataEnvio'];
     final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format(dataEnvio.toDate()) : '';
-    final isDireto = aviso['tipoDestinatario'] == 'ALUNO' || aviso['tipoDestinatario'] == 'RESPONSAVEL';
+    
+    final isDireto = aviso['tipoDestinatario'] == 'ALUNO'; // Responsavel ignorado no portal do aluno
     
     final remetenteOriginal = (aviso['remetenteNome'] ?? 'Direção / Professor').toString();
     bool isProfessor = remetenteOriginal.contains('Professor(a)');
@@ -1161,9 +1177,9 @@ class AvisoCardWidget extends StatelessWidget {
     if (aviso['tipoDestinatario'] == 'ALUNO') {
       tagDestino = 'Direcionado a você';
       corTag = Colors.purple;
-    } else if (aviso['tipoDestinatario'] == 'RESPONSAVEL') {
-      tagDestino = 'Aviso ao seu Responsável';
-      corTag = Colors.red;
+    } else if (aviso['tipoDestinatario'] == 'TODOS') {
+      tagDestino = 'Para Toda a Escola';
+      corTag = Colors.green;
     }
 
     final lidosPor = List<String>.from(aviso['lidosPor'] ?? []);
@@ -2247,9 +2263,11 @@ class _AvisosModal extends StatelessWidget {
               final avisosAluno = todosAvisos.where((aviso) {
                 final tipoDest = aviso['tipoDestinatario'];
                 final alvoId = aviso['alunoId'];
+
                 if (tipoDest == 'TURMA' || tipoDest == 'TODOS') return true;
-                if ((tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL') && alvoId == alunoDocId) return true;
-                return false;
+                if (tipoDest == 'ALUNO' && alvoId == alunoDocId) return true;
+                
+                return false; // RESPONSAVEL E OUTROS SÃO IGNORADOS AQUI
               }).toList();
 
               if (avisosAluno.isEmpty) {

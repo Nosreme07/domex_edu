@@ -208,7 +208,6 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                       spacing: 12, runSpacing: 12,
                                       alignment: WrapAlignment.spaceEvenly,
                                       children: [
-                                        // Cores alteradas aqui para diferenciação
                                         _buildAcaoBotao(Icons.analytics_rounded, 'Boletim', Colors.blue.shade700, () {
                                           _abrirBoletim(tenantId, turmaId, alunoDocId, corPrimaria);
                                         }),
@@ -252,20 +251,19 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
     );
   }
 
-  // Função ajustada: Ícones maiores e mais espaçados
   Widget _buildAcaoBotao(IconData icone, String titulo, Color cor, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        width: 85, // Largura levemente ajustada para o ícone maior
+        width: 85, 
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
         child: Column(
           children: [
             Container(
-              padding: const EdgeInsets.all(16), // Aumentado de 12 para 16
+              padding: const EdgeInsets.all(16), 
               decoration: BoxDecoration(color: cor.withAlpha(25), shape: BoxShape.circle),
-              child: Icon(icone, color: cor, size: 36), // Aumentado de 24 para 36
+              child: Icon(icone, color: cor, size: 36), 
             ),
             const SizedBox(height: 8),
             Text(titulo, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
@@ -584,7 +582,7 @@ class _BoletimModalState extends State<_BoletimModal> {
 }
 
 // ============================================================================
-// MODAL DE FREQUENCIA POR DISCIPLINA (Com Calendário Mensal e Percentual)
+// MODAL DE FREQUENCIA POR DISCIPLINA
 // ============================================================================
 class _FrequenciaModal extends StatefulWidget {
   final String tenantId;
@@ -821,7 +819,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
 
               final double percPresencaGeral = totalDiasComAula == 0 ? 100.0 : (presencasGeral / totalDiasComAula) * 100;
 
-              // FILTRA A MATÉRIA 'GERAL' DA LISTA DE SANFONAS (pois agora temos o Visão Geral do Mês)
+              // FILTRA A MATÉRIA 'GERAL' DA LISTA DE SANFONAS
               final disciplinasKeys = frequenciaPorDisciplina.keys
                   .where((k) => k.toUpperCase() != 'GERAL')
                   .toList()..sort();
@@ -1055,6 +1053,9 @@ class _AvisosModal extends StatelessWidget {
                   } else if (tipoDest == 'RESPONSAVEL') {
                     tagDestino = 'Apenas para você';
                     corTag = Colors.red;
+                  } else if (tipoDest == 'TODOS') {
+                    tagDestino = 'Para Toda a Escola';
+                    corTag = Colors.green;
                   }
                   
                   return Container(
