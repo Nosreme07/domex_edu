@@ -21,6 +21,9 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
   @override
   Widget build(BuildContext context) {
     final corPrimaria = Theme.of(context).primaryColor;
+    final usuarioLogado = ref.watch(authProvider).value;
+    final nomeAdmin = usuarioLogado?.nome ?? 'Administração';
+    final bool isMobile = MediaQuery.of(context).size.width < 900;
 
     final estadoAlunos = ref.watch(alunosStreamProvider);
     final estadoProfs = ref.watch(professoresStreamProvider);
@@ -65,152 +68,290 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(32.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Visão Geral do Sistema', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black87)),
-                    const SizedBox(height: 4),
-                    Text('Resumo dos dados da escola para o ano letivo de $_anoSelecionado', style: const TextStyle(fontSize: 16, color: Colors.grey)),
-                  ],
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white, borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: corPrimaria.withAlpha(80), width: 1.5),
-                    boxShadow: [BoxShadow(color: corPrimaria.withAlpha(20), blurRadius: 8, offset: const Offset(0, 4))],
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.calendar_month_rounded, size: 20, color: corPrimaria),
-                      const SizedBox(width: 8),
-                      DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _anoSelecionado,
-                          icon: Padding(padding: const EdgeInsets.only(left: 8.0), child: Icon(Icons.keyboard_arrow_down_rounded, color: corPrimaria)),
-                          style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 16),
-                          onChanged: (novoAno) {
-                            if (novoAno != null) {
-                              setState(() => _anoSelecionado = novoAno);
-                            }
-                          },
-                          items: listaAnos.map((ano) => DropdownMenuItem(value: ano, child: Text('Ano Vigente: $ano'))).toList(),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 32),
-
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final double cardWidth = (constraints.maxWidth - (16 * 3)) / 4;
-                return Row(
+            // =================================================================
+            // CABEÇALHO (HEADER)
+            // =================================================================
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.fromLTRB(isMobile ? 24 : 40, 40, isMobile ? 24 : 40, 80),
+              decoration: BoxDecoration(
+                color: corPrimaria,
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(40)),
+                boxShadow: [BoxShadow(color: corPrimaria.withAlpha(60), blurRadius: 15, offset: const Offset(0, 8))],
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Flex(
+                  direction: isMobile ? Axis.vertical : Axis.horizontal,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: isMobile ? CrossAxisAlignment.start : CrossAxisAlignment.center,
                   children: [
-                    _buildMetricCard(context, 'Alunos', qtdAlunos.toString(), Icons.school_rounded, Colors.blue, 0, cardWidth),
-                    _buildMetricCard(context, 'Professores', qtdProfs.toString(), Icons.assignment_ind_rounded, Colors.green, 1, cardWidth),
-                    _buildMetricCard(context, 'Funcionários', qtdSec.toString(), Icons.support_agent_rounded, Colors.teal, 2, cardWidth),
-                    _buildMetricCard(context, 'Turmas ($_anoSelecionado)', qtdTurmas.toString(), Icons.meeting_room_rounded, Colors.orange, 3, cardWidth),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Visão Geral do Sistema',
+                          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Olá, $nomeAdmin 👋\nAqui está o resumo da escola para o ano letivo de $_anoSelecionado.',
+                          style: const TextStyle(fontSize: 15, color: Colors.white70, height: 1.4),
+                        ),
+                      ],
+                    ),
+                    if (isMobile) const SizedBox(height: 24),
+                    
+                    // Seletor de Ano Letivo
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(25),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white.withAlpha(50), width: 1),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.calendar_month_rounded, size: 20, color: Colors.white),
+                          const SizedBox(width: 12),
+                          DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _anoSelecionado,
+                              dropdownColor: corPrimaria,
+                              icon: const Padding(padding: EdgeInsets.only(left: 8.0), child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white)),
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 16),
+                              onChanged: (novoAno) {
+                                if (novoAno != null) {
+                                  setState(() => _anoSelecionado = novoAno);
+                                }
+                              },
+                              items: listaAnos.map((ano) => DropdownMenuItem(value: ano, child: Text('Ano Letivo: $ano'))).toList(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
-                );
-              },
+                ),
+              ),
             ),
-            
-            const SizedBox(height: 32),
 
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: Card(
-                    elevation: 1, shadowColor: Colors.black12,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
+            // =================================================================
+            // CARDS DE MÉTRICAS (SOBREPOSTOS AO CABEÇALHO)
+            // =================================================================
+            Transform.translate(
+              offset: const Offset(0, -40),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 40),
+                child: isMobile
+                    ? Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(child: _CardMetrica(titulo: 'Alunos', valor: qtdAlunos.toString(), icone: Icons.school_rounded, cor: Colors.blue, onTap: () => context.go('/admin/cadastros', extra: 0))),
+                              const SizedBox(width: 16),
+                              Expanded(child: _CardMetrica(titulo: 'Professores', valor: qtdProfs.toString(), icone: Icons.assignment_ind_rounded, cor: Colors.green, onTap: () => context.go('/admin/cadastros', extra: 1))),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(child: _CardMetrica(titulo: 'Funcionários', valor: qtdSec.toString(), icone: Icons.support_agent_rounded, cor: Colors.teal, onTap: () => context.go('/admin/cadastros', extra: 2))),
+                              const SizedBox(width: 16),
+                              Expanded(child: _CardMetrica(titulo: 'Turmas ($_anoSelecionado)', valor: qtdTurmas.toString(), icone: Icons.meeting_room_rounded, cor: Colors.orange, onTap: () => context.go('/admin/cadastros', extra: 3))),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Expanded(child: _CardMetrica(titulo: 'Alunos', valor: qtdAlunos.toString(), icone: Icons.school_rounded, cor: Colors.blue, onTap: () => context.go('/admin/cadastros', extra: 0))),
+                          const SizedBox(width: 16),
+                          Expanded(child: _CardMetrica(titulo: 'Professores', valor: qtdProfs.toString(), icone: Icons.assignment_ind_rounded, cor: Colors.green, onTap: () => context.go('/admin/cadastros', extra: 1))),
+                          const SizedBox(width: 16),
+                          Expanded(child: _CardMetrica(titulo: 'Funcionários', valor: qtdSec.toString(), icone: Icons.support_agent_rounded, cor: Colors.teal, onTap: () => context.go('/admin/cadastros', extra: 2))),
+                          const SizedBox(width: 16),
+                          Expanded(child: _CardMetrica(titulo: 'Turmas ($_anoSelecionado)', valor: qtdTurmas.toString(), icone: Icons.meeting_room_rounded, cor: Colors.orange, onTap: () => context.go('/admin/cadastros', extra: 3))),
+                        ],
+                      ),
+              ),
+            ),
+
+            // =================================================================
+            // CORPO INFERIOR (AÇÕES RÁPIDAS E STATUS)
+            // =================================================================
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 20 : 40),
+              child: Flex(
+                direction: isMobile ? Axis.vertical : Axis.horizontal,
+                // O segredo do alinhamento: CrossAxisAlignment.end alinha tudo pela base!
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // Lado Esquerdo: Ações Rápidas
+                  Expanded(
+                    flex: isMobile ? 0 : 7,
+                    child: Align(
+                      alignment: Alignment.topLeft,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [Icon(Icons.bolt_rounded, color: corPrimaria), const SizedBox(width: 8), const Text('Ações Rápidas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]),
-                          const Divider(height: 32),
-                          Wrap(
-                            spacing: 16, runSpacing: 16,
+                          Row(
+                            children: [
+                              Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: corPrimaria.withAlpha(25), borderRadius: BorderRadius.circular(8)), child: Icon(Icons.bolt_rounded, color: corPrimaria)),
+                              const SizedBox(width: 12),
+                              const Text('Ações Rápidas', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            ],
+                          ),
+                          const SizedBox(height: 20),
+                          GridView.count(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            crossAxisCount: isMobile ? 2 : 3,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            // Deixa o botão retangular mais "achatado" para desktop
+                            childAspectRatio: isMobile ? 2.5 : 2.8,
                             children: [
                               _BotaoAtalho(titulo: 'Novo Aluno', icone: Icons.person_add_alt_1_rounded, cor: Colors.blue, onTap: () => context.push('/admin/cadastros/aluno/novo')),
                               _BotaoAtalho(titulo: 'Novo Professor', icone: Icons.person_add_alt_rounded, cor: Colors.green, onTap: () => context.push('/admin/cadastros/professor/novo')),
-                              _BotaoAtalho(titulo: 'Novo Funcionário', icone: Icons.support_agent_rounded, cor: Colors.teal, onTap: () => context.push('/admin/cadastros/secretaria/novo')),
                               _BotaoAtalho(titulo: 'Nova Turma', icone: Icons.meeting_room_rounded, cor: Colors.orange, onTap: () => context.push('/admin/cadastros/turma/novo')),
-                              _BotaoAtalho(titulo: 'Usuários', icone: Icons.manage_accounts_rounded, cor: Colors.deepPurple, onTap: () => context.go('/admin/cadastros', extra: 4)),
-                              _BotaoAtalho(titulo: 'Novo Aviso', icone: Icons.campaign_rounded, cor: Colors.pink, onTap: () => context.push('/admin/mensagens')),
+                              _BotaoAtalho(titulo: 'Novo Funcionário', icone: Icons.support_agent_rounded, cor: Colors.teal, onTap: () => context.push('/admin/cadastros/secretaria/novo')),
+                              _BotaoAtalho(titulo: 'Gerir Usuários', icone: Icons.manage_accounts_rounded, cor: Colors.deepPurple, onTap: () => context.go('/admin/cadastros', extra: 4)),
+                              _BotaoAtalho(titulo: 'Avisos', icone: Icons.campaign_rounded, cor: Colors.pink, onTap: () => context.push('/admin/mensagens')),
                             ],
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 24),
-                Expanded(
-                  flex: 1,
-                  child: Card(
-                    elevation: 1, shadowColor: Colors.black12,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(children: [Icon(Icons.info_outline_rounded, color: Colors.grey), SizedBox(width: 8), Text('Status do Sistema', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]),
-                          const Divider(height: 32),
-                          const _StatusLinha(icone: Icons.cloud_done_rounded, cor: Colors.green, texto: 'Banco de Dados Conectado'),
-                          const SizedBox(height: 16),
-                          const _StatusLinha(icone: Icons.security_rounded, cor: Colors.blue, texto: 'Backup Automático Ativo'),
-                          const SizedBox(height: 16),
-                          _StatusLinha(icone: Icons.sync_rounded, cor: corPrimaria, texto: 'Sincronização em Tempo Real'),
-                        ],
+                  
+                  if (isMobile) const SizedBox(height: 32) else const SizedBox(width: 32),
+
+                  // Lado Direito: Status do Sistema (Menor e no Canto)
+                  Expanded(
+                    flex: isMobile ? 0 : 3,
+                    child: Card(
+                      elevation: 0,
+                      shadowColor: Colors.black12,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade200)),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0), // Padding menor para compactar
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min, // Ocupa apenas o espaço necessário
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(Icons.monitor_heart_rounded, color: Colors.grey, size: 18),
+                                SizedBox(width: 8),
+                                Text('Status do Sistema', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                              ]
+                            ),
+                            const Divider(height: 24),
+                            const _StatusLinha(icone: Icons.cloud_done_rounded, cor: Colors.green, texto: 'Banco Conectado'),
+                            const SizedBox(height: 12),
+                            const _StatusLinha(icone: Icons.security_rounded, cor: Colors.blue, texto: 'Backup Automático Ativo'),
+                            const SizedBox(height: 12),
+                            _StatusLinha(icone: Icons.sync_rounded, cor: corPrimaria, texto: 'Sincronização Online'),
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(8)),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 8, height: 8,
+                                    decoration: BoxDecoration(color: Colors.green, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.green.withAlpha(100), blurRadius: 4, spreadRadius: 1)]),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Expanded(child: Text('Todos os sistemas operacionais e estáveis.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 11))),
+                                ],
+                              ),
+                            )
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildMetricCard(BuildContext context, String titulo, String valor, IconData icone, MaterialColor cor, int indexAba, double width) {
+// ============================================================================
+// COMPONENTES AUXILIARES DE UI
+// ============================================================================
+
+class _CardMetrica extends StatelessWidget {
+  final String titulo;
+  final String valor;
+  final IconData icone;
+  final MaterialColor cor;
+  final VoidCallback onTap;
+
+  const _CardMetrica({required this.titulo, required this.valor, required this.icone, required this.cor, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     return InkWell(
-      onTap: () => context.go('/admin/cadastros', extra: indexAba),
-      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        width: width, padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: cor.shade200), boxShadow: [BoxShadow(color: cor.withAlpha(20), blurRadius: 10, offset: const Offset(0, 4))]),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        height: 160, // Aumentado para 160 para evitar overflow no texto inferior
+        decoration: BoxDecoration(
+          color: Colors.white, 
+          borderRadius: BorderRadius.circular(20), 
+          border: Border.all(color: cor.shade100, width: 1.5), 
+          boxShadow: [BoxShadow(color: cor.withAlpha(15), blurRadius: 12, offset: const Offset(0, 6))]
+        ),
+        child: Stack(
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: cor.shade50, shape: BoxShape.circle), child: Icon(icone, color: cor.shade700)),
-                Icon(Icons.arrow_outward_rounded, color: Colors.grey.shade400, size: 20),
-              ],
+            // Ícone de fundo gigante no canto inferior direito
+            Positioned(
+              right: -15,
+              bottom: -15,
+              child: Icon(icone, size: 100, color: cor.withAlpha(15)),
             ),
-            const SizedBox(height: 24),
-            Text(valor, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(titulo, style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w500))
+            // Conteúdo principal
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10), 
+                        decoration: BoxDecoration(color: cor.shade50, borderRadius: BorderRadius.circular(12)), 
+                        child: Icon(icone, color: cor.shade700, size: 22)
+                      ),
+                      Icon(Icons.arrow_outward_rounded, color: Colors.grey.shade300, size: 20),
+                    ],
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(valor, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w900, height: 1.1)),
+                      const SizedBox(height: 4),
+                      Text(titulo, style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 13)),
+                    ],
+                  )
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -221,18 +362,45 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
 class _BotaoAtalho extends StatelessWidget {
   final String titulo;
   final IconData icone;
-  final Color cor;
+  final MaterialColor cor;
   final VoidCallback onTap;
+
   const _BotaoAtalho({required this.titulo, required this.icone, required this.cor, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: onTap, borderRadius: BorderRadius.circular(12),
+      onTap: onTap, 
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        width: 140, padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-        decoration: BoxDecoration(color: cor.withAlpha(15), border: Border.all(color: cor.withAlpha(50)), borderRadius: BorderRadius.circular(12)),
-        child: Column(children: [Icon(icone, color: cor, size: 32), const SizedBox(height: 12), Text(titulo, textAlign: TextAlign.center, style: TextStyle(color: cor, fontWeight: FontWeight.bold, fontSize: 13))]),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white, 
+          border: Border.all(color: cor.shade100), 
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))]
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cor.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icone, color: cor.shade700, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                titulo, 
+                style: TextStyle(color: Colors.grey.shade800, fontWeight: FontWeight.bold, fontSize: 13),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            )
+          ]
+        ),
       ),
     );
   }
@@ -242,10 +410,21 @@ class _StatusLinha extends StatelessWidget {
   final IconData icone;
   final Color cor;
   final String texto;
+
   const _StatusLinha({required this.icone, required this.cor, required this.texto});
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [Icon(icone, color: cor, size: 20), const SizedBox(width: 12), Text(texto, style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black87))]);
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(color: cor.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icone, color: cor, size: 14)
+        ), 
+        const SizedBox(width: 12), 
+        Expanded(child: Text(texto, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black87)))
+      ]
+    );
   }
 }

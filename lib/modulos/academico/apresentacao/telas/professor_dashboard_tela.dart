@@ -91,7 +91,7 @@ class _LetreiroAvisosState extends State<LetreiroAvisos> {
 }
 
 // ============================================================================
-// TELA PRINCIPAL DO DASHBOARD
+// TELA PRINCIPAL DO DASHBOARD DO PROFESSOR
 // ============================================================================
 class ProfessorDashboardTela extends ConsumerStatefulWidget {
   const ProfessorDashboardTela({super.key});
@@ -102,6 +102,8 @@ class ProfessorDashboardTela extends ConsumerStatefulWidget {
 
 class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela> {
   String _anoSelecionado = DateTime.now().year.toString();
+  bool _turmasExpandidas = true; // Estado que controla a cascata das turmas
+
   final List<String> _diasSemanaAbrev = ['SEG', 'TER', 'QUA', 'QUI', 'SEX', 'SÁB', 'DOM'];
   final List<String> _diasSemanaCompleto = ['SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'];
 
@@ -243,16 +245,6 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
     return Colors.orange; 
   }
 
-  IconData _getIconePorTipo(String tipo) {
-    final t = tipo.toLowerCase();
-    if (t.contains('feriado') || t.contains('recesso')) return Icons.beach_access_rounded;
-    if (t.contains('avaliação') || t.contains('prova')) return Icons.edit_document;
-    if (t.contains('aula')) return Icons.school_rounded;
-    if (t.contains('reunião')) return Icons.groups_rounded;
-    if (t.contains('escolar')) return Icons.event_rounded;
-    return Icons.star_rounded; 
-  }
-
   Future<int> _buscarQuantidadeAlunos(String tenantId, String turmaId) async {
     try {
       final snapshotPrincipal = await FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('alunos')
@@ -295,9 +287,6 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
     );
   }
 
-  // ==========================================================================
-  // BUSCA INTELIGENTE DE EVENTOS PARA A AGENDA DA SEMANA
-  // ==========================================================================
   Future<List<Map<String, dynamic>>> _carregarEventosDaSemana(String tenantId, String professorId, List<Map<String, dynamic>> turmas, List<dynamic> eventosGerais) async {
     DateTime hoje = DateTime.now();
     DateTime inicioSemana = DateTime(hoje.year, hoje.month, hoje.day).subtract(Duration(days: hoje.weekday - 1));
@@ -391,6 +380,29 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
     });
 
     return listaSemana;
+  }
+
+  void _abrirModalMensagensProfessor(String tenantId, String profId, String profNome, List<Map<String, dynamic>> turmasProf, Color corPrimaria) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.9, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+          builder: (_, scrollController) {
+            return _ModalMuralProfessor(
+              tenantId: tenantId,
+              profId: profId,
+              profNome: profNome,
+              turmas: turmasProf,
+              corPrimaria: corPrimaria,
+            );
+          }
+        );
+      }
+    );
   }
 
   @override
@@ -554,6 +566,23 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                       return LetreiroAvisos(texto: avisosJuntos);
                     }
                   ),
+                  
+                  // NOVO BOTÃO DE MURAL DE AVISOS E COMUNICAÇÕES
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 52),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 2,
+                      ),
+                      onPressed: () => _abrirModalMensagensProfessor(tenantId, idOriginalProf, profNome, minhasTurmas, corPrimaria),
+                      icon: const Icon(Icons.campaign_rounded),
+                      label: const Text('Comunicações e Avisos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ),
 
                   Expanded(
                     child: SingleChildScrollView(
@@ -689,194 +718,215 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                           const Divider(height: 1),
                           const SizedBox(height: 16),
 
-                          Row(
-                            children: [
-                              Icon(Icons.meeting_room_rounded, color: corPrimaria, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Minhas Turmas em $anoExibicao (${minhasTurmas.length})',
-                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: corPrimaria),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-
-                          minhasTurmas.isEmpty
-                              ? Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 40),
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(Icons.folder_off_rounded, size: 64, color: Colors.grey.shade300),
-                                        const SizedBox(height: 16),
-                                        Text('Sem turmas em $anoExibicao.', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
-                                      ],
-                                    ),
+                          // ==================================================================
+                          // BOTÃO EM CASCATA: MINHAS TURMAS (EXPANSION TILE ANIMADO)
+                          // ==================================================================
+                          InkWell(
+                            onTap: () => setState(() => _turmasExpandidas = !_turmasExpandidas),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8.0),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.meeting_room_rounded, color: corPrimaria, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Minhas Turmas em $anoExibicao (${minhasTurmas.length})',
+                                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: corPrimaria),
                                   ),
-                                )
-                              : ListView.separated(
-                                  shrinkWrap: true, 
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: minhasTurmas.length,
-                                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                                  itemBuilder: (context, index) {
-                                    final turma = minhasTurmas[index];
+                                  const Spacer(),
+                                  AnimatedRotation(
+                                    turns: _turmasExpandidas ? 0.5 : 0.0,
+                                    duration: const Duration(milliseconds: 300),
+                                    child: Icon(Icons.keyboard_arrow_down_rounded, color: corPrimaria),
+                                  )
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
 
-                                    final horariosGerais = turma['horarios'] as List? ?? [];
-                                    final meusHorariosRaw = horariosGerais.where((h) => h['professorId'] == idOriginalProf).toList();
+                          AnimatedCrossFade(
+                            firstChild: const SizedBox(width: double.infinity),
+                            secondChild: minhasTurmas.isEmpty
+                                ? Center(
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(top: 20, bottom: 20),
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.folder_off_rounded, size: 48, color: Colors.grey.shade300),
+                                          const SizedBox(height: 16),
+                                          Text('Sem turmas em $anoExibicao.', style: TextStyle(color: Colors.grey.shade600, fontSize: 14)),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : ListView.separated(
+                                    shrinkWrap: true, 
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    itemCount: minhasTurmas.length,
+                                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                                    itemBuilder: (context, index) {
+                                      final turma = minhasTurmas[index];
 
-                                    List<String> meusHorarios = [];
-                                    for (var h in meusHorariosRaw) {
-                                      String diaAbrev = _abreviarDia(h['dia']?.toString() ?? '');
-                                      String inicio = h['inicio']?.toString() ?? '';
-                                      String fim = h['fim']?.toString() ?? '';
-                                      if (diaAbrev.isNotEmpty && inicio.isNotEmpty) meusHorarios.add('$diaAbrev $inicio - $fim');
-                                    }
+                                      final horariosGerais = turma['horarios'] as List? ?? [];
+                                      final meusHorariosRaw = horariosGerais.where((h) => h['professorId'] == idOriginalProf).toList();
 
-                                    if (meusHorarios.isEmpty) meusHorarios.add('Nenhum horário definido');
+                                      List<String> meusHorarios = [];
+                                      for (var h in meusHorariosRaw) {
+                                        String diaAbrev = _abreviarDia(h['dia']?.toString() ?? '');
+                                        String inicio = h['inicio']?.toString() ?? '';
+                                        String fim = h['fim']?.toString() ?? '';
+                                        if (diaAbrev.isNotEmpty && inicio.isNotEmpty) meusHorarios.add('$diaAbrev $inicio - $fim');
+                                      }
 
-                                    return Card(
-                                      elevation: 0,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)),
-                                      child: Theme(
-                                        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                                        child: ExpansionTile(
-                                          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                                          childrenPadding: const EdgeInsets.all(20),
-                                          leading: Container(
-                                            padding: const EdgeInsets.all(10),
-                                            decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                                            child: Icon(Icons.meeting_room_rounded, color: corPrimaria, size: 20),
-                                          ),
-                                          title: Text(
-                                            turma['nome'] ?? 'Turma',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                            maxLines: 2, overflow: TextOverflow.ellipsis,
-                                          ),
-                                          subtitle: FutureBuilder<int>(
-                                            future: _buscarQuantidadeAlunos(tenantId, turma['id']),
-                                            initialData: turma['qtdAlunos'] ?? 0,
-                                            builder: (context, snapshot) {
-                                              final qtdAlunos = snapshot.data ?? 0;
-                                              return Padding(
-                                                padding: const EdgeInsets.only(top: 4.0),
-                                                child: Row(
+                                      if (meusHorarios.isEmpty) meusHorarios.add('Nenhum horário definido');
+
+                                      return Card(
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)),
+                                        child: Theme(
+                                          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                                          child: ExpansionTile(
+                                            tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                                            childrenPadding: const EdgeInsets.all(20),
+                                            leading: Container(
+                                              padding: const EdgeInsets.all(10),
+                                              decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                                              child: Icon(Icons.meeting_room_rounded, color: corPrimaria, size: 20),
+                                            ),
+                                            title: Text(
+                                              turma['nome'] ?? 'Turma',
+                                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                              maxLines: 2, overflow: TextOverflow.ellipsis,
+                                            ),
+                                            subtitle: FutureBuilder<int>(
+                                              future: _buscarQuantidadeAlunos(tenantId, turma['id']),
+                                              initialData: turma['qtdAlunos'] ?? 0,
+                                              builder: (context, snapshot) {
+                                                final qtdAlunos = snapshot.data ?? 0;
+                                                return Padding(
+                                                  padding: const EdgeInsets.only(top: 4.0),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(Icons.people_alt_rounded, size: 12, color: Colors.grey.shade600),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        snapshot.connectionState == ConnectionState.waiting ? 'Carregando...' : '$qtdAlunos Alunos',
+                                                        style: TextStyle(color: Colors.grey.shade700, fontSize: 11, fontWeight: FontWeight.bold),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Text('• ${turma['turno'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                                                    ],
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                            children: [
+                                              Container(
+                                                width: double.infinity,
+                                                padding: const EdgeInsets.all(12),
+                                                decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
                                                   children: [
-                                                    Icon(Icons.people_alt_rounded, size: 12, color: Colors.grey.shade600),
-                                                    const SizedBox(width: 4),
-                                                    Text(
-                                                      snapshot.connectionState == ConnectionState.waiting ? 'Carregando...' : '$qtdAlunos Alunos',
-                                                      style: TextStyle(color: Colors.grey.shade700, fontSize: 11, fontWeight: FontWeight.bold),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Text('• ${turma['turno'] ?? 'N/A'}', style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
+                                                    const Text('Sua Grade de Aulas:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                                                    const SizedBox(height: 8),
+                                                    ...meusHorarios.map((h) => Padding(
+                                                      padding: const EdgeInsets.only(bottom: 4),
+                                                      child: Row(
+                                                        children: [
+                                                          const Icon(Icons.schedule_rounded, size: 12, color: Colors.blueGrey),
+                                                          const SizedBox(width: 6),
+                                                          Text(h, style: TextStyle(fontSize: 12, color: Colors.grey.shade800)),
+                                                        ],
+                                                      ),
+                                                    )),
                                                   ],
                                                 ),
-                                              );
-                                            },
-                                          ),
-                                          children: [
-                                            Container(
-                                              width: double.infinity,
-                                              padding: const EdgeInsets.all(12),
-                                              decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade200)),
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  const Text('Sua Grade de Aulas:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
-                                                  const SizedBox(height: 8),
-                                                  ...meusHorarios.map((h) => Padding(
-                                                    padding: const EdgeInsets.only(bottom: 4),
-                                                    child: Row(
-                                                      children: [
-                                                        const Icon(Icons.schedule_rounded, size: 12, color: Colors.blueGrey),
-                                                        const SizedBox(width: 6),
-                                                        Text(h, style: TextStyle(fontSize: 12, color: Colors.grey.shade800)),
-                                                      ],
-                                                    ),
-                                                  )),
-                                                ],
                                               ),
-                                            ),
-                                            const SizedBox(height: 16),
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: OutlinedButton.icon(
-                                                    style: OutlinedButton.styleFrom(
-                                                      foregroundColor: corPrimaria,
-                                                      side: BorderSide(color: corPrimaria),
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                      padding: const EdgeInsets.symmetric(vertical: 14)
-                                                    ),
-                                                    onPressed: () {
-                                                      Navigator.push(context, MaterialPageRoute(builder: (context) => TurmaCalendarioTela(turma: turma)));
-                                                    },
-                                                    icon: const Icon(Icons.calendar_month, size: 18),
-                                                    label: const Text('Calendário da Turma', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                                                  )
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Expanded(
-                                                  child: ElevatedButton.icon(
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: corPrimaria, foregroundColor: Colors.white, 
-                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), 
-                                                      padding: const EdgeInsets.symmetric(vertical: 14)
-                                                    ),
-                                                    onPressed: () {
-                                                      final diaHojeStr = _obterDiaSemanaAtualFirebase();
-                                                      bool temAulaHoje = meusHorariosRaw.any((h) => (h['dia']?.toString().trim().toUpperCase() ?? '') == diaHojeStr);
+                                              const SizedBox(height: 16),
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: OutlinedButton.icon(
+                                                      style: OutlinedButton.styleFrom(
+                                                        foregroundColor: corPrimaria,
+                                                        side: BorderSide(color: corPrimaria),
+                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                        padding: const EdgeInsets.symmetric(vertical: 14)
+                                                      ),
+                                                      onPressed: () {
+                                                        Navigator.push(context, MaterialPageRoute(builder: (context) => TurmaCalendarioTela(turma: turma)));
+                                                      },
+                                                      icon: const Icon(Icons.calendar_month, size: 18),
+                                                      label: const Text('Calendário da Turma', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                                    )
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                  Expanded(
+                                                    child: ElevatedButton.icon(
+                                                      style: ElevatedButton.styleFrom(
+                                                        backgroundColor: corPrimaria, foregroundColor: Colors.white, 
+                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), 
+                                                        padding: const EdgeInsets.symmetric(vertical: 14)
+                                                      ),
+                                                      onPressed: () {
+                                                        final diaHojeStr = _obterDiaSemanaAtualFirebase();
+                                                        bool temAulaHoje = meusHorariosRaw.any((h) => (h['dia']?.toString().trim().toUpperCase() ?? '') == diaHojeStr);
 
-                                                      if (temAulaHoje || meusHorariosRaw.isEmpty) {
-                                                        context.push('/diario/${turma['id']}');
-                                                      } else {
-                                                        showDialog(
-                                                          context: context,
-                                                          builder: (ctx) => AlertDialog(
-                                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                                            title: const Row(
-                                                              children: [
-                                                                Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
-                                                                SizedBox(width: 8),
-                                                                Text('Atenção', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                        if (temAulaHoje || meusHorariosRaw.isEmpty) {
+                                                          context.push('/diario/${turma['id']}');
+                                                        } else {
+                                                          showDialog(
+                                                            context: context,
+                                                            builder: (ctx) => AlertDialog(
+                                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                                              title: const Row(
+                                                                children: [
+                                                                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                                                                  SizedBox(width: 8),
+                                                                  Text('Atenção', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                                ],
+                                                              ),
+                                                              content: Text(
+                                                                'Hoje é ${_nomeDiaCompleto(diaHojeStr)}, e você não possui horário cadastrado nesta turma para hoje.\n\nTem certeza que deseja iniciar a aula mesmo assim?',
+                                                                style: const TextStyle(fontSize: 15),
+                                                              ),
+                                                              actions: [
+                                                                TextButton(
+                                                                  onPressed: () => Navigator.pop(ctx), 
+                                                                  child: const Text('Cancelar', style: TextStyle(color: Colors.grey))
+                                                                ),
+                                                                ElevatedButton(
+                                                                  style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
+                                                                  onPressed: () {
+                                                                    Navigator.pop(ctx);
+                                                                    context.push('/diario/${turma['id']}');
+                                                                  },
+                                                                  child: const Text('Sim, Iniciar Aula', style: TextStyle(fontWeight: FontWeight.bold)),
+                                                                )
                                                               ],
                                                             ),
-                                                            content: Text(
-                                                              'Hoje é ${_nomeDiaCompleto(diaHojeStr)}, e você não possui horário cadastrado nesta turma para hoje.\n\nTem certeza que deseja iniciar a aula mesmo assim?',
-                                                              style: const TextStyle(fontSize: 15),
-                                                            ),
-                                                            actions: [
-                                                              TextButton(
-                                                                onPressed: () => Navigator.pop(ctx), 
-                                                                child: const Text('Cancelar', style: TextStyle(color: Colors.grey))
-                                                              ),
-                                                              ElevatedButton(
-                                                                style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white),
-                                                                onPressed: () {
-                                                                  Navigator.pop(ctx);
-                                                                  context.push('/diario/${turma['id']}');
-                                                                },
-                                                                child: const Text('Sim, Iniciar Aula', style: TextStyle(fontWeight: FontWeight.bold)),
-                                                              )
-                                                            ],
-                                                          ),
-                                                        );
-                                                      }
-                                                    },
-                                                    icon: const Icon(Icons.play_circle_fill_rounded, size: 18),
-                                                    label: const Text('Iniciar Aula', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                                          );
+                                                        }
+                                                      },
+                                                      icon: const Icon(Icons.play_circle_fill_rounded, size: 18),
+                                                      label: const Text('Iniciar Aula', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                                    )
                                                   )
-                                                )
-                                              ],
-                                            )
-                                          ],
-                                        ),
-                                      )
-                                    );
-                                  },
-                                ),
+                                                ],
+                                              )
+                                            ],
+                                          ),
+                                        )
+                                      );
+                                    },
+                                  ),
+                            crossFadeState: _turmasExpandidas ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                            duration: const Duration(milliseconds: 300),
+                          ),
                         ],
                       ),
                     ),
@@ -887,6 +937,497 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
           ),
         );
       },
+    );
+  }
+}
+
+// ============================================================================
+// WIDGET EXTRA: MURAL DE AVISOS DO PROFESSOR (Feed + Envio)
+// ============================================================================
+class _ModalMuralProfessor extends StatefulWidget {
+  final String tenantId;
+  final String profId;
+  final String profNome;
+  final List<Map<String, dynamic>> turmas;
+  final Color corPrimaria;
+
+  const _ModalMuralProfessor({
+    required this.tenantId,
+    required this.profId,
+    required this.profNome,
+    required this.turmas,
+    required this.corPrimaria,
+  });
+
+  @override
+  State<_ModalMuralProfessor> createState() => _ModalMuralProfessorState();
+}
+
+class _ModalMuralProfessorState extends State<_ModalMuralProfessor> {
+  // Controle de Abas
+  int _abaAtual = 0;
+
+  // Variáveis para o formulário de Envio
+  final _formKey = GlobalKey<FormState>();
+  String _destinatario = 'TURMA'; 
+  String? _turmaSelecionadaId;
+  String? _alunoSelecionadoId;
+  final _tituloCtrl = TextEditingController();
+  final _mensagemCtrl = TextEditingController();
+  bool _enviando = false;
+  List<Map<String, dynamic>> _alunosDaTurmaCache = [];
+  bool _carregandoAlunos = false;
+
+  // Refresh Feed
+  int _recarregarTrigger = 0;
+
+  @override
+  void dispose() {
+    _tituloCtrl.dispose();
+    _mensagemCtrl.dispose();
+    super.dispose();
+  }
+
+  // BUSCA OS AVISOS RELEVANTES PARA O PROFESSOR
+  Future<List<Map<String, dynamic>>> _carregarAvisos() async {
+    final db = FirebaseFirestore.instance;
+    List<Map<String, dynamic>> lista = [];
+
+    // 1. Avisos Globais do Colégio (destinados a Professores ou a Toda a Escola)
+    final globais = await db.collection('tenants').doc(widget.tenantId).collection('avisos_professores')
+        .where('tipoDestinatario', whereIn: ['PROFESSORES', 'TODOS', 'PROFESSOR_ESPECIFICO'])
+        .get();
+    
+    for (var d in globais.docs) {
+      final data = d.data();
+      if (data['tipoDestinatario'] == 'PROFESSOR_ESPECIFICO' && data['professorAlvoId'] != widget.profId) {
+        continue;
+      }
+      lista.add({...data, 'id': d.id, 'turmaNome': 'Direção Escolar'});
+    }
+
+    // 2. Avisos nas Turmas onde ele leciona
+    for (var t in widget.turmas) {
+       final turmasSnap = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(t['id']).collection('avisos').get();
+       for (var a in turmasSnap.docs) {
+          final data = a.data();
+          final tipo = data['tipoDestinatario'];
+          
+          bool souDestinatario = (tipo == 'TODOS' || tipo == 'PROFESSORES');
+          bool fuiEuQueEnviei = (data['remetenteId'] == widget.profId);
+          
+          if (souDestinatario || fuiEuQueEnviei) {
+              lista.add({...data, 'id': a.id, 'turmaNome': t['nome']});
+          }
+       }
+    }
+
+    // 3. Desduplicação Inteligente
+    List<Map<String, dynamic>> listaUnica = [];
+    Set<String> assinaturas = {};
+    for (var aviso in lista) {
+        final assinatura = "${aviso['tipoDestinatario']}_${aviso['mensagem']}_${aviso['remetenteId']}";
+        if (!assinaturas.contains(assinatura)) {
+            assinaturas.add(assinatura);
+            listaUnica.add(aviso);
+        }
+    }
+    
+    listaUnica.sort((a, b) {
+      final tA = a['dataEnvio'] as Timestamp?;
+      final tB = b['dataEnvio'] as Timestamp?;
+      if (tA == null && tB == null) return 0;
+      if (tA == null) return 1;
+      if (tB == null) return -1;
+      return tB.compareTo(tA);
+    });
+
+    return listaUnica;
+  }
+
+  // BUSCA OS ALUNOS QUANDO ELE SELECIONA UMA TURMA
+  Future<void> _buscarAlunosDaTurma(String tId) async {
+    setState(() => _carregandoAlunos = true);
+    try {
+      final snap = await FirebaseFirestore.instance.collection('tenants').doc(widget.tenantId).collection('alunos')
+          .where('status', isEqualTo: 'Ativo')
+          .get();
+      
+      final filtrados = snap.docs.map((d) => {'id': d.id, ...d.data()}).where((a) {
+         final trmId = a['turmaId']?.toString() ?? '';
+         final extras = List<String>.from(a['turmasExtrasIds'] ?? []);
+         return trmId == tId || extras.contains(tId);
+      }).toList();
+
+      filtrados.sort((a,b) => (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()));
+
+      setState(() {
+        _alunosDaTurmaCache = filtrados;
+      });
+    } catch (_) {
+      setState(() => _alunosDaTurmaCache = []);
+    } finally {
+      setState(() => _carregandoAlunos = false);
+    }
+  }
+
+  // ENVIA O AVISO
+  Future<void> _enviarAviso() async {
+    if (!_formKey.currentState!.validate()) return;
+    
+    if (_destinatario != 'ADMINISTRACAO' && _turmaSelecionadaId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione a turma destino.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    if ((_destinatario == 'ALUNO' || _destinatario == 'RESPONSAVEL') && _alunoSelecionadoId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecione o aluno destino.'), backgroundColor: Colors.red));
+      return;
+    }
+
+    setState(() => _enviando = true);
+
+    try {
+      final db = FirebaseFirestore.instance;
+      final titulo = _tituloCtrl.text.trim();
+      final msgBase = _mensagemCtrl.text.trim();
+      final msgComTitulo = titulo.isNotEmpty ? "📍 *$titulo*\n\n$msgBase" : msgBase;
+
+      final Map<String, Object> payload = {
+         'titulo': titulo,
+         'mensagem': msgComTitulo,
+         'dataEnvio': FieldValue.serverTimestamp(),
+         'remetenteNome': 'Professor(a) ${widget.profNome}',
+         'remetenteId': widget.profId,
+         'tipoDestinatario': _destinatario,
+      };
+
+      if (_destinatario == 'ADMINISTRACAO') {
+        // Envia para o admin central
+        await db.collection('tenants').doc(widget.tenantId).collection('avisos_admin').add(payload);
+      } else {
+        // Envia para a turma
+        if (_destinatario == 'ALUNO' || _destinatario == 'RESPONSAVEL') {
+          payload['alunoId'] = _alunoSelecionadoId ?? '';
+        }
+        await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(_turmaSelecionadaId).collection('avisos').add(payload);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso enviado com sucesso!'), backgroundColor: Colors.green));
+        _tituloCtrl.clear();
+        _mensagemCtrl.clear();
+        setState(() {
+           _alunoSelecionadoId = null;
+           _recarregarTrigger++;
+           _abaAtual = 0; // Volta para o feed
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  // ==========================================
+  // CONSTRUÇÃO DAS ABAS
+  // ==========================================
+
+  Widget _buildFeedTab() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      key: ValueKey(_recarregarTrigger),
+      future: _carregarAvisos(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
+        }
+        final avisos = snapshot.data ?? [];
+        if (avisos.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.speaker_notes_off_rounded, size: 64, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text('Nenhum aviso encontrado.', style: TextStyle(color: Colors.grey.shade500, fontSize: 16)),
+              ],
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.all(20),
+          itemCount: avisos.length,
+          separatorBuilder: (ctx, i) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final aviso = avisos[index];
+            final dataEnvio = aviso['dataEnvio'];
+            final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format((dataEnvio as Timestamp).toDate()) : 'Enviando...';
+            
+            final isMeu = aviso['remetenteId'] == widget.profId;
+            final tipoDest = aviso['tipoDestinatario'];
+
+            String tagDestino = 'Aviso Global';
+            Color corTag = Colors.blue;
+            
+            if (tipoDest == 'TODOS') {
+              tagDestino = 'Escola Inteira'; corTag = Colors.green;
+            } else if (tipoDest == 'PROFESSORES' || tipoDest == 'PROFESSOR_ESPECIFICO') {
+              tagDestino = 'Diretoria / Coord.'; corTag = Colors.orange;
+            } else if (tipoDest == 'ALUNO') {
+              tagDestino = 'Para o Aluno (${aviso['turmaNome']})'; corTag = Colors.purple;
+            } else if (tipoDest == 'RESPONSAVEL') {
+              tagDestino = 'Para os Pais (${aviso['turmaNome']})'; corTag = Colors.red;
+            } else if (tipoDest == 'ADMINISTRACAO') {
+              tagDestino = 'Para a Coordenação'; corTag = Colors.indigo;
+            } else {
+              tagDestino = 'Turma: ${aviso['turmaNome']}';
+            }
+
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: isMeu ? Colors.grey.shade50 : Colors.white, 
+                borderRadius: BorderRadius.circular(16), 
+                border: Border.all(color: isMeu ? Colors.grey.shade300 : corTag.withAlpha(50)),
+                boxShadow: isMeu ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          isMeu ? 'Enviado por você' : 'De: ${aviso['remetenteNome']}', 
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isMeu ? Colors.grey.shade700 : corTag.withAlpha(200)),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+                    child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                  const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+                  Text(aviso['mensagem'] ?? '', style: TextStyle(fontSize: 14, color: Colors.grey.shade800))
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFormTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Enviar Novo Aviso', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text('Selecione para quem deseja enviar o comunicado.', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+            const SizedBox(height: 24),
+
+            InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Público Alvo', 
+                border: OutlineInputBorder(), 
+                prefixIcon: Icon(Icons.people_alt_rounded),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _destinatario,
+                  isExpanded: true,
+                  items: const [
+                    DropdownMenuItem(value: 'TURMA', child: Text('Toda a Turma')),
+                    DropdownMenuItem(value: 'ALUNO', child: Text('Um Aluno Específico')),
+                    DropdownMenuItem(value: 'RESPONSAVEL', child: Text('Pais / Responsáveis de um Aluno')),
+                    DropdownMenuItem(value: 'ADMINISTRACAO', child: Text('Para a Secretaria / Direção')),
+                  ],
+                  onChanged: (val) { 
+                    setState(() { 
+                      _destinatario = val!; 
+                      _alunoSelecionadoId = null;
+                    }); 
+                  },
+                ),
+              ),
+            ),
+
+            if (_destinatario != 'ADMINISTRACAO') ...[
+              const SizedBox(height: 20),
+              InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Selecione a Turma', 
+                  border: OutlineInputBorder(), 
+                  prefixIcon: Icon(Icons.meeting_room_rounded),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _turmaSelecionadaId,
+                    isExpanded: true,
+                    hint: const Text('Selecione...'),
+                    items: widget.turmas.map((t) => DropdownMenuItem(value: t['id'].toString(), child: Text(t['nome']))).toList(),
+                    onChanged: (val) {
+                      setState(() {
+                        _turmaSelecionadaId = val;
+                        _alunoSelecionadoId = null;
+                      });
+                      _buscarAlunosDaTurma(val!);
+                    },
+                  ),
+                ),
+              ),
+            ],
+
+            if (_destinatario == 'ALUNO' || _destinatario == 'RESPONSAVEL') ...[
+              const SizedBox(height: 20),
+              if (_carregandoAlunos)
+                const Center(child: CircularProgressIndicator())
+              else if (_turmaSelecionadaId != null)
+                InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Selecione o Aluno', 
+                    border: OutlineInputBorder(), 
+                    prefixIcon: Icon(Icons.person_search_rounded),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _alunoSelecionadoId,
+                      isExpanded: true,
+                      itemHeight: _destinatario == 'RESPONSAVEL' ? 64.0 : 48.0, // Ajusta altura para caber duas linhas
+                      hint: const Text('Selecione...'),
+                      items: _alunosDaTurmaCache.map((a) {
+                        String nomeAluno = a['nome'] ?? 'Sem nome';
+                        String textoResp = '';
+                        
+                        // Lógica inteligente para mostrar o nome do responsável em baixo se a opção for "RESPONSAVEL"
+                        if (_destinatario == 'RESPONSAVEL') {
+                          List resps = a['responsaveis'] as List? ?? [];
+                          if (resps.isNotEmpty) {
+                            var resp = resps.firstWhere((r) => r['principal'] == true, orElse: () => resps.first);
+                            textoResp = 'Responsável: ${resp['nome'] ?? 'Sem nome'}';
+                          } else {
+                            textoResp = 'Sem responsável cadastrado';
+                          }
+                        }
+
+                        return DropdownMenuItem(
+                          value: a['id'].toString(), 
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(nomeAluno, style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                              if (textoResp.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Text(
+                                    textoResp, 
+                                    style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                          )
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _alunoSelecionadoId = val),
+                    ),
+                  ),
+                ),
+            ],
+
+            const SizedBox(height: 24),
+            TextFormField(
+              controller: _tituloCtrl, 
+              decoration: const InputDecoration(labelText: 'Título do Aviso (Opcional)', border: OutlineInputBorder()), 
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _mensagemCtrl, 
+              maxLines: 5, 
+              decoration: const InputDecoration(labelText: 'Escreva a sua mensagem...', alignLabelWithHint: true, border: OutlineInputBorder()), 
+              validator: (v) => v!.isEmpty ? 'A mensagem não pode estar vazia.' : null
+            ),
+            const SizedBox(height: 32),
+
+            SizedBox(
+              height: 52,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(backgroundColor: widget.corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                onPressed: _enviando ? null : _enviarAviso, 
+                icon: _enviando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.send_rounded), 
+                label: Text(_enviando ? 'ENVIANDO...' : 'ENVIAR COMUNICADO', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      initialIndex: _abaAtual,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.campaign_rounded, color: widget.corPrimaria)),
+                const SizedBox(width: 16),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Mural de Comunicações', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text('Avisos e mensagens do corpo docente', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                ])),
+                IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+              ],
+            ),
+          ),
+          TabBar(
+            labelColor: widget.corPrimaria,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: widget.corPrimaria,
+            indicatorWeight: 3,
+            onTap: (index) => setState(() => _abaAtual = index),
+            tabs: const [
+              Tab(icon: Icon(Icons.history_rounded), text: 'Ver Histórico e Avisos'),
+              Tab(icon: Icon(Icons.send_rounded), text: 'Enviar Nova Mensagem'),
+            ]
+          ),
+          Expanded(
+            child: TabBarView(
+              physics: const NeverScrollableScrollPhysics(), // Evita deslizar por engano quando digita
+              children: [
+                _buildFeedTab(),
+                _buildFormTab(),
+              ],
+            ),
+          )
+        ],
+      ),
     );
   }
 }
