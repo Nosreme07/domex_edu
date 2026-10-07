@@ -579,7 +579,14 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                       ),
                       onPressed: () => _abrirModalMensagensProfessor(tenantId, idOriginalProf, profNome, minhasTurmas, corPrimaria),
                       icon: const Icon(Icons.campaign_rounded),
-                      label: const Text('Comunicações e Avisos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Comunicações e Avisos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          const SizedBox(width: 8),
+                          _BalaoNotificacaoAvisosProfessor(tenantId: tenantId, profId: idOriginalProf, turmas: minhasTurmas),
+                        ],
+                      ),
                     ),
                   ),
 
@@ -936,6 +943,120 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
           ),
         );
       },
+    );
+  }
+}
+
+// ============================================================================
+// WIDGET DO BALÃO DE NOTIFICAÇÃO (BOLINHA VERMELHA) PARA O PROFESSOR
+// ============================================================================
+class _BalaoNotificacaoAvisosProfessor extends StatefulWidget {
+  final String tenantId;
+  final String profId;
+  final List<Map<String, dynamic>> turmas;
+
+  const _BalaoNotificacaoAvisosProfessor({
+    required this.tenantId, 
+    required this.profId, 
+    required this.turmas
+  });
+
+  @override
+  State<_BalaoNotificacaoAvisosProfessor> createState() => _BalaoNotificacaoAvisosProfessorState();
+}
+
+class _BalaoNotificacaoAvisosProfessorState extends State<_BalaoNotificacaoAvisosProfessor> {
+  int _naoLidos = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarCount();
+    // Atualiza os dados a cada 5 segundos de forma invisível
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _carregarCount());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _carregarCount() async {
+    if (!mounted || widget.tenantId.isEmpty) return;
+    int total = 0;
+    final db = FirebaseFirestore.instance;
+
+    try {
+        // Varre Globais
+        final globaisSnap = await db.collection('tenants').doc(widget.tenantId).collection('avisos_professores').get();
+        for (var a in globaisSnap.docs) {
+          final d = a.data();
+          bool isParaMim = false;
+          if (d['tipoDestinatario'] == 'TODOS' || d['tipoDestinatario'] == 'PROFESSORES' || d['professorAlvoId'] == widget.profId) {
+             isParaMim = true;
+             final lidos = List<String>.from(d['lidosPor'] ?? []);
+             if (!lidos.contains(widget.profId) && d['remetenteId'] != widget.profId) {
+               total++;
+             }
+          }
+
+          if (d['remetenteId'] == widget.profId || isParaMim) {
+            final respostasSnap = await a.reference.collection('respostas').where('lidaPorProfessor', isEqualTo: false).get();
+            total += respostasSnap.docs.where((r) => r['remetenteId'] != widget.profId).length;
+          }
+        }
+
+        // Varre Turmas
+        for (var t in widget.turmas) {
+          final avisosSnap = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(t['id']).collection('avisos').get();
+          for (var a in avisosSnap.docs) {
+            final d = a.data();
+            
+            bool isParaMim = false;
+            if (d['tipoDestinatario'] == 'TODOS' || d['tipoDestinatario'] == 'PROFESSORES') {
+               isParaMim = true;
+               final lidos = List<String>.from(d['lidosPor'] ?? []);
+               if (!lidos.contains(widget.profId) && d['remetenteId'] != widget.profId) {
+                 total++;
+               }
+            }
+
+            if (d['remetenteId'] == widget.profId || isParaMim) {
+              final respostasSnap = await a.reference.collection('respostas').where('lidaPorProfessor', isEqualTo: false).get();
+              total += respostasSnap.docs.where((r) => r['remetenteId'] != widget.profId).length;
+            }
+          }
+        }
+
+        if (mounted) {
+          setState(() {
+            _naoLidos = total;
+          });
+        }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_naoLidos == 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.red,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))]
+      ),
+      child: Text(
+        _naoLidos > 9 ? '9+' : _naoLidos.toString(),
+        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, height: 1.1),
+        textAlign: TextAlign.center,
+      ),
     );
   }
 }
@@ -1432,6 +1553,20 @@ class AvisoCardWidgetProfessor extends StatelessWidget {
         corPrimaria: corPrimaria,
       ),
     );
+
+    // Marca as respostas não lidas pelo professor como visualizadas em background
+    avisoRef.collection('respostas').get().then((snap) {
+      final batch = FirebaseFirestore.instance.batch();
+      bool hasUpdates = false;
+      for (var doc in snap.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['remetenteId'] != meuId && data['lidaPorProfessor'] != true) {
+          batch.update(doc.reference, {'lidaPorProfessor': true});
+          hasUpdates = true;
+        }
+      }
+      if (hasUpdates) batch.commit();
+    });
   }
 
   @override
@@ -1471,13 +1606,17 @@ class AvisoCardWidgetProfessor extends StatelessWidget {
       avisoRef = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(aviso['turmaId']).collection('avisos').doc(aviso['id']);
     }
 
+    final lidosPor = List<String>.from(aviso['lidosPor'] ?? []);
+    final isLidoMsgOriginal = isMeu || lidosPor.contains(meuId);
+
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isMeu ? Colors.grey.shade50 : Colors.white, 
+        color: isLidoMsgOriginal ? Colors.white : Colors.blue.shade50.withAlpha(50), 
         borderRadius: BorderRadius.circular(16), 
-        border: Border.all(color: isMeu ? Colors.grey.shade300 : corTag.withAlpha(50)),
-        boxShadow: isMeu ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+        border: Border.all(color: isLidoMsgOriginal ? Colors.grey.shade200 : Colors.blue.shade300, width: isLidoMsgOriginal ? 1 : 1.5),
+        boxShadow: isLidoMsgOriginal ? const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))] : const [BoxShadow(color: Colors.blueAccent, blurRadius: 4, offset: Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1493,7 +1632,20 @@ class AvisoCardWidgetProfessor extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                  if (!isLidoMsgOriginal) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                      child: const Text('NOVA MENSAGEM', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                    )
+                  ]
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1506,17 +1658,76 @@ class AvisoCardWidgetProfessor extends StatelessWidget {
           Text(aviso['mensagem'] ?? '', style: TextStyle(fontSize: 14, color: Colors.grey.shade800)),
           
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              style: TextButton.styleFrom(
-                foregroundColor: corPrimaria,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (!isLidoMsgOriginal)
+                IconButton(
+                  onPressed: () {
+                    avisoRef.update({
+                      'lidosPor': FieldValue.arrayUnion([meuId])
+                    });
+                  },
+                  icon: const Icon(Icons.visibility_rounded, size: 20, color: Colors.grey),
+                  tooltip: 'Marcar como visualizada',
+                ),
+
+              StreamBuilder<QuerySnapshot>(
+                stream: avisoRef.collection('respostas').snapshots(),
+                builder: (context, snapRespostas) {
+                  int naoLidos = 0;
+                  if (snapRespostas.hasData) {
+                    for (var doc in snapRespostas.data!.docs) {
+                      final rData = doc.data() as Map<String, dynamic>;
+                      if (rData['remetenteId'] != meuId && rData['lidaPorProfessor'] != true) {
+                        naoLidos++;
+                      }
+                    }
+                  }
+                  
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      TextButton.icon(
+                        style: TextButton.styleFrom(
+                          foregroundColor: corPrimaria,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                        ),
+                        onPressed: () {
+                          if (!isLidoMsgOriginal) {
+                             avisoRef.update({
+                               'lidosPor': FieldValue.arrayUnion([meuId])
+                             });
+                          }
+                          _abrirChat(context, avisoRef);
+                        },
+                        icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: corPrimaria),
+                        label: Text('Ver Respostas / Responder', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12)),
+                      ),
+                      if (naoLidos > 0)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                            decoration: BoxDecoration(
+                              color: Colors.red, 
+                              borderRadius: BorderRadius.circular(10), 
+                              border: Border.all(color: Colors.white, width: 1.5)
+                            ),
+                            child: Text(
+                              naoLidos > 9 ? '9+' : naoLidos.toString(),
+                              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                    ],
+                  );
+                }
               ),
-              onPressed: () => _abrirChat(context, avisoRef),
-              icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: corPrimaria),
-              label: Text('Ver Respostas / Responder', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12)),
-            ),
+            ],
           )
         ],
       ),
@@ -1561,6 +1772,7 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
         'dataEnvio': FieldValue.serverTimestamp(),
         'remetenteId': widget.meuId,
         'remetenteNome': 'Prof(a) ${widget.meuNome}',
+        'lidaPorProfessor': true, // As próprias respostas já nascem lidas por quem as enviou
       });
       _msgCtrl.clear();
     } catch (e) {
@@ -1651,6 +1863,21 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
                       final dataTime = resp['dataEnvio'];
                       final hora = dataTime != null ? DateFormat('HH:mm').format((dataTime as Timestamp).toDate()) : '...';
 
+                      String remetenteExibicao = resp['remetenteNome'] ?? 'Usuário';
+                      
+                      // Lógica de Formatação Inteligente do Remetente Baseada no Destino do Aviso
+                      if (!isMeu) {
+                        final tipoDest = widget.avisoData['tipoDestinatario'];
+                        final alunoN = widget.avisoData['alunoNome'] ?? '';
+                        final turmaN = widget.avisoData['turmaNome'] ?? '';
+                        
+                        if (tipoDest == 'RESPONSAVEL' && alunoN.isNotEmpty) {
+                          remetenteExibicao = '$remetenteExibicao - $alunoN ($turmaN)';
+                        } else if (tipoDest == 'ALUNO' && turmaN.isNotEmpty) {
+                          remetenteExibicao = '$remetenteExibicao ($turmaN)';
+                        }
+                      }
+
                       return Align(
                         alignment: isMeu ? Alignment.centerRight : Alignment.centerLeft,
                         child: Container(
@@ -1668,7 +1895,7 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                isMeu ? 'Você' : (resp['remetenteNome'] ?? 'Usuário'), 
+                                isMeu ? 'Você' : remetenteExibicao, 
                                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMeu ? widget.corPrimaria : Colors.grey.shade700)
                               ),
                               const SizedBox(height: 4),

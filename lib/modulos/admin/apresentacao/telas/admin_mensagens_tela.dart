@@ -209,6 +209,7 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
       final batch = db.batch();
       final turmasRef = db.collection('tenants').doc(tenantId).collection('turmas');
       
+      // Carregamento direto da base para garantir que temos todos os IDs de turmas atualizados
       final turmasSnapDb = await turmasRef.get();
       final turmasDbList = turmasSnapDb.docs.map((d) => {'id': d.id, ...d.data()}).toList();
 
@@ -216,6 +217,19 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
       final mensagem = _mensagemCtrl.text.trim();
       
       final msgComTitulo = titulo.isNotEmpty ? "📍 *$titulo*\n\n$mensagem" : mensagem;
+
+      String? nomeAlunoStr;
+      String? nomeRespStr;
+
+      // ========================================================
+      // LÓGICA DE CAPTURA DO NOME DO ALUNO E RESPONSÁVEL
+      // ========================================================
+      if (_destinatario == 'ALUNO') {
+        nomeAlunoStr = _entidadeSelecionada!['nome'];
+      } else if (_destinatario == 'RESPONSAVEL') {
+        nomeRespStr = _entidadeSelecionada!['nome'];
+        nomeAlunoStr = _entidadeSelecionada!['alunosVinculados'];
+      }
 
       Map<String, dynamic> criarPayload(String tipoDest, {String? alunoId}) {
         return {
@@ -226,6 +240,8 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
           'remetenteId': user.id,
           'tipoDestinatario': tipoDest,
           if (alunoId != null) 'alunoId': alunoId,
+          if (nomeAlunoStr != null) 'alunoNome': nomeAlunoStr,
+          if (nomeRespStr != null) 'responsavelNome': nomeRespStr,
         };
       }
 
@@ -245,6 +261,7 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
         String turmaId = _entidadeSelecionada!['turmaId']?.toString() ?? '';
         final alunoId = _entidadeSelecionada!['docId']?.toString() ?? _entidadeSelecionada!['id']?.toString() ?? _entidadeSelecionada!['matricula']?.toString() ?? '';
         
+        // CORREÇÃO INTELIGENTE: Se o aluno não tiver o ID da turma, o sistema descobre pelo nome da turma.
         if (turmaId.isEmpty || turmaId == 'null') {
           final nomeTurmaAluno = (_entidadeSelecionada!['turma'] ?? '').toString().toUpperCase().trim();
           for (var t in turmasDbList) {
@@ -295,6 +312,7 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
              encontrouFilho = true;
              String turmaId = alunoData['turmaId']?.toString() ?? '';
              
+             // CORREÇÃO INTELIGENTE PARA O RESPONSÁVEL:
              if (turmaId.isEmpty || turmaId == 'null') {
                 final nomeTurmaAluno = (alunoData['turma'] ?? '').toString().toUpperCase().trim();
                 for (var t in turmasDbList) {
@@ -354,7 +372,7 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
         _tituloCtrl.clear();
         _mensagemCtrl.clear();
         setState(() => _entidadeSelecionada = null);
-        _recarregarFeed(); // Recarrega o Feed de mensagens
+        _recarregarFeed(); // Recarrega o Feed de mensagens automaticamente
       }
     } catch (e) {
       if (mounted) {
@@ -479,6 +497,16 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
   Widget build(BuildContext context) {
     final corPrimaria = Theme.of(context).primaryColor;
     
+    final authState = ref.watch(authProvider).value;
+    String adminId = authState?.id ?? '';
+    String adminNome = 'Administração';
+    if (authState != null) {
+      try {
+        final dynamic u = authState;
+        adminNome = u.nome ?? u.displayName ?? u.name ?? 'Administração';
+      } catch (_) {}
+    }
+
     final alunosList = ref.watch(alunosStreamProvider).value ?? [];
     final professoresList = ref.watch(professoresStreamProvider).value ?? [];
     final turmasList = ref.watch(turmasStreamProvider).value ?? [];
@@ -807,84 +835,13 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
                                  );
                               }
 
-                              final aviso = exibidos[index];
-                              
-                              final dataEnvio = aviso['dataEnvio'];
-                              final textoData = dataEnvio != null ? DateFormat('dd/MM/yy às HH:mm').format((dataEnvio as Timestamp).toDate()) : '';
-                              
-                              final tipoDest = aviso['tipoDestinatario'];
-                              
-                              String tagDestino = 'Para toda a turma';
-                              Color corTag = Colors.blue;
-                              
-                              if (tipoDest == 'TODOS') {
-                                tagDestino = 'Toda a Escola';
-                                corTag = Colors.green;
-                              } else if (tipoDest == 'PROFESSORES') {
-                                tagDestino = 'Todos os Professores';
-                                corTag = Colors.orange;
-                              } else if (tipoDest == 'PROFESSOR_ESPECIFICO') {
-                                tagDestino = 'Professor Específico';
-                                corTag = Colors.orange.shade800;
-                              } else if (tipoDest == 'ALUNO') {
-                                tagDestino = 'Aluno Direcionado (${aviso['turmaNome']})';
-                                corTag = Colors.purple;
-                              } else if (tipoDest == 'RESPONSAVEL') {
-                                tagDestino = 'Resp. Direcionado (${aviso['turmaNome']})';
-                                corTag = Colors.red;
-                              } else {
-                                tagDestino = 'Turma: ${aviso['turmaNome']}';
-                                corTag = Colors.blue;
-                              }
-
-                              return Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: Colors.grey.shade200),
-                                  boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            'De: ${aviso['remetenteNome'] ?? 'Direção'}', 
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
-                                            maxLines: 1, overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Row(
-                                          children: [
-                                            Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
-                                            const SizedBox(width: 8),
-                                            Tooltip(
-                                              message: 'Apagar este aviso',
-                                              child: InkWell(
-                                                borderRadius: BorderRadius.circular(16),
-                                                onTap: () => _excluirAviso(aviso),
-                                                child: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
-                                              ),
-                                            )
-                                          ],
-                                        )
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(color: corTag.withAlpha(25), borderRadius: BorderRadius.circular(6)),
-                                      child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 11, fontWeight: FontWeight.bold)),
-                                    ),
-                                    const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
-                                    Text(aviso['mensagem'] ?? '', style: TextStyle(fontSize: 14, color: Colors.grey.shade800))
-                                  ],
-                                ),
+                              return AvisoCardWidgetAdmin(
+                                aviso: exibidos[index],
+                                tenantId: authState?.tenantId ?? '',
+                                meuId: adminId,
+                                meuNome: adminNome,
+                                corPrimaria: corPrimaria,
+                                onDelete: () => _excluirAviso(exibidos[index]),
                               );
                             },
                           );
@@ -904,6 +861,423 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// CARTÃO DE AVISO COM BOTÃO PARA CHAT E MENSAGENS FORMATADAS
+// ============================================================================
+class AvisoCardWidgetAdmin extends StatelessWidget {
+  final Map<String, dynamic> aviso;
+  final String tenantId;
+  final String meuId;
+  final String meuNome;
+  final Color corPrimaria;
+  final VoidCallback onDelete;
+
+  const AvisoCardWidgetAdmin({
+    super.key,
+    required this.aviso,
+    required this.tenantId,
+    required this.meuId,
+    required this.meuNome,
+    required this.corPrimaria,
+    required this.onDelete,
+  });
+
+  void _abrirChat(BuildContext context, DocumentReference avisoRef) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _ChatAvisoModal(
+        avisoRef: avisoRef,
+        avisoData: aviso,
+        meuId: meuId,
+        meuNome: meuNome,
+        corPrimaria: corPrimaria,
+      ),
+    );
+
+    // Marca as respostas não lidas pelo admin como visualizadas em background
+    avisoRef.collection('respostas').get().then((snap) {
+      final batch = FirebaseFirestore.instance.batch();
+      bool hasUpdates = false;
+      for (var doc in snap.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        if (data['remetenteId'] != meuId && data['lidaPorAdmin'] != true) {
+          batch.update(doc.reference, {'lidaPorAdmin': true});
+          hasUpdates = true;
+        }
+      }
+      if (hasUpdates) batch.commit();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dataEnvio = aviso['dataEnvio'];
+    final textoData = dataEnvio != null ? DateFormat('dd/MM/yy às HH:mm').format((dataEnvio as Timestamp).toDate()) : 'Enviando...';
+    
+    final tipoDest = aviso['tipoDestinatario'];
+
+    final String nomeA = aviso['alunoNome'] ?? 'Aluno Específico';
+    final String nomeR = aviso['responsavelNome'] ?? 'Responsável';
+
+    String tagDestino = 'Aviso Global';
+    Color corTag = Colors.blue;
+    
+    if (tipoDest == 'TODOS') {
+      tagDestino = 'Escola Inteira'; 
+      corTag = Colors.green;
+    } else if (tipoDest == 'PROFESSORES' || tipoDest == 'PROFESSOR_ESPECIFICO') {
+      tagDestino = 'Todos os Professores (${aviso['turmaNome']})'; 
+      if (aviso['isProfessorGlobal'] == true) tagDestino = 'Corpo Docente';
+      corTag = Colors.orange;
+    } else if (tipoDest == 'ALUNO') {
+      tagDestino = '$nomeA - ${aviso['turmaNome']}'; 
+      corTag = Colors.purple;
+    } else if (tipoDest == 'RESPONSAVEL') {
+      tagDestino = 'Para o responsável - $nomeR pelo aluno $nomeA (${aviso['turmaNome']})'; 
+      corTag = Colors.red;
+    } else {
+      tagDestino = 'Turma: ${aviso['turmaNome']}';
+      corTag = Colors.blue;
+    }
+
+    DocumentReference avisoRef;
+    if (aviso['isProfessorGlobal'] == true) {
+      avisoRef = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('avisos_professores').doc(aviso['id']);
+    } else {
+      avisoRef = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(aviso['turmaId']).collection('avisos').doc(aviso['id']);
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'De: ${aviso['remetenteNome'] ?? 'Direção'}', 
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.black87),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Row(
+                children: [
+                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: 'Apagar este aviso',
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: onDelete,
+                      child: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                    ),
+                  )
+                ],
+              )
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: corTag.withAlpha(25), borderRadius: BorderRadius.circular(6)),
+            child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 11, fontWeight: FontWeight.bold)),
+          ),
+          const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+          Text(aviso['mensagem'] ?? '', style: TextStyle(fontSize: 14, color: Colors.grey.shade800)),
+
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: StreamBuilder<QuerySnapshot>(
+              stream: avisoRef.collection('respostas').snapshots(),
+              builder: (context, snapRespostas) {
+                int naoLidos = 0;
+                if (snapRespostas.hasData) {
+                  for (var doc in snapRespostas.data!.docs) {
+                    final rData = doc.data() as Map<String, dynamic>;
+                    if (rData['remetenteId'] != meuId && rData['lidaPorAdmin'] != true) {
+                      naoLidos++;
+                    }
+                  }
+                }
+                
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    TextButton.icon(
+                      style: TextButton.styleFrom(
+                        foregroundColor: corPrimaria,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                      ),
+                      onPressed: () => _abrirChat(context, avisoRef),
+                      icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: corPrimaria),
+                      label: Text('Ver Respostas / Responder', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12)),
+                    ),
+                    if (naoLidos > 0)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                          decoration: BoxDecoration(
+                            color: Colors.red, 
+                            borderRadius: BorderRadius.circular(10), 
+                            border: Border.all(color: Colors.white, width: 1.5)
+                          ),
+                          child: Text(
+                            naoLidos > 9 ? '9+' : naoLidos.toString(),
+                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      )
+                  ],
+                );
+              }
+            )
+          )
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// CHAT DO AVISO (Para o Administrador)
+// ============================================================================
+class _ChatAvisoModal extends StatefulWidget {
+  final DocumentReference avisoRef;
+  final Map<String, dynamic> avisoData;
+  final String meuId;
+  final String meuNome;
+  final Color corPrimaria;
+
+  const _ChatAvisoModal({
+    required this.avisoRef,
+    required this.avisoData,
+    required this.meuId,
+    required this.meuNome,
+    required this.corPrimaria,
+  });
+
+  @override
+  State<_ChatAvisoModal> createState() => _ChatAvisoModalState();
+}
+
+class _ChatAvisoModalState extends State<_ChatAvisoModal> {
+  final TextEditingController _msgCtrl = TextEditingController();
+  bool _enviando = false;
+
+  Future<void> _enviarResposta() async {
+    final texto = _msgCtrl.text.trim();
+    if (texto.isEmpty) return;
+
+    setState(() => _enviando = true);
+    try {
+      await widget.avisoRef.collection('respostas').add({
+        'texto': texto,
+        'dataEnvio': FieldValue.serverTimestamp(),
+        'remetenteId': widget.meuId,
+        'remetenteNome': widget.meuNome,
+        'lidaPorAdmin': true, // As minhas próprias respostas já estão lidas por mim
+      });
+      _msgCtrl.clear();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar: $e'), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.85,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // CABEÇALHO DO CHAT
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+              child: Row(
+                children: [
+                  Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), shape: BoxShape.circle), child: Icon(Icons.forum_rounded, color: widget.corPrimaria, size: 20)),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Text('Respostas ao Aviso', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                  ),
+                  IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+
+            // AVISO ORIGINAL NO TOPO
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.grey.shade50,
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Aviso Original de ${widget.avisoData['remetenteNome']}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+                  const SizedBox(height: 4),
+                  Text(widget.avisoData['mensagem'] ?? '', style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Colors.black12),
+
+            // MENSAGENS / RESPOSTAS
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: widget.avisoRef.collection('respostas').orderBy('dataEnvio', descending: false).snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
+                  }
+                  
+                  final respostas = snapshot.data?.docs ?? [];
+                  
+                  if (respostas.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.chat_bubble_outline_rounded, size: 48, color: Colors.grey.shade300),
+                          const SizedBox(height: 12),
+                          Text('Nenhuma resposta ainda.', style: TextStyle(color: Colors.grey.shade500)),
+                          Text('Seja o primeiro a enviar uma mensagem!', style: TextStyle(color: Colors.grey.shade400, fontSize: 12)),
+                        ],
+                      )
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: respostas.length,
+                    itemBuilder: (context, index) {
+                      final resp = respostas[index].data() as Map<String, dynamic>;
+                      final isMeu = resp['remetenteId'] == widget.meuId;
+                      
+                      final dataTime = resp['dataEnvio'];
+                      final hora = dataTime != null ? DateFormat('HH:mm').format((dataTime as Timestamp).toDate()) : '...';
+
+                      String remetenteExibicao = resp['remetenteNome'] ?? 'Usuário';
+                      
+                      // Lógica de Formatação Inteligente do Remetente Baseada no Destino do Aviso
+                      if (!isMeu) {
+                        final tipoDest = widget.avisoData['tipoDestinatario'];
+                        final alunoN = widget.avisoData['alunoNome'] ?? '';
+                        final turmaN = widget.avisoData['turmaNome'] ?? '';
+                        
+                        if (tipoDest == 'RESPONSAVEL' && alunoN.isNotEmpty) {
+                          remetenteExibicao = '$remetenteExibicao - $alunoN ($turmaN)';
+                        } else if (tipoDest == 'ALUNO' && turmaN.isNotEmpty) {
+                          remetenteExibicao = '$remetenteExibicao ($turmaN)';
+                        }
+                      }
+
+                      return Align(
+                        alignment: isMeu ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(12),
+                          constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                          decoration: BoxDecoration(
+                            color: isMeu ? widget.corPrimaria.withAlpha(20) : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(16).copyWith(
+                              bottomRight: isMeu ? const Radius.circular(0) : null,
+                              bottomLeft: !isMeu ? const Radius.circular(0) : null,
+                            )
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                isMeu ? 'Você' : remetenteExibicao, 
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMeu ? widget.corPrimaria : Colors.grey.shade700)
+                              ),
+                              const SizedBox(height: 4),
+                              Text(resp['texto'] ?? '', style: const TextStyle(fontSize: 14)),
+                              const SizedBox(height: 4),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Text(hora, style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
+                              )
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+
+            // CAMPO DE ENVIO
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _msgCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Escreva uma resposta...',
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      ),
+                      textCapitalization: TextCapitalization.sentences,
+                      maxLines: 3,
+                      minLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    decoration: BoxDecoration(color: widget.corPrimaria, shape: BoxShape.circle),
+                    child: IconButton(
+                      icon: _enviando 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                      onPressed: _enviando ? null : _enviarResposta,
+                    ),
+                  )
+                ],
+              ),
+            )
           ],
         ),
       ),

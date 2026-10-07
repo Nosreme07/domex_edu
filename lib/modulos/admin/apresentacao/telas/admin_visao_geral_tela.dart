@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
@@ -24,6 +26,7 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
     final usuarioLogado = ref.watch(authProvider).value;
     final nomeAdmin = usuarioLogado?.nome ?? 'Administração';
     final bool isMobile = MediaQuery.of(context).size.width < 900;
+    final tenantId = usuarioLogado?.tenantId ?? '';
 
     final estadoAlunos = ref.watch(alunosStreamProvider);
     final estadoProfs = ref.watch(professoresStreamProvider);
@@ -221,7 +224,13 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
                               _BotaoAtalho(titulo: 'Nova Turma', icone: Icons.meeting_room_rounded, cor: Colors.orange, onTap: () => context.push('/admin/cadastros/turma/novo')),
                               _BotaoAtalho(titulo: 'Novo Funcionário', icone: Icons.support_agent_rounded, cor: Colors.teal, onTap: () => context.push('/admin/cadastros/secretaria/novo')),
                               _BotaoAtalho(titulo: 'Gerir Usuários', icone: Icons.manage_accounts_rounded, cor: Colors.deepPurple, onTap: () => context.go('/admin/cadastros', extra: 4)),
-                              _BotaoAtalho(titulo: 'Avisos', icone: Icons.campaign_rounded, cor: Colors.pink, onTap: () => context.push('/admin/mensagens')),
+                              _BotaoAtalho(
+                                titulo: 'Avisos e Chat', 
+                                icone: Icons.campaign_rounded, 
+                                cor: Colors.pink, 
+                                onTap: () => context.push('/admin/mensagens'),
+                                badge: _BalaoNotificacaoAvisosGeral(tenantId: tenantId, meuId: usuarioLogado?.id ?? '')
+                              ),
                             ],
                           ),
                         ],
@@ -283,6 +292,97 @@ class _AdminVisaoGeralTelaState extends ConsumerState<AdminVisaoGeralTela> {
             const SizedBox(height: 40),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// WIDGET DO BALÃO DE NOTIFICAÇÃO (BOLINHA VERMELHA)
+// ============================================================================
+class _BalaoNotificacaoAvisosGeral extends StatefulWidget {
+  final String tenantId;
+  final String meuId;
+
+  const _BalaoNotificacaoAvisosGeral({required this.tenantId, required this.meuId});
+
+  @override
+  State<_BalaoNotificacaoAvisosGeral> createState() => _BalaoNotificacaoAvisosGeralState();
+}
+
+class _BalaoNotificacaoAvisosGeralState extends State<_BalaoNotificacaoAvisosGeral> {
+  int _naoLidos = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarCount();
+    // Atualiza os dados a cada 5 segundos de forma invisível
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) => _carregarCount());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _carregarCount() async {
+    if (!mounted || widget.tenantId.isEmpty) return;
+    int total = 0;
+    final db = FirebaseFirestore.instance;
+
+    try {
+        // Varre Turmas
+        final turmasSnap = await db.collection('tenants').doc(widget.tenantId).collection('turmas').get();
+        for (var t in turmasSnap.docs) {
+          final avisosSnap = await t.reference.collection('avisos').get();
+          for (var a in avisosSnap.docs) {
+            final respostasSnap = await a.reference.collection('respostas').get();
+            total += respostasSnap.docs.where((r) {
+               final data = r.data() as Map<String, dynamic>;
+               return data['remetenteId'] != widget.meuId && data['lidaPorAdmin'] != true;
+            }).length;
+          }
+        }
+
+        // Varre Globais
+        final globaisSnap = await db.collection('tenants').doc(widget.tenantId).collection('avisos_professores').get();
+        for (var a in globaisSnap.docs) {
+          final respostasSnap = await a.reference.collection('respostas').get();
+          total += respostasSnap.docs.where((r) {
+             final data = r.data() as Map<String, dynamic>;
+             return data['remetenteId'] != widget.meuId && data['lidaPorAdmin'] != true;
+          }).length;
+        }
+
+        if (mounted) {
+          setState(() {
+            _naoLidos = total;
+          });
+        }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_naoLidos == 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      constraints: const BoxConstraints(minWidth: 24, minHeight: 24),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.red,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))]
+      ),
+      child: Text(
+        _naoLidos > 9 ? '9+' : _naoLidos.toString(),
+        style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold, height: 1.1),
+        textAlign: TextAlign.center,
       ),
     );
   }
@@ -364,8 +464,9 @@ class _BotaoAtalho extends StatelessWidget {
   final IconData icone;
   final MaterialColor cor;
   final VoidCallback onTap;
+  final Widget? badge; // Adicionado para receber a bolinha vermelha
 
-  const _BotaoAtalho({required this.titulo, required this.icone, required this.cor, required this.onTap});
+  const _BotaoAtalho({required this.titulo, required this.icone, required this.cor, required this.onTap, this.badge});
 
   @override
   Widget build(BuildContext context) {
@@ -382,13 +483,24 @@ class _BotaoAtalho extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: cor.shade50,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icone, color: cor.shade700, size: 20),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12), // AUMENTADO (era 10)
+                  decoration: BoxDecoration(
+                    color: cor.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icone, color: cor.shade700, size: 28), // AUMENTADO (era 20)
+                ),
+                if (badge != null)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: badge!,
+                  ),
+              ],
             ),
             const SizedBox(width: 12),
             Expanded(

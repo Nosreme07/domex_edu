@@ -227,9 +227,15 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                             )
                                           );
                                         }),
-                                        _buildAcaoBotao(Icons.campaign_rounded, 'Avisos e\nMensagens', Colors.purple.shade700, () {
-                                          _abrirAvisos(tenantId, turmaId, alunoDocId, corPrimaria);
-                                        }),
+                                        _buildAcaoBotao(
+                                          Icons.campaign_rounded, 
+                                          'Avisos e\nMensagens', 
+                                          Colors.purple.shade700, 
+                                          () {
+                                            _abrirAvisos(tenantId, turmaId, alunoDocId, corPrimaria);
+                                          },
+                                          badge: _BalaoNotificacaoAvisos(tenantId: tenantId, turmaId: turmaId, alunoDocId: alunoDocId)
+                                        ),
                                       ],
                                     ),
                                   )
@@ -250,7 +256,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
     );
   }
 
-  Widget _buildAcaoBotao(IconData icone, String titulo, Color cor, VoidCallback onTap) {
+  Widget _buildAcaoBotao(IconData icone, String titulo, Color cor, VoidCallback onTap, {Widget? badge}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -259,15 +265,100 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
         child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.all(16), 
-              decoration: BoxDecoration(color: cor.withAlpha(25), shape: BoxShape.circle),
-              child: Icon(icone, color: cor, size: 36), 
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16), 
+                  decoration: BoxDecoration(color: cor.withAlpha(25), shape: BoxShape.circle),
+                  child: Icon(icone, color: cor, size: 36), 
+                ),
+                if (badge != null)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: badge,
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             Text(titulo, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// WIDGET DO BALÃO DE NOTIFICAÇÃO (BOLINHA VERMELHA)
+// ============================================================================
+class _BalaoNotificacaoAvisos extends StatefulWidget {
+  final String tenantId;
+  final String turmaId;
+  final String alunoDocId;
+
+  const _BalaoNotificacaoAvisos({required this.tenantId, required this.turmaId, required this.alunoDocId});
+
+  @override
+  State<_BalaoNotificacaoAvisos> createState() => _BalaoNotificacaoAvisosState();
+}
+
+class _BalaoNotificacaoAvisosState extends State<_BalaoNotificacaoAvisos> {
+  int _naoLidos = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _carregarMensagens();
+  }
+
+  Future<void> _carregarMensagens() async {
+     FirebaseFirestore.instance.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('avisos').snapshots().listen((snapshot) {
+        if (!mounted) return;
+        int naoLidos = 0;
+
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          final tipoDest = data['tipoDestinatario'];
+          final alvoId = data['alunoId']?.toString() ?? '';
+          
+          bool isParaMim = false;
+          if (tipoDest == 'TURMA' || tipoDest == 'TODOS') isParaMim = true;
+          if ((tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL') && alvoId == widget.alunoDocId) isParaMim = true;
+
+          if (isParaMim) {
+            final lidos = List<String>.from(data['lidosPor'] ?? []);
+            if (!lidos.contains(widget.alunoDocId)) {
+              naoLidos++;
+            }
+          }
+        }
+        
+        setState(() {
+          _naoLidos = naoLidos;
+        });
+     });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.turmaId.isEmpty || _naoLidos == 0) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      constraints: const BoxConstraints(minWidth: 22, minHeight: 22),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: Colors.red,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))]
+      ),
+      child: Text(
+        _naoLidos > 9 ? '9+' : _naoLidos.toString(),
+        style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, height: 1.1),
+        textAlign: TextAlign.center,
       ),
     );
   }
@@ -1128,10 +1219,10 @@ class AvisoCardWidget extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDireto ? corTag.withAlpha(10) : Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDireto ? corTag.withAlpha(50) : Colors.grey.shade200),
-        boxShadow: isDireto ? null : const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1162,24 +1253,22 @@ class AvisoCardWidget extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
-                  if (!isLido) ...[
-                    const SizedBox(height: 8),
-                    Tooltip(
-                      message: 'Marcar como lido',
-                      child: InkWell(
-                        onTap: () {
-                          avisoRef.update({
-                            'lidosPor': FieldValue.arrayUnion([alunoDocId])
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(color: Colors.green.shade50, shape: BoxShape.circle, border: Border.all(color: Colors.green.shade200)),
-                          child: Icon(Icons.check_rounded, size: 12, color: Colors.green.shade600),
-                        ),
-                      ),
+                  const SizedBox(height: 8),
+                  if (!isLido)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                      child: const Text('NOVA MENSAGEM', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
                     )
-                  ]
+                  else
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.done_all_rounded, color: Colors.green.shade600, size: 14),
+                        const SizedBox(width: 4),
+                        Text('Visualizada', style: TextStyle(color: Colors.green.shade600, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
                 ],
               )
             ],
@@ -1199,17 +1288,37 @@ class AvisoCardWidget extends ConsumerWidget {
             style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
           ),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              style: TextButton.styleFrom(
-                foregroundColor: corPrimaria,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              if (!isLido)
+                IconButton(
+                  onPressed: () {
+                    avisoRef.update({
+                      'lidosPor': FieldValue.arrayUnion([alunoDocId])
+                    });
+                  },
+                  icon: const Icon(Icons.visibility_rounded, size: 20, color: Colors.grey),
+                  tooltip: 'Marcar como visualizada',
+                ),
+
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: corPrimaria,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                ),
+                onPressed: () {
+                  if (!isLido) {
+                    avisoRef.update({
+                      'lidosPor': FieldValue.arrayUnion([alunoDocId])
+                    });
+                  }
+                  _abrirChat(context, avisoRef, meuId, meuNome);
+                },
+                icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: corPrimaria),
+                label: Text('Ver Respostas / Responder', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12)),
               ),
-              onPressed: () => _abrirChat(context, avisoRef, meuId, meuNome),
-              icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: corPrimaria),
-              label: Text('Ver Respostas / Responder', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12)),
-            ),
+            ],
           )
         ],
       ),
