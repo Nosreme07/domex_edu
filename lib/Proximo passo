@@ -51,7 +51,9 @@ avaliar os calendários
 
 -----------------------------------------------------------
 *** AMBIENTE DO ADMIN***
-- Lembrar de colocar a visualização de diario de classe
+- Verificar o diario de classe para colocar o nome do professor e a disciplina que ele leciona.
+- colocar campos de pesquisa.
+
 - 
 
 -----------------------------------------------------------
@@ -60,13 +62,13 @@ avaliar os calendários
 
 -----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
+- dentro da turma do professor existe 3 abas e quero deixar a 
+aba de avisos da mesma forma que nos outras telas que fizemos
 
-- 
-
+-
 -----------------------------------------------------------
 *** AMBIENTE DO RESPONSÁVEL ***
-- colocar botão para enviar mensagens com a possibilidade 
-de anexar arquivos e fotos. para etestados por exemplo.
+
 
 -----------------------------------------------------------
 *** AMBIENTE DA SECRETARIA ***

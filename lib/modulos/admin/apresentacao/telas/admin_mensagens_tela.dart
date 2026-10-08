@@ -1,12 +1,24 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
 
 import '../estado/aluno_provider.dart';
 import '../estado/professor_provider.dart';
 import '../estado/turma_provider.dart';
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
+
+// Função auxiliar global para abrir PDFs ou Links Externos
+Future<void> _abrirLink(String url) async {
+  final uri = Uri.parse(url);
+  if (await canLaunchUrl(uri)) {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+}
 
 class AdminMensagensTela extends ConsumerStatefulWidget {
   const AdminMensagensTela({super.key});
@@ -500,6 +512,8 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
     final authState = ref.watch(authProvider).value;
     String adminId = authState?.id ?? '';
     String adminNome = 'Administração';
+    final tenantId = authState?.tenantId ?? '';
+    
     if (authState != null) {
       try {
         final dynamic u = authState;
@@ -837,7 +851,7 @@ class _AdminMensagensTelaState extends ConsumerState<AdminMensagensTela> {
 
                               return AvisoCardWidgetAdmin(
                                 aviso: exibidos[index],
-                                tenantId: authState?.tenantId ?? '',
+                                tenantId: tenantId,
                                 meuId: adminId,
                                 meuNome: adminNome,
                                 corPrimaria: corPrimaria,
@@ -900,6 +914,7 @@ class AvisoCardWidgetAdmin extends StatelessWidget {
         meuId: meuId,
         meuNome: meuNome,
         corPrimaria: corPrimaria,
+        tenantId: tenantId,
       ),
     );
 
@@ -916,6 +931,23 @@ class AvisoCardWidgetAdmin extends StatelessWidget {
       }
       if (hasUpdates) batch.commit();
     });
+  }
+
+  void _mostrarImagemFullscreen(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))),
+            Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx))),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1001,6 +1033,7 @@ class AvisoCardWidgetAdmin extends StatelessWidget {
             child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 11, fontWeight: FontWeight.bold)),
           ),
           const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Divider(height: 1)),
+          
           Text(aviso['mensagem'] ?? '', style: TextStyle(fontSize: 14, color: Colors.grey.shade800)),
 
           const SizedBox(height: 12),
@@ -1062,7 +1095,7 @@ class AvisoCardWidgetAdmin extends StatelessWidget {
 }
 
 // ============================================================================
-// CHAT DO AVISO (Para o Administrador)
+// CHAT DO AVISO (Para o Administrador COM ANEXOS)
 // ============================================================================
 class _ChatAvisoModal extends StatefulWidget {
   final DocumentReference avisoRef;
@@ -1070,6 +1103,7 @@ class _ChatAvisoModal extends StatefulWidget {
   final String meuId;
   final String meuNome;
   final Color corPrimaria;
+  final String tenantId;
 
   const _ChatAvisoModal({
     required this.avisoRef,
@@ -1077,6 +1111,7 @@ class _ChatAvisoModal extends StatefulWidget {
     required this.meuId,
     required this.meuNome,
     required this.corPrimaria,
+    required this.tenantId,
   });
 
   @override
@@ -1086,21 +1121,61 @@ class _ChatAvisoModal extends StatefulWidget {
 class _ChatAvisoModalState extends State<_ChatAvisoModal> {
   final TextEditingController _msgCtrl = TextEditingController();
   bool _enviando = false;
+  File? _anexoFile;
+  String? _anexoNomeChat;
+  bool _isPdfChat = false;
+
+  Future<void> _escolherAnexoChat() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _anexoFile = File(result.files.single.path!);
+          _anexoNomeChat = result.files.single.name;
+          _isPdfChat = _anexoNomeChat!.toLowerCase().endsWith('.pdf');
+        });
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao selecionar anexo: $e')));
+    }
+  }
 
   Future<void> _enviarResposta() async {
     final texto = _msgCtrl.text.trim();
-    if (texto.isEmpty) return;
+    if (texto.isEmpty && _anexoFile == null) return;
 
     setState(() => _enviando = true);
     try {
+      String? anexoUrl;
+
+      if (_anexoFile != null) {
+        final ext = _anexoNomeChat!.split('.').last;
+        final nomeArquivo = 'anexo_resp_${DateTime.now().millisecondsSinceEpoch}.$ext';
+        final storageRef = FirebaseStorage.instance.ref().child('tenants/${widget.tenantId}/avisos_anexos/$nomeArquivo');
+        await storageRef.putFile(_anexoFile!);
+        anexoUrl = await storageRef.getDownloadURL();
+      }
+
       await widget.avisoRef.collection('respostas').add({
         'texto': texto,
         'dataEnvio': FieldValue.serverTimestamp(),
         'remetenteId': widget.meuId,
         'remetenteNome': widget.meuNome,
         'lidaPorAdmin': true, // As minhas próprias respostas já estão lidas por mim
+        if (anexoUrl != null) 'anexoUrl': anexoUrl,
+        if (anexoUrl != null) 'anexoNome': _anexoNomeChat,
       });
+      
       _msgCtrl.clear();
+      setState(() {
+        _anexoFile = null;
+        _anexoNomeChat = null;
+        _isPdfChat = false;
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar: $e'), backgroundColor: Colors.red));
@@ -1108,6 +1183,23 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
+  }
+
+  void _mostrarImagemFullscreen(String url) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))),
+            Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx))),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -1204,6 +1296,10 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
                         }
                       }
 
+                      final String anexoUrl = resp['anexoUrl'] ?? '';
+                      final String anexoNome = resp['anexoNome'] ?? 'Anexo';
+                      final bool isAnexoPdf = anexoNome.toLowerCase().endsWith('.pdf');
+
                       return Align(
                         alignment: isMeu ? Alignment.centerRight : Alignment.centerLeft,
                         child: Container(
@@ -1225,7 +1321,44 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
                                 style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMeu ? widget.corPrimaria : Colors.grey.shade700)
                               ),
                               const SizedBox(height: 4),
-                              Text(resp['texto'] ?? '', style: const TextStyle(fontSize: 14)),
+
+                              if (anexoUrl.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: isAnexoPdf 
+                                    ? InkWell(
+                                        onTap: () => _abrirLink(anexoUrl),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(12),
+                                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 24),
+                                              const SizedBox(width: 8),
+                                              Flexible(child: Text(anexoNome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                            ],
+                                          ),
+                                        ),
+                                      )
+                                    : InkWell(
+                                        onTap: () => _mostrarImagemFullscreen(anexoUrl),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.network(
+                                            anexoUrl, height: 150, width: double.infinity, fit: BoxFit.cover,
+                                            loadingBuilder: (context, child, loadingProgress) {
+                                              if (loadingProgress == null) return child;
+                                              return Container(height: 150, width: double.infinity, color: Colors.grey.shade200, child: const Center(child: CircularProgressIndicator()));
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                ),
+
+                              if ((resp['texto'] ?? '').toString().isNotEmpty)
+                                Text(resp['texto'] ?? '', style: const TextStyle(fontSize: 14)),
+                              
                               const SizedBox(height: 4),
                               Align(
                                 alignment: Alignment.centerRight,
@@ -1241,15 +1374,27 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
               ),
             ),
 
-            // CAMPO DE ENVIO
+            if (_anexoFile != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), color: Colors.blue.shade50,
+                child: Row(
+                  children: [
+                    _isPdfChat 
+                      ? const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 32)
+                      : ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(_anexoFile!, width: 40, height: 40, fit: BoxFit.cover)),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(_anexoNomeChat ?? 'Arquivo selecionado', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    IconButton(icon: const Icon(Icons.close_rounded, color: Colors.red), onPressed: () => setState(() { _anexoFile = null; _anexoNomeChat = null; _isPdfChat = false; }))
+                  ],
+                ),
+              ),
+
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))],
-              ),
+              decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))]),
               child: Row(
                 children: [
+                  IconButton(icon: Icon(Icons.attach_file_rounded, color: Colors.grey.shade600), onPressed: _escolherAnexoChat, tooltip: 'Anexar Foto ou PDF'),
                   Expanded(
                     child: TextField(
                       controller: _msgCtrl,

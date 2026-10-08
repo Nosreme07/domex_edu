@@ -2,14 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
 import '../estado/aluno_provider.dart';
 import '../estado/turma_provider.dart';
@@ -369,13 +367,6 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
     );
   }
 
-  void _abrirModalAvisos() {
-    showDialog(
-      context: context,
-      builder: (ctx) => _ModalMuralAvisos(turma: _turmaAtual),
-    );
-  }
-
   void _abrirModalHorarios() {
     showDialog(
       context: context,
@@ -660,16 +651,22 @@ class _AdminTurmaPainelTelaState extends ConsumerState<AdminTurmaPainelTela> {
                   _abrirModalHorarios,
                 ),
                 const SizedBox(width: 12),
-                _buildCardAcao(
-                  'Mural de Avisos',
-                  'Notificar pais e alunos',
-                  Icons.campaign_rounded,
-                  Colors.deepPurple,
-                  _abrirModalAvisos,
-                ),
-                const SizedBox(width: 12),
                 
-                // NOVO BOTÃO: CALENDÁRIO DA TURMA
+                // NOVO BOTÃO: DIÁRIO DE CLASSE (Substituiu o Mural de Avisos)
+                _buildCardAcao(
+                  'Diário de Classe',
+                  'Registros e fotos das aulas',
+                  Icons.menu_book_rounded,
+                  Colors.deepPurple,
+                  () {
+                    Navigator.push(context, MaterialPageRoute(
+                      builder: (context) => AdminTurmaDiarioTela(turma: _turmaAtual),
+                    ));
+                  },
+                ),
+                
+                const SizedBox(width: 12),
+                // BOTÃO: CALENDÁRIO DA Turma
                 _buildCardAcao(
                   'Calendário da Turma',
                   'Provas e Eventos',
@@ -931,7 +928,6 @@ class _ModalGerenciadorCorpoDocenteState
     await _salvarNoBanco();
   }
 
-  // Ficha rápida com foto ampliada
   void _abrirFichaProfessorRapida(
     BuildContext context,
     Map<String, dynamic> prof,
@@ -1177,9 +1173,6 @@ class _ModalGerenciadorCorpoDocenteState
             ),
             onPressed: () {
               Navigator.pop(context);
-              // AQUI SIM PODEMOS MANTER O GO_ROUTER SE ELE ESTIVER DISPONÍVEL NO APP, 
-              // CASO CONTRÁRIO É MELHOR SUBSTITUIR. MAS VAMOS USAR A FORMA PADRÃO.
-              // context.push('/admin/cadastros/professor/novo');
             },
             icon: const Icon(Icons.person_add),
             label: const Text('Cadastrar Novo Professor'),
@@ -1488,6 +1481,7 @@ class _ModalGerenciadorCorpoDocenteState
                                 icon: const Icon(
                                   Icons.delete,
                                   color: Colors.red,
+                                  size: 20,
                                 ),
                                 tooltip: 'Remover Professor da Turma',
                                 onPressed: () =>
@@ -1498,704 +1492,6 @@ class _ModalGerenciadorCorpoDocenteState
                         );
                       },
                     ),
-            ),
-          ],
-        ),
-      ),
-      actionsPadding: const EdgeInsets.all(24),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text(
-            'Fechar Painel',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ============================================================================
-// WIDGET EXTRA 3: MURAL DE AVISOS (Com Pesquisa, Filtro e Responsividade)
-// ============================================================================
-class _ModalMuralAvisos extends ConsumerStatefulWidget {
-  final Map<String, dynamic> turma;
-  const _ModalMuralAvisos({required this.turma});
-
-  @override
-  ConsumerState<_ModalMuralAvisos> createState() => _ModalMuralAvisosState();
-}
-
-class _ModalMuralAvisosState extends ConsumerState<_ModalMuralAvisos> {
-  final _msgCtrl = TextEditingController();
-  String _tipoDestinatario = 'TURMA';
-  String? _alunoId;
-  bool _enviando = false;
-
-  String _filtroPublico = 'TODOS';
-  String _termoBusca = '';
-  int _limiteAvisos = 15;
-  final _debouncer = Debouncer(milliseconds: 400);
-
-  String _resolverNomeRemetente(Map<String, dynamic> data, List<Map<String, dynamic>> profs, String? currentUserId) {
-    String nomeSalvo = (data['remetenteNome'] ?? data['nomeRemetente'] ?? data['professorNome'] ?? data['nomeProfessor'] ?? data['nome'] ?? '').toString().trim();
-    
-    if (nomeSalvo.toLowerCase() == 'usuário desconhecido' || nomeSalvo.toLowerCase() == 'null' || nomeSalvo.isEmpty) {
-      nomeSalvo = '';
-    }
-
-    String nomeFinal = nomeSalvo;
-
-    if (nomeFinal.contains('Administração') || nomeFinal.contains('Direção') || nomeFinal.contains('Admin')) {
-      return nomeFinal;
-    }
-
-    if (nomeFinal.isEmpty) {
-      final rId = (data['remetenteId'] ?? data['professorId'] ?? data['idProfessor'] ?? data['idRemetente'] ?? data['uid'] ?? data['usuarioId'] ?? data['criadoPor'])?.toString().trim();
-      
-      if (rId != null && rId.isNotEmpty) {
-        final p = profs.firstWhere((prof) {
-          final pid = prof['id']?.toString().trim();
-          final uid = prof['uid']?.toString().trim();
-          final authUid = prof['authUid']?.toString().trim();
-          return (pid == rId && pid != null) || 
-                 (uid == rId && uid != null) || 
-                 (authUid == rId && authUid != null);
-        }, orElse: () => {});
-        
-        if (p.isNotEmpty && p['nome'] != null) {
-          nomeFinal = p['nome'];
-        } 
-        else if (rId == currentUserId) {
-          return 'Administração (Coord./Direção)';
-        }
-      }
-    }
-
-    if (nomeFinal.isEmpty) {
-      return 'Professor(a) - Nome não registrado';
-    }
-
-    if (!nomeFinal.toLowerCase().contains('professor')) {
-      return 'Professor(a) - $nomeFinal';
-    }
-
-    return nomeFinal;
-  }
-
-  void _mostrarAvisoCompleto(Map<String, dynamic> data, String remetente, String destino, String dataHora) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
-          children: [
-            Icon(Icons.mark_email_read_rounded, color: Colors.deepPurple),
-            SizedBox(width: 8),
-            Text('Aviso Completo', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple)),
-          ],
-        ),
-        content: SizedBox(
-          width: 500,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Enviado por: $remetente', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 4),
-              Text('Destino: $destino', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 4),
-              Text('Data: $dataHora', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              const Divider(height: 24),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.grey.shade300)
-                ),
-                child: Text(data['mensagem'] ?? '', style: const TextStyle(fontSize: 15)),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fechar')),
-        ],
-      )
-    );
-  }
-
-  Future<void> _enviarAviso() async {
-    if (_msgCtrl.text.trim().isEmpty) return;
-    if (_tipoDestinatario == 'ALUNO' && _alunoId == null) return;
-
-    setState(() => _enviando = true);
-    try {
-      final user = ref.read(authProvider).value;
-      if (user == null) return;
-
-      String nomeAdmin = 'Administração (Coord./Direção)';
-      try {
-        final dynamic u = user;
-        final nome = u.nome ?? u.displayName ?? u.name;
-        if (nome != null && nome.toString().trim().isNotEmpty) {
-          nomeAdmin = 'Administração - $nome';
-        }
-      } catch (_) {}
-
-      await FirebaseFirestore.instance
-          .collection('tenants')
-          .doc(user.id)
-          .collection('turmas')
-          .doc(widget.turma['id'].toString())
-          .collection('avisos')
-          .add({
-        'mensagem': _msgCtrl.text.trim(),
-        'dataEnvio': FieldValue.serverTimestamp(),
-        'remetenteNome': nomeAdmin,
-        'remetenteId': user.id,
-        'tipoDestinatario': _tipoDestinatario,
-        'alunoId': _tipoDestinatario == 'ALUNO' ? _alunoId : null,
-      });
-
-      _msgCtrl.clear();
-      setState(() {
-        _alunoId = null;
-        _tipoDestinatario = 'TURMA';
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Aviso publicado no Mural!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erro ao enviar aviso: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _enviando = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final corPrimaria = Theme.of(context).primaryColor;
-    final user = ref.watch(authProvider).value;
-    final todosAlunos = ref.watch(alunosStreamProvider).value ?? [];
-    final todosProfessores = ref.watch(professoresStreamProvider).value ?? [];
-
-    final idTurma = widget.turma['id'].toString();
-    final turnoFormatado = widget.turma['turno'] ?? '';
-    final turmaNomeOficial =
-        '${widget.turma['nome']} (${widget.turma['anoLetivo']}) - $turnoFormatado'
-            .toUpperCase();
-    final turmaNomeAntigo =
-        '${widget.turma['nome']} (${widget.turma['anoLetivo']})'.toUpperCase();
-
-    final alunosDaTurma = todosAlunos.where((a) {
-      if (a['status'] == 'Transferido' || a['status'] == 'Inativo') {
-        return false;
-      }
-      final turmaAluno = (a['turma'] ?? '').toString().trim().toUpperCase();
-      final turmaIdAluno = (a['turmaId'] ?? '').toString().trim();
-      final turmasExtrasIds = List<String>.from(a['turmasExtrasIds'] ?? []);
-
-      return turmaAluno == turmaNomeOficial ||
-          turmaAluno == turmaNomeAntigo ||
-          turmaIdAluno == idTurma ||
-          turmasExtrasIds.contains(idTurma);
-    }).toList();
-
-    alunosDaTurma.sort(
-      (a, b) =>
-          (a['nome'] ?? '').toString().compareTo((b['nome'] ?? '').toString()),
-    );
-
-    return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.all(16),
-      contentPadding: const EdgeInsets.all(24),
-      title: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.campaign, color: Colors.deepPurple, size: 28),
-              const SizedBox(width: 8),
-              Text(
-                'Mural de Avisos - ${widget.turma['nome']} ($turnoFormatado)',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepPurple,
-                  fontSize: 20,
-                ),
-              ),
-            ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.close),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: MediaQuery.of(context).size.width * 0.9,
-        height: MediaQuery.of(context).size.height * 0.85,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // LADO ESQUERDO: FORMULÁRIO DE ENVIO
-            Expanded(
-              flex: 1,
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50.withAlpha(128),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.blue.shade100),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.add_comment_rounded, color: Colors.blue.shade700),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Enviar Novo Aviso',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue.shade800,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 32),
-                    const Text(
-                      'Público Alvo:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    const SizedBox(height: 8),
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _tipoDestinatario,
-                          isExpanded: true,
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'TURMA',
-                              child: Text('Toda a Turma (Alunos e Responsáveis)'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'PROFESSORES',
-                              child: Text('Apenas Professores da Turma'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'ALUNO',
-                              child: Text('Aluno Específico'),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            setState(() {
-                              _tipoDestinatario = v!;
-                              if (v != 'ALUNO') {
-                                _alunoId = null;
-                              }
-                            });
-                          },
-                        ),
-                      ),
-                    ),
-                    if (_tipoDestinatario == 'ALUNO') ...[
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Selecione o Aluno:',
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                      const SizedBox(height: 8),
-                      InputDecorator(
-                        decoration: const InputDecoration(
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                        ),
-                        child: DropdownButtonHideUnderline(
-                          child: DropdownButton<String>(
-                            value: _alunoId,
-                            isExpanded: true,
-                            hint: const Text('Selecione...'),
-                            items: alunosDaTurma
-                                .map(
-                                  (a) => DropdownMenuItem(
-                                    value: a['matricula'].toString(),
-                                    child: Text(
-                                      a['nome'] ?? '',
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (v) => setState(() => _alunoId = v),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Mensagem:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: TextField(
-                        controller: _msgCtrl,
-                        maxLines: null,
-                        expands: true,
-                        textAlignVertical: TextAlignVertical.top,
-                        decoration: const InputDecoration(
-                          hintText: 'Digite o recado aqui...',
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: corPrimaria,
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: _enviando ? null : _enviarAviso,
-                        icon: _enviando
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : const Icon(Icons.send_rounded),
-                        label: Text(
-                          _enviando ? 'Enviando...' : 'Publicar Aviso',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 24),
-            
-            // LADO DIREITO: FEED DE MENSAGENS COM PESQUISA E FILTROS
-            Expanded(
-              flex: 2,
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          onChanged: (value) => _debouncer.run(() => setState(() => _termoBusca = value)),
-                          decoration: InputDecoration(
-                            hintText: 'Pesquisar nas mensagens ou por professor...',
-                            prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Colors.grey),
-                            contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
-                            filled: true,
-                            fillColor: Colors.white,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade300)),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        flex: 2,
-                        child: Container(
-                          height: 48,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(color: Colors.grey.shade300),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              isExpanded: true,
-                              value: _filtroPublico,
-                              icon: const Icon(Icons.filter_alt_rounded, color: Colors.deepPurple, size: 20),
-                              style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 13),
-                              onChanged: (v) {
-                                if (v != null) {
-                                  setState(() => _filtroPublico = v);
-                                }
-                              },
-                              items: const [
-                                DropdownMenuItem(value: 'TODOS', child: Text('Todos os Avisos', style: TextStyle(color: Colors.black87))),
-                                DropdownMenuItem(value: 'TURMA', child: Text('Para Toda a Turma', style: TextStyle(color: Colors.black87))),
-                                DropdownMenuItem(value: 'PROFESSORES', child: Text('Para Professores', style: TextStyle(color: Colors.black87))),
-                                DropdownMenuItem(value: 'ALUNO', child: Text('Para Alunos', style: TextStyle(color: Colors.black87))),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade300),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: user == null
-                            ? const Center(child: Text('Usuário não logado.'))
-                            : StreamBuilder<QuerySnapshot>(
-                                stream: FirebaseFirestore.instance
-                                    .collection('tenants')
-                                    .doc(user.id)
-                                    .collection('turmas')
-                                    .doc(widget.turma['id'].toString())
-                                    .collection('avisos')
-                                    .orderBy('dataEnvio', descending: true)
-                                    .limit(_limiteAvisos)
-                                    .snapshots(),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                                    return const Center(child: CircularProgressIndicator());
-                                  }
-
-                                  var docsRaw = snapshot.data?.docs.toList() ?? [];
-
-                                  final docs = docsRaw.where((doc) {
-                                    final data = doc.data() as Map<String, dynamic>;
-                                    final tipoDest = data['tipoDestinatario'] ?? 'TURMA';
-                                    final mensagem = (data['mensagem'] ?? '').toString().toLowerCase();
-                                    final nomeProf = _resolverNomeRemetente(data, todosProfessores, user.id).toLowerCase();
-                                    
-                                    final busca = _termoBusca.toLowerCase();
-                                    final matchBusca = busca.isEmpty || mensagem.contains(busca) || nomeProf.contains(busca);
-                                    final matchFiltro = _filtroPublico == 'TODOS' || tipoDest == _filtroPublico;
-
-                                    return matchBusca && matchFiltro;
-                                  }).toList();
-
-                                  if (docs.isEmpty) {
-                                    return Center(
-                                      child: Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          Icon(Icons.speaker_notes_off_outlined, size: 64, color: Colors.grey.shade300),
-                                          const SizedBox(height: 16),
-                                          Text(
-                                            'Nenhum aviso encontrado.',
-                                            style: TextStyle(color: Colors.grey.shade600, fontSize: 16),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  }
-
-                                  // Ordenação manual
-                                  docs.sort((a, b) {
-                                    final dataA = a.data() as Map<String, dynamic>;
-                                    final dataB = b.data() as Map<String, dynamic>;
-                                    final timeA = dataA['dataEnvio'];
-                                    final timeB = dataB['dataEnvio'];
-                                    if (timeA == null && timeB == null) return 0;
-                                    if (timeA == null) return 1;
-                                    if (timeB == null) return -1;
-                                    return (timeB as Timestamp).compareTo(timeA as Timestamp);
-                                  });
-
-                                  return ListView.separated(
-                                    padding: const EdgeInsets.all(16),
-                                    itemCount: docs.length + 1, // +1 para o botão de carregar mais
-                                    separatorBuilder: (ctx, i) => const SizedBox(height: 8),
-                                    itemBuilder: (context, index) {
-                                      
-                                      // Se chegou no final da lista, exibe o botão Carregar Mais
-                                      if (index == docs.length) {
-                                        if (docsRaw.length >= _limiteAvisos) {
-                                          return Padding(
-                                            padding: const EdgeInsets.symmetric(vertical: 16),
-                                            child: TextButton.icon(
-                                              onPressed: () => setState(() => _limiteAvisos += 15),
-                                              icon: const Icon(Icons.expand_more_rounded),
-                                              label: const Text('Carregar Mais Avisos Antigos', style: TextStyle(fontWeight: FontWeight.bold)),
-                                            ),
-                                          );
-                                        }
-                                        return const SizedBox.shrink();
-                                      }
-
-                                      final data = docs[index].data() as Map<String, dynamic>;
-                                      final idAviso = docs[index].id;
-                                      
-                                      final tipoDest = data['tipoDestinatario'] ?? 'TURMA';
-                                      String prefixoDestino = '';
-                                      String nomeDestino = '';
-                                      
-                                      if (tipoDest == 'TURMA') {
-                                        prefixoDestino = 'Para: ';
-                                        nomeDestino = 'Toda a Turma';
-                                      } else if (tipoDest == 'PROFESSORES') {
-                                        prefixoDestino = 'Para: ';
-                                        nomeDestino = 'Todos os Professores';
-                                      } else {
-                                        final alvoId = data['alunoId'];
-                                        final alunoAlvo = alunosDaTurma.firstWhere((a) {
-                                          return a['matricula'].toString() == alvoId.toString();
-                                        }, orElse: () => {'nome': 'Aluno Desconhecido'});
-                                        
-                                        prefixoDestino = 'Para Aluno: ';
-                                        nomeDestino = alunoAlvo['nome'] ?? 'Desconhecido';
-                                      }
-
-                                      final dataEnvio = data['dataEnvio'];
-                                      final textoData = dataEnvio != null 
-                                          ? DateFormat('dd/MM/yyyy HH:mm').format((dataEnvio as Timestamp).toDate()) 
-                                          : 'Enviando...';
-
-                                      final nomeRemetenteFinal = _resolverNomeRemetente(data, todosProfessores, user.id);
-                                      final isAdmin = nomeRemetenteFinal.contains('Administração');
-
-                                      return Card(
-                                        elevation: 0,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          side: BorderSide(color: Colors.grey.shade300),
-                                        ),
-                                        child: ListTile(
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                          leading: CircleAvatar(
-                                            backgroundColor: isAdmin ? Colors.deepPurple.shade50 : Colors.blue.shade50,
-                                            child: Icon(
-                                              isAdmin ? Icons.admin_panel_settings : Icons.assignment_ind, 
-                                              color: isAdmin ? Colors.deepPurple : Colors.blue
-                                            ),
-                                          ),
-                                          title: Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text.rich(
-                                                  TextSpan(
-                                                    children: [
-                                                      TextSpan(
-                                                        text: 'De: $nomeRemetenteFinal ',
-                                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                                      ),
-                                                      const WidgetSpan(
-                                                        child: Padding(
-                                                          padding: EdgeInsets.symmetric(horizontal: 4),
-                                                          child: Icon(Icons.arrow_right_alt_rounded, size: 16, color: Colors.grey),
-                                                        ),
-                                                        alignment: PlaceholderAlignment.middle,
-                                                      ),
-                                                      TextSpan(
-                                                        text: prefixoDestino,
-                                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 12),
-                                                      ),
-                                                      TextSpan(
-                                                        text: nomeDestino,
-                                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 12),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                          subtitle: Padding(
-                                            padding: const EdgeInsets.only(top: 8.0),
-                                            child: Text(
-                                              data['mensagem'] ?? '', 
-                                              maxLines: 2, 
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(color: Colors.black87)
-                                            ),
-                                          ),
-                                          trailing: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11)),
-                                              const SizedBox(width: 12),
-                                              IconButton(
-                                                icon: const Icon(Icons.visibility_rounded, color: Colors.blueGrey),
-                                                tooltip: 'Ver Mensagem Completa',
-                                                onPressed: () => _mostrarAvisoCompleto(data, nomeRemetenteFinal, '$prefixoDestino$nomeDestino', textoData),
-                                              ),
-                                              IconButton(
-                                                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                                                tooltip: 'Apagar',
-                                                onPressed: () {
-                                                  showDialog(
-                                                    context: context,
-                                                    builder: (ctxDel) => AlertDialog(
-                                                      title: const Row(
-                                                        children: [
-                                                          Icon(Icons.delete_forever, color: Colors.red),
-                                                          SizedBox(width: 8),
-                                                          Text('Excluir Aviso'),
-                                                        ],
-                                                      ),
-                                                      content: const Text('Deseja excluir este aviso permanentemente do sistema?'),
-                                                      actions: [
-                                                        TextButton(onPressed: () => Navigator.pop(ctxDel), child: const Text('Cancelar', style: TextStyle(color: Colors.grey))),
-                                                        ElevatedButton(
-                                                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                                          onPressed: () async {
-                                                            await FirebaseFirestore.instance.collection('tenants').doc(user.id).collection('turmas').doc(widget.turma['id'].toString()).collection('avisos').doc(idAviso).delete();
-                                                            if (ctxDel.mounted) {
-                                                              Navigator.pop(ctxDel);
-                                                            }
-                                                          },
-                                                          child: const Text('Excluir')
-                                                        )
-                                                      ]
-                                                    )
-                                                  );
-                                                },
-                                              ),
-                                            ]
-                                          )
-                                        )
-                                      );
-                                    },
-                                  );
-                                },
-                              ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ],
         ),
@@ -2813,7 +2109,7 @@ class _ModalGerenciadorHorariosState
                                                         fontSize: 10,
                                                         color: _getTextColor(
                                                           aulaEncontrada['disciplina'],
-                                                        ),
+                                                        ).withAlpha(178),
                                                       ),
                                                     ),
                                                 ],
@@ -3239,9 +2535,7 @@ class _ModalGerenciadorHorariosState
                             : Text(
                                 'Prof. ${aula['professorNome']}',
                                 style: TextStyle(
-                                  color: _getTextColor(
-                                    aula['disciplina'],
-                                  ).withOpacity(0.7),
+                                  color: _getTextColor(aula['disciplina']).withAlpha(178),
                                 ),
                               ),
                         trailing: Row(
@@ -3305,6 +2599,210 @@ class _ModalGerenciadorHorariosState
           ),
         ),
       ],
+    );
+  }
+}
+
+// ============================================================================
+// WIDGET EXTRA 3: DIÁRIO DE CLASSE (Lista Cascata e Popup Interativo)
+// ============================================================================
+class AdminTurmaDiarioTela extends ConsumerWidget {
+  final Map<String, dynamic> turma;
+  const AdminTurmaDiarioTela({super.key, required this.turma});
+
+  void _mostrarDetalhesDiario(BuildContext context, Map<String, dynamic> diario, Color corPrimaria, String dataAula, String tituloFormatado, String conteudo, String fotoUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.menu_book_rounded, color: corPrimaria),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Detalhes do Diário', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18))),
+            IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+          ],
+        ),
+        content: SizedBox(
+          width: 500,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(6)),
+                  child: Text(tituloFormatado, style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 13)),
+                ),
+                const SizedBox(height: 12),
+                Text('Data da aula: $dataAula', style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.bold, fontSize: 13)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Divider(height: 1),
+                ),
+                Text(conteudo, style: const TextStyle(fontSize: 15, height: 1.5, color: Colors.black87)),
+                if (fotoUrl.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  const Text('Foto Anexada:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.grey)),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () => _mostrarFotoAmpliada(context, fotoUrl),
+                    borderRadius: BorderRadius.circular(12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        fotoUrl,
+                        width: double.infinity,
+                        height: 180,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) return child;
+                          return Container(
+                            height: 180,
+                            width: double.infinity,
+                            color: Colors.grey.shade100,
+                            child: const Center(child: CircularProgressIndicator()),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Center(child: Text('Clique na imagem para ampliá-la', style: TextStyle(fontSize: 11, color: Colors.grey, fontStyle: FontStyle.italic))),
+                ]
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final usuarioLogado = ref.watch(authProvider).value;
+    final tenantId = usuarioLogado?.tenantId ?? '';
+    final corPrimaria = Theme.of(context).primaryColor;
+
+    return Scaffold(
+      backgroundColor: Colors.grey.shade50,
+      appBar: AppBar(
+        title: Text('Diário de Classe - ${turma['nome']}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 1,
+      ),
+      body: tenantId.isEmpty
+          ? Center(child: CircularProgressIndicator(color: corPrimaria))
+          : StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('tenants')
+                  .doc(tenantId)
+                  .collection('turmas')
+                  .doc(turma['id'].toString())
+                  .collection('diarios')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator(color: corPrimaria));
+                }
+                
+                final docs = snapshot.data?.docs ?? [];
+                
+                final diariosValidos = docs.map((d) => {'id': d.id, ...d.data() as Map<String, dynamic>}).toList();
+                
+                diariosValidos.sort((a, b) => b['id'].toString().compareTo(a['id'].toString()));
+
+                if (diariosValidos.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.menu_book_rounded, size: 64, color: Colors.grey.shade300),
+                        const SizedBox(height: 16),
+                        Text('Nenhum registro de aula no diário desta turma.', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(24),
+                  itemCount: diariosValidos.length,
+                  separatorBuilder: (ctx, i) => const SizedBox(height: 16),
+                  itemBuilder: (context, index) {
+                    final diario = diariosValidos[index];
+                    final String idStr = diario['id'].toString();
+                    
+                    String dataAula = diario['dataAula'] ?? '';
+                    if (dataAula.isEmpty && idStr.contains('_')) {
+                      dataAula = idStr.split('_')[0]; 
+                      try {
+                        final p = dataAula.split('-');
+                        if (p.length == 3) {
+                          dataAula = '${p[2]}/${p[1]}/${p[0]}';
+                        }
+                      } catch(_) {}
+                    }
+
+                    final String disciplina = diario['disciplina'] ?? 'Geral';
+                    final String conteudo = diario['conteudo'] ?? diario['resumo'] ?? diario['texto'] ?? 'Nenhum texto registrado.';
+                    final String fotoUrl = diario['fotoUrl'] ?? diario['anexoUrl'] ?? '';
+                    
+                    // Ajuste da nomenclatura de Título com o Professor
+                    final String profNome = (diario['professorNome'] ?? diario['nomeProfessor'] ?? '').toString().toUpperCase();
+                    final String tituloFormatado = profNome.isNotEmpty ? '${disciplina.toUpperCase()} - $profNome' : disciplina.toUpperCase();
+
+                    return Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade300)),
+                      child: InkWell(
+                        onTap: () => _mostrarDetalhesDiario(context, diario, corPrimaria, dataAula, tituloFormatado, conteudo, fotoUrl),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: corPrimaria.withAlpha(25), borderRadius: BorderRadius.circular(8)),
+                                child: Icon(Icons.menu_book_rounded, color: corPrimaria),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(tituloFormatado, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.black87)),
+                                    const SizedBox(height: 4),
+                                    Text('Data da aula: $dataAula', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                                  ]
+                                )
+                              ),
+                              if (fotoUrl.isNotEmpty) ...[
+                                 const SizedBox(width: 16),
+                                 Container(
+                                   decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                                   child: ClipRRect(
+                                     borderRadius: BorderRadius.circular(8),
+                                     child: Image.network(fotoUrl, width: 48, height: 48, fit: BoxFit.cover),
+                                   ),
+                                 )
+                              ] else ...[
+                                 const SizedBox(width: 16),
+                                 Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400)
+                              ]
+                            ]
+                          )
+                        )
+                      )
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 }
@@ -3817,12 +3315,14 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                   final aulasDoDia = diariPorDiaGeral[dateStr]!;
                   bool temP = false;
                   bool temA = false;
+                  bool temJ = false;
                   
                   for (var aula in aulasDoDia) {
                     final freq = Map<String, String>.from(aula['frequencia'] ?? {});
                     final st = freq[widget.alunoMatricula] ?? 'P';
                     if (st == 'P') temP = true;
                     else if (st == 'A') temA = true;
+                    else if (st == 'J') temJ = true;
                   }
 
                   String statusDia = 'P';
@@ -3851,7 +3351,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
 
               final double percPresencaGeral = totalDiasComAula == 0 ? 100.0 : (presencasGeral / totalDiasComAula) * 100;
 
-              // FILTRA A MATÉRIA 'GERAL' DA LISTA DE SANFONAS (pois agora temos o Visão Geral do Mês)
+              // FILTRA A MATÉRIA 'GERAL' DA LISTA DE SANFONAS
               final disciplinasKeys = frequenciaPorDisciplina.keys
                   .where((k) => k.toUpperCase() != 'GERAL')
                   .toList()..sort();

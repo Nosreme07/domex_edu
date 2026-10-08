@@ -362,7 +362,7 @@ class _BalaoNotificacaoAvisosState extends State<_BalaoNotificacaoAvisos> {
         bool isParaMim = false;
         if (tipoDest == 'TURMA' || tipoDest == 'TODOS') isParaMim = true;
         if ((tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL') && alvoId == widget.alunoDocId) isParaMim = true;
-        if (data['remetenteId'] == widget.meuId) isParaMim = true; // Se fui eu que enviei, também quero ver as respostas
+        if (data['remetenteId'] == widget.meuId) isParaMim = true; 
 
         if (isParaMim) {
           final lidos = List<String>.from(data['lidosPor'] ?? []);
@@ -410,7 +410,7 @@ class _BalaoNotificacaoAvisosState extends State<_BalaoNotificacaoAvisos> {
 }
 
 // ============================================================================
-// MODAL DE BOLETIM E FREQUÊNCIA (OMITIDOS PARA BREVIDADE, MAS MANTIDOS INTACTOS)
+// MODAL DE BOLETIM E FREQUÊNCIA 
 // ============================================================================
 class _BoletimModal extends StatefulWidget {
   final String tenantId;
@@ -1051,7 +1051,7 @@ class _AvisosModal extends StatefulWidget {
 class _AvisosModalState extends State<_AvisosModal> {
   int _abaAtual = 0;
   final _formKey = GlobalKey<FormState>();
-  String _destinatario = 'PROFESSORES'; 
+  String _destinatario = 'ADMINISTRACAO'; 
   final _tituloCtrl = TextEditingController();
   final _mensagemCtrl = TextEditingController();
   bool _enviando = false;
@@ -1199,23 +1199,12 @@ class _AvisosModalState extends State<_AvisosModal> {
               decoration: const InputDecoration(
                 labelText: 'Enviar para quem?', 
                 border: OutlineInputBorder(), 
-                prefixIcon: Icon(Icons.people_alt_rounded),
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                prefixIcon: Icon(Icons.account_balance_rounded),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _destinatario,
-                  isExpanded: true,
-                  items: const [
-                    DropdownMenuItem(value: 'PROFESSORES', child: Text('Professores da Turma')),
-                    DropdownMenuItem(value: 'ADMINISTRACAO', child: Text('Secretaria / Administração')),
-                  ],
-                  onChanged: (val) { 
-                    setState(() { 
-                      _destinatario = val!; 
-                    }); 
-                  },
-                ),
+              child: const Text(
+                'Secretaria / Administração', 
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)
               ),
             ),
             const SizedBox(height: 20),
