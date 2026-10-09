@@ -44,6 +44,7 @@ import '../../modulos/super_admin/apresentacao/telas/super_admin_usuarios_tela.d
 import '../../modulos/academico/layout/professor_layout.dart';
 import '../../modulos/academico/apresentacao/telas/professor_dashboard_tela.dart';
 import '../../modulos/academico/apresentacao/telas/meu_perfil_tela.dart';
+import '../../modulos/academico/apresentacao/telas/meus_diarios_tela.dart'; // <-- IMPORT ADICIONADO AQUI
 // ADICIONADO O PREFIXO "prof_cal" PARA EVITAR CONFLITO (AMBIGUOUS IMPORT)
 import '../../modulos/academico/apresentacao/telas/professor_calendario_tela.dart' as prof_cal;
 
@@ -252,6 +253,11 @@ class AppRotas {
           GoRoute(
             path: '/professor/perfil',
             builder: (context, state) => const MeuPerfilTela(),
+          ),
+          // --- ROTA DOS MEUS DIÁRIOS ADICIONADA AQUI ---
+          GoRoute(
+            path: '/professor/meus-diarios',
+            builder: (context, state) => const MeusDiariosTela(),
           ),
           GoRoute(
             path: '/professor/calendario',

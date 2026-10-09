@@ -209,11 +209,18 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
           .collection('diarios')
           .doc(_idDiario)
           .get();
-      if (doc.exists) {
+      if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
         setState(() {
           _statusAulaPorData[_idDiario] = data['status'] ?? 'NAO_INICIADA';
-          _frequenciaPorData[_idDiario] = Map<String, String>.from(data['frequencia'] ?? {});
+          
+          final frequenciaRaw = data['frequencia'];
+          if (frequenciaRaw is Map) {
+            _frequenciaPorData[_idDiario] = frequenciaRaw.map((key, value) => MapEntry(key.toString(), value.toString()));
+          } else {
+            _frequenciaPorData[_idDiario] = {};
+          }
+          
           _conteudoAulaAtual = data['conteudo'] ?? '';
           _anexoAulaUrl = data['anexoUrl'];
           _isDiaAvaliacao = data['isDiaAvaliacao'] ?? false;
@@ -336,7 +343,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
 
   String _obterStatusAluno(String matricula) {
     final map = _frequenciaPorData[_idDiario] ?? <String, String>{};
-    _frequenciaPorData[_idDiario] = map;
     return map[matricula] ?? 'P';
   }
 
@@ -679,12 +685,12 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     List<Map<String, dynamic>> avaliacoesDoBimestre,
     List<Map<String, dynamic>> alunosTurma,
   ) {
-    final ctrlNome = TextEditingController(text: avaliacao['nome']);
-    final ctrlPontos = TextEditingController(text: avaliacao['pontuacaoMaxima'].toString());
-    String? disciplinaSelecionada = avaliacao['disciplina'];
-    String? tipoSelecionado = avaliacao['tipo'] ?? 'Prova';
-    bool contaParaMedia = avaliacao['contaParaMedia'] ?? true;
-    String dataBancoAval = avaliacao['dataAvaliacao'] ?? _dataBanco;
+    final ctrlNome = TextEditingController(text: avaliacao['nome']?.toString());
+    final ctrlPontos = TextEditingController(text: avaliacao['pontuacaoMaxima']?.toString());
+    String? disciplinaSelecionada = avaliacao['disciplina']?.toString();
+    String? tipoSelecionado = avaliacao['tipo']?.toString() ?? 'Prova';
+    bool contaParaMedia = avaliacao['contaParaMedia'] == true;
+    String dataBancoAval = avaliacao['dataAvaliacao']?.toString() ?? _dataBanco;
     String dataDisplayAval = '';
     try {
       final p = dataBancoAval.split('-');
@@ -862,7 +868,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                               a['isRecuperacao'] != true &&
                               a['isSegundaChamada'] != true &&
                               a['contaParaMedia'] != false) {
-                            somaAtual += (a['pontuacaoMaxima'] as num).toDouble();
+                            somaAtual += (a['pontuacaoMaxima'] as num? ?? 0.0).toDouble();
                           }
                         }
                         double novaP = double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0;
@@ -1106,12 +1112,12 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                       ),
                       child: ListView(
                         shrinkWrap: true,
-                        children: alunosTurma.map<Widget>((a) {
+                        children: alunosTurma.map((a) {
                           final mat = a['matricula']?.toString() ?? '';
                           return CheckboxListTile(
                             dense: true,
                             activeColor: corPrimaria,
-                            title: Text(a['nome'] ?? ''),
+                            title: Text(a['nome']?.toString() ?? ''),
                             value: alunosSelecionados.contains(mat),
                             onChanged: (bool? checked) {
                               setModalState(() {
@@ -1152,7 +1158,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                               a['isRecuperacao'] != true &&
                               a['isSegundaChamada'] != true &&
                               a['contaParaMedia'] != false) {
-                            somaAtual += (a['pontuacaoMaxima'] as num).toDouble();
+                            somaAtual += (a['pontuacaoMaxima'] as num? ?? 0.0).toDouble();
                           }
                         }
                         double novaP = double.tryParse(ctrlPontos.text.replaceAll(',', '.')) ?? 10.0;
@@ -1188,7 +1194,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           'observacoes': <String, dynamic>{},
                           'anexos': <String, dynamic>{},
                           'isSegundaChamada': isSegundaChamada,
-                          'alunosPermitidos': isSegundaChamada ? alunosSelecionados : <dynamic>[],
+                          'alunosPermitidos': isSegundaChamada ? alunosSelecionados : <String>[],
                           'isRecuperacao': isRecuperacao,
                           'contaParaMedia': contaParaMedia,
                         };
@@ -1255,7 +1261,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
           double mediaEsperada = (pontuacaoMaxima / 10.0) * _mediaEscola;
           bool turmaBem = mediaDaTurma >= mediaEsperada;
           final dataAvaliacaoStr = _formatarDataDisplay(avaliacao['dataAvaliacao']?.toString() ?? '');
-          final tipoAvaliacao = avaliacao['tipo'] ?? 'Prova';
+          final tipoAvaliacao = avaliacao['tipo']?.toString() ?? 'Prova';
 
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -1332,7 +1338,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(aluno['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                      Text(aluno['nome']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                                       if (faltou)
                                         Container(
                                           margin: const EdgeInsets.only(top: 4),
@@ -1497,7 +1503,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                           'dataEnvio': FieldValue.serverTimestamp(),
                           'remetenteId': user.id,
                           'remetenteNome': 'Professor(a) - ${user.nome}',
-                          'alunoNome': aluno['nome'] ?? '',
+                          'alunoNome': aluno['nome']?.toString() ?? '',
                         });
                         if (!ctx.mounted) return;
                         nav.pop();
@@ -1585,12 +1591,12 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
           orElse: () => <String, dynamic>{},
         );
         if (alunoAlvo.isNotEmpty) {
-          nomeAluno = alunoAlvo['nome'] ?? '';
+          nomeAluno = alunoAlvo['nome']?.toString() ?? '';
           if (_tipoAviso == 'RESPONSAVEL') {
             final resps = alunoAlvo['responsaveis'] as List? ?? [];
             if (resps.isNotEmpty) {
               var resp = resps.firstWhere((r) => r['principal'] == true, orElse: () => resps.first);
-              nomeResp = resp['nome'] ?? '';
+              nomeResp = resp['nome']?.toString() ?? '';
             }
           }
         }
@@ -1630,9 +1636,6 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
     }
   }
 
-  // ==========================================================================
-  // WIDGETS DE ABAS E RECONSTRUÇÃO DA TELA
-  // ==========================================================================
   Widget _buildAbaControle(int indice, String titulo, IconData icone) {
     final isAtiva = _abaAtiva == indice;
     return Expanded(
@@ -1886,12 +1889,12 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                         separatorBuilder: (context, index) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final avaliacao = avaliacoesMap[index];
-                          final id = avaliacao['id'];
-                          final notasMap = Map<String, dynamic>.from(avaliacao['notas'] ?? <String, dynamic>{});
+                          final id = avaliacao['id']?.toString() ?? '';
+                          final notasMap = Map<String, dynamic>.from(avaliacao['notas'] as Map<dynamic, dynamic>? ?? <String, dynamic>{});
                           final dataAvaliacaoStr = _formatarDataDisplay(avaliacao['dataAvaliacao']?.toString() ?? '');
-                          final tipoAvaliacao = avaliacao['tipo'] ?? 'Prova';
-                          final bool contaParaMedia = avaliacao['contaParaMedia'] ?? true;
-                          int totalEsperado = avaliacao['isSegundaChamada'] == true ? (avaliacao['alunosPermitidos'] as List).length : alunosTurma.length;
+                          final tipoAvaliacao = avaliacao['tipo']?.toString() ?? 'Prova';
+                          final bool contaParaMedia = avaliacao['contaParaMedia'] == true;
+                          int totalEsperado = avaliacao['isSegundaChamada'] == true ? (avaliacao['alunosPermitidos'] as List? ?? []).length : alunosTurma.length;
 
                           return Card(
                             elevation: 1,
@@ -1920,7 +1923,7 @@ class _DiarioTelaState extends ConsumerState<DiarioTela> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(avaliacao['nome'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                          Text(avaliacao['nome']?.toString() ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                           Wrap(
                                             spacing: 6,
                                             children: [

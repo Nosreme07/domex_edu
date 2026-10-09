@@ -60,6 +60,7 @@ class _MeusDiariosTelaState extends ConsumerState<MeusDiariosTela> {
   String _termoPesquisa = '';
   List<Map<String, dynamic>> _todosMeusDiarios = [];
   bool _carregando = true;
+  int _limiteExibicao = 5;
 
   @override
   void initState() {
@@ -120,7 +121,7 @@ class _MeusDiariosTelaState extends ConsumerState<MeusDiariosTela> {
           // Só mostra se o Diário foi preenchido E se a disciplina do diário for uma das que ele leciona
           if (status != 'NAO_INICIADA' && (minhasDisciplinasAqui.contains(disciplinaDiario) || minhasDisciplinasAqui.contains('GERAL'))) {
             
-            // Extrair a data do ID do documento (Ex: 2026-10-09_Matematica) ou do campo dataDiario
+            // Extrair a data do ID do documento ou do campo dataDiario
             String dataBanco = d['dataDiario'] ?? '';
             if (dataBanco.isEmpty && diarioDoc.id.contains('_')) {
               dataBanco = diarioDoc.id.split('_')[0];
@@ -171,6 +172,10 @@ class _MeusDiariosTelaState extends ConsumerState<MeusDiariosTela> {
       return conteudo.contains(busca) || turma.contains(busca) || disciplina.contains(busca) || data.contains(busca);
     }).toList();
 
+    final int totalItens = listaFiltrada.length;
+    final int qtdExibidos = totalItens > _limiteExibicao ? _limiteExibicao : totalItens;
+    final bool temMais = totalItens > _limiteExibicao;
+
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
@@ -204,7 +209,12 @@ class _MeusDiariosTelaState extends ConsumerState<MeusDiariosTela> {
                       ),
                       const SizedBox(height: 16),
                       TextField(
-                        onChanged: (v) => setState(() => _termoPesquisa = v),
+                        onChanged: (v) {
+                          setState(() {
+                            _termoPesquisa = v;
+                            _limiteExibicao = 5; // Reseta o limite ao buscar
+                          });
+                        },
                         decoration: InputDecoration(
                           hintText: 'Pesquisar por data, turma, matéria ou conteúdo...',
                           prefixIcon: const Icon(Icons.search_rounded, color: Colors.grey),
@@ -236,9 +246,35 @@ class _MeusDiariosTelaState extends ConsumerState<MeusDiariosTela> {
                         )
                       : ListView.separated(
                           padding: const EdgeInsets.all(24),
-                          itemCount: listaFiltrada.length,
+                          itemCount: qtdExibidos + (temMais ? 1 : 0),
                           separatorBuilder: (ctx, i) => const SizedBox(height: 16),
                           itemBuilder: (context, index) {
+                            
+                            // Botão de carregar mais
+                            if (index == qtdExibidos) {
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                                child: TextButton.icon(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: corPrimaria,
+                                    backgroundColor: corPrimaria.withAlpha(20),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    padding: const EdgeInsets.symmetric(vertical: 16)
+                                  ),
+                                  onPressed: () {
+                                    setState(() {
+                                      _limiteExibicao = totalItens;
+                                    });
+                                  },
+                                  icon: const Icon(Icons.history_rounded),
+                                  label: const Text(
+                                    'Ver Histórico Completo', 
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)
+                                  ),
+                                ),
+                              );
+                            }
+
                             final diario = listaFiltrada[index];
                             final String anexoUrl = diario['anexoUrl'];
                             final bool temAnexo = anexoUrl.isNotEmpty;
@@ -246,79 +282,85 @@ class _MeusDiariosTelaState extends ConsumerState<MeusDiariosTela> {
 
                             return Card(
                               elevation: 0,
+                              clipBehavior: Clip.antiAlias,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 side: BorderSide(color: Colors.grey.shade300),
                               ),
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                              child: Theme(
+                                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                                child: ExpansionTile(
+                                  tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                                  childrenPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)),
+                                    child: Icon(Icons.menu_book_rounded, color: corPrimaria),
+                                  ),
+                                  title: Text(
+                                    '${diario['turmaNome']} - ${diario['dataExibicao']}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 4.0),
+                                    child: Row(
                                       children: [
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(diario['turmaNome'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: corPrimaria)),
-                                              const SizedBox(height: 4),
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                                decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
-                                                child: Text(diario['disciplina'], style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700, fontSize: 12)),
-                                              ),
-                                            ],
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
+                                          child: Text(
+                                            diario['disciplina'], 
+                                            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey.shade700, fontSize: 11)
                                           ),
                                         ),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(8)),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(Icons.calendar_month_rounded, size: 14, color: corPrimaria),
-                                              const SizedBox(width: 6),
-                                              Text(diario['dataExibicao'], style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 13)),
-                                            ],
-                                          ),
-                                        )
+                                        if (temAnexo) ...[
+                                          const SizedBox(width: 8),
+                                          Icon(Icons.attach_file_rounded, size: 14, color: Colors.grey.shade500),
+                                        ]
                                       ],
                                     ),
-                                    const Padding(
-                                      padding: EdgeInsets.symmetric(vertical: 16),
-                                      child: Divider(height: 1),
-                                    ),
-                                    const Text('Conteúdo Lecionado:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                                  ),
+                                  children: [
+                                    const Divider(),
                                     const SizedBox(height: 8),
-                                    Text(
-                                      diario['conteudo'],
-                                      style: const TextStyle(fontSize: 14, height: 1.5, color: Colors.black87),
+                                    const Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text('Conteúdo Lecionado:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        diario['conteudo'],
+                                        style: const TextStyle(fontSize: 14, height: 1.5, color: Colors.black87),
+                                      ),
                                     ),
                                     
                                     // Se houver anexo
                                     if (temAnexo) ...[
                                       const SizedBox(height: 16),
-                                      InkWell(
-                                        onTap: () {
-                                          if (isPdf) {
-                                            _abrirLink(anexoUrl);
-                                          } else {
-                                            _mostrarFotoAmpliadaGlobal(context, anexoUrl);
-                                          }
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade100)),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(isPdf ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPdf ? Colors.red : Colors.blue, size: 24),
-                                              const SizedBox(width: 8),
-                                              const Text('Ver Anexo / Foto do Quadro', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
-                                            ],
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: InkWell(
+                                          onTap: () {
+                                            if (isPdf) {
+                                              _abrirLink(anexoUrl);
+                                            } else {
+                                              _mostrarFotoAmpliadaGlobal(context, anexoUrl);
+                                            }
+                                          },
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(12),
+                                            decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade100)),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(isPdf ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPdf ? Colors.red : Colors.blue, size: 24),
+                                                const SizedBox(width: 8),
+                                                const Text('Ver Anexo / Foto do Quadro', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue)),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),

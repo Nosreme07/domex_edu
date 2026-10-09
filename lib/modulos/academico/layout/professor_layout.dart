@@ -205,6 +205,14 @@ class _MenuLateralConteudo extends StatelessWidget {
               rotaAtual: GoRouterState.of(context).matchedLocation,
               isMobile: isMobile,
             ),
+            // NOVO BOTÃO: MEUS DIÁRIOS
+            _MenuItem(
+              icone: Icons.history_edu_rounded,
+              titulo: 'Meus Diários',
+              rota: '/professor/meus-diarios',
+              rotaAtual: GoRouterState.of(context).matchedLocation,
+              isMobile: isMobile,
+            ),
             _MenuItem(
               icone: Icons.person_rounded,
               titulo: 'Meu Perfil',
