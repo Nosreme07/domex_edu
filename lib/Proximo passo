@@ -51,10 +51,14 @@ avaliar os calendários
 
 -----------------------------------------------------------
 *** AMBIENTE DO ADMIN***
-- Verificar o diario de classe para colocar o nome do professor e a disciplina que ele leciona.
+- Verificar o diario de classe para colocar
+ o nome do professor e a disciplina que ele leciona.
 - colocar campos de pesquisa.
-
+- deixar os diários de classe como botão em cascata
+e no arquivo anexado colocar opção de download e apenas abrir.
 - Enviar mensagens para todos os responsáveis.
+
+- colocar o mesmo pdf dentro do diário de classe.
 
 
 -----------------------------------------------------------
@@ -63,9 +67,13 @@ avaliar os calendários
 
 -----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
-- 
+- nos anexos que estão dentro das conversas
+colocar a opção de download e abrir arquivo.
 
--
+- verificar avisos dentro de mensagens da turma que não está enviando em
+anexo.
+
+
 -----------------------------------------------------------
 *** AMBIENTE DO RESPONSÁVEL ***
 
