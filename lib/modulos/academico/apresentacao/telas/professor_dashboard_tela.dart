@@ -931,7 +931,7 @@ class _ProfessorDashboardTelaState extends ConsumerState<ProfessorDashboardTela>
                                                         }
                                                       },
                                                       icon: const Icon(Icons.play_circle_fill_rounded, size: 18),
-                                                      label: const Text('Iniciar Aula', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                                      label: const Text('Abrir turma', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                                                     )
                                                   )
                                                 ],
