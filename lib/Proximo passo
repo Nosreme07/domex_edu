@@ -56,9 +56,13 @@ avaliar os calendários
 - colocar campos de pesquisa.
 - deixar os diários de classe como botão em cascata
 e no arquivo anexado colocar opção de download e apenas abrir.
-- Enviar mensagens para todos os responsáveis.
+- colocar o mesmo pdf do diário de classe dentro do diário de classe.
+- verificar nas mensagens os anexos de pdf que não estão abrindo.
 
-- colocar o mesmo pdf dentro do diário de classe.
+
+- Enviar mensagens para todos os responsáveis da escola.
+
+- Colocar alguma coisa para informar a média da escola.
 
 
 -----------------------------------------------------------
@@ -67,11 +71,16 @@ e no arquivo anexado colocar opção de download e apenas abrir.
 
 -----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
-
+- retirar o valor da média nas provas. Pois virá do admim da escola
 
 -----------------------------------------------------------
 *** AMBIENTE DO RESPONSÁVEL ***
+Verificar os anexos.;
+- Colocar botão para exportar boletim PDf com a frequência e notas.
 
+- retirar o portal da familia e colcar apenas portal do responsável.
+
+- verificar o boletim.
 
 -----------------------------------------------------------
 *** AMBIENTE DA SECRETARIA ***

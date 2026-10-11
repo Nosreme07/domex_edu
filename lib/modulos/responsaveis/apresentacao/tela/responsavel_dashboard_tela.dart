@@ -1,22 +1,110 @@
 import 'dart:io';
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+
+// Importações para a geração do PDF
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../../../autenticacao/apresentacao/estado/auth_provider.dart';
 
-// Função auxiliar global para abrir PDFs
+// ============================================================================
+// FUNÇÕES GLOBAIS DE VISUALIZAÇÃO E DOWNLOAD DE ANEXOS
+// ============================================================================
 Future<void> _abrirLink(String url) async {
   final uri = Uri.parse(url);
   if (await canLaunchUrl(uri)) {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
+}
+
+// Visualizador com Zoom e Download Embutido
+void _mostrarAnexoAmpliadoGlobal(BuildContext context, String url, bool isPdf, Color corPrimaria) {
+  if (url.isEmpty) return;
+  showDialog(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 600, maxHeight: 700),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(color: corPrimaria, borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(isPdf ? 'Visualizador de PDF' : 'Visualizador de Imagem', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(), icon: const Icon(Icons.close_rounded, color: Colors.white), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+            ),
+            Flexible(
+              child: Container(
+                width: double.infinity,
+                color: Colors.grey.shade100,
+                child: isPdf
+                    ? Padding(
+                        padding: const EdgeInsets.all(48.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 80),
+                            const SizedBox(height: 16),
+                            const Text('Arquivo em formato PDF', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
+                            const SizedBox(height: 8),
+                            const Text('Toque no botão abaixo para baixar ou visualizar.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      )
+                    : ClipRRect(
+                        child: InteractiveViewer(
+                          minScale: 0.5,
+                          maxScale: 4.0,
+                          child: Image.network(
+                            url,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const Center(child: CircularProgressIndicator());
+                            },
+                            errorBuilder: (context, error, stackTrace) => const Center(child: Icon(Icons.broken_image_rounded, color: Colors.grey, size: 48)),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(bottom: Radius.circular(16))),
+              child: SizedBox(
+                width: double.infinity, height: 50,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: corPrimaria, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                  onPressed: () => _abrirLink(url),
+                  icon: const Icon(Icons.download_rounded),
+                  label: Text(isPdf ? 'Fazer Download / Abrir PDF' : 'Baixar Imagem', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                ),
+              ),
+            )
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class ResponsavelDashboardTela extends ConsumerStatefulWidget {
@@ -28,7 +116,6 @@ class ResponsavelDashboardTela extends ConsumerStatefulWidget {
 
 class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardTela> {
   
-  // Função para buscar os alunos vinculados a este responsável
   Future<List<Map<String, dynamic>>> _buscarDependentes(String tenantId, String emailLogado) async {
     try {
       final loginChave = emailLogado.toLowerCase().trim();
@@ -62,7 +149,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
     }
   }
 
-  void _abrirBoletim(String tenantId, String turmaId, String alunoDocId, Color corPrimaria) {
+  void _abrirBoletim(String tenantId, String turmaId, String alunoDocId, String matricula, String nomeAluno, Color corPrimaria) {
     if (turmaId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aluno sem turma vinculada.')));
       return;
@@ -72,7 +159,15 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (ctx) => DraggableScrollableSheet(
         initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
-        builder: (_, scrollController) => _BoletimModal(tenantId: tenantId, turmaId: turmaId, alunoDocId: alunoDocId, corPrimaria: corPrimaria, scrollController: scrollController)
+        builder: (_, scrollController) => _BoletimModal(
+          tenantId: tenantId, 
+          turmaId: turmaId, 
+          alunoDocId: alunoDocId, 
+          alunoMatricula: matricula,
+          nomeAluno: nomeAluno,
+          corPrimaria: corPrimaria, 
+          scrollController: scrollController
+        )
       )
     );
   }
@@ -125,8 +220,8 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
 
     final tenantId = usuarioLogado.tenantId; 
     final emailLogado = usuarioLogado.email;
-    final nomeResponsavel = usuarioLogado.nome ?? 'Responsável';
-    final meuId = usuarioLogado.id ?? '';
+    final String nomeResponsavel = usuarioLogado.nome.toString().isNotEmpty ? usuarioLogado.nome.toString() : 'Responsável';
+    final String meuId = usuarioLogado.id.toString();
     final corPrimaria = Theme.of(context).primaryColor; 
 
     return Scaffold(
@@ -201,10 +296,10 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                         itemBuilder: (context, index) {
                           final aluno = alunos[index];
                           final fotoUrl = aluno['fotoPortalUrl'] ?? aluno['fotoUrl'] ?? '';
-                          final turmaId = aluno['turmaId']?.toString() ?? '';
-                          final alunoDocId = aluno['id'];
+                          final turmaId = (aluno['turmaId'] ?? '').toString();
+                          final alunoDocId = (aluno['id'] ?? '').toString();
                           final matricula = (aluno['matricula'] ?? '').toString();
-                          final nomeAluno = aluno['nome'] ?? 'Aluno';
+                          final nomeAluno = (aluno['nome'] ?? 'Aluno').toString();
                           
                           return Card(
                             elevation: 0,
@@ -217,7 +312,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                 leading: CircleAvatar(
                                   radius: 24,
                                   backgroundColor: Colors.grey.shade200,
-                                  backgroundImage: fotoUrl.toString().isNotEmpty ? NetworkImage(fotoUrl) : null,
+                                  backgroundImage: fotoUrl.toString().isNotEmpty ? NetworkImage(fotoUrl.toString()) : null,
                                   child: fotoUrl.toString().isEmpty ? Icon(Icons.person, color: corPrimaria) : null,
                                 ),
                                 title: Text(nomeAluno, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -232,7 +327,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                       alignment: WrapAlignment.spaceEvenly,
                                       children: [
                                         _buildAcaoBotao(Icons.analytics_rounded, 'Boletim', Colors.blue.shade700, () {
-                                          _abrirBoletim(tenantId, turmaId, alunoDocId, corPrimaria);
+                                          _abrirBoletim(tenantId, turmaId, alunoDocId, matricula, nomeAluno, corPrimaria);
                                         }),
                                         _buildAcaoBotao(Icons.fact_check_rounded, 'Frequência', Colors.green.shade700, () {
                                           _abrirFrequencia(tenantId, turmaId, matricula, corPrimaria);
@@ -360,19 +455,20 @@ class _BalaoNotificacaoAvisosState extends State<_BalaoNotificacaoAvisos> {
         final alvoId = data['alunoId']?.toString() ?? '';
         
         bool isParaMim = false;
-        if (tipoDest == 'TURMA' || tipoDest == 'TODOS') isParaMim = true;
+        if (tipoDest == 'TURMA' || tipoDest == 'TODOS' || tipoDest == 'TURMA_RESPONSAVEIS') isParaMim = true;
         if ((tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL') && alvoId == widget.alunoDocId) isParaMim = true;
         if (data['remetenteId'] == widget.meuId) isParaMim = true; 
 
         if (isParaMim) {
           final lidos = List<String>.from(data['lidosPor'] ?? []);
+          // Se eu não li e a mensagem NÃO fui eu que enviei
           if (!lidos.contains(widget.alunoDocId) && data['remetenteId'] != widget.meuId) {
             naoLidos++;
           }
 
           final respostasSnap = await doc.reference.collection('respostas').where('lidaPorResponsavel', isEqualTo: false).get();
           naoLidos += respostasSnap.docs.where((r) {
-             final rData = r.data() as Map<String, dynamic>;
+             final rData = r.data();
              return (rData['remetenteId'] ?? '') != widget.meuId;
           }).length;
         }
@@ -410,15 +506,27 @@ class _BalaoNotificacaoAvisosState extends State<_BalaoNotificacaoAvisos> {
 }
 
 // ============================================================================
-// MODAL DE BOLETIM E FREQUÊNCIA 
+// MODAL DE BOLETIM COM EXPORTAÇÃO PDF INTEGRADA
 // ============================================================================
 class _BoletimModal extends StatefulWidget {
   final String tenantId;
   final String turmaId;
   final String alunoDocId;
+  final String alunoMatricula;
+  final String nomeAluno;
   final Color corPrimaria;
   final ScrollController scrollController;
-  const _BoletimModal({required this.tenantId, required this.turmaId, required this.alunoDocId, required this.corPrimaria, required this.scrollController});
+  
+  const _BoletimModal({
+    required this.tenantId, 
+    required this.turmaId, 
+    required this.alunoDocId, 
+    required this.alunoMatricula,
+    required this.nomeAluno,
+    required this.corPrimaria, 
+    required this.scrollController
+  });
+  
   @override
   State<_BoletimModal> createState() => _BoletimModalState();
 }
@@ -429,6 +537,13 @@ class _BoletimModalState extends State<_BoletimModal> {
   String _calcularBimestre(DateTime data) {
     int mes = data.month;
     if (mes >= 2 && mes <= 4) return '1º Bimestre';
+    if (mes >= 5 && mes <= 6) return '2º Bimestre';
+    if (mes >= 7 && mes <= 9) return '3º Bimestre';
+    return '4º Bimestre';
+  }
+
+  String _calcularBimestrePorMes(int mes) {
+    if (mes >= 1 && mes <= 4) return '1º Bimestre';
     if (mes >= 5 && mes <= 6) return '2º Bimestre';
     if (mes >= 7 && mes <= 9) return '3º Bimestre';
     return '4º Bimestre';
@@ -457,8 +572,290 @@ class _BoletimModalState extends State<_BoletimModal> {
     
     return {
       'disciplinas': disciplinas,
-      'avaliacoes': avaliacoesSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList(),
+      'avaliacoes': avaliacoesSnap.docs.map((d) => d.data()).toList(),
     };
+  }
+
+  // ==========================================================================
+  // GERAÇÃO DO BOLETIM EM PDF PROFISSIONAL (TODOS OS BIMESTRES)
+  // ==========================================================================
+  Future<void> _exportarBoletimPdf(BuildContext context) async {
+    showDialog(
+      context: context, barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
+    );
+
+    try {
+      final db = FirebaseFirestore.instance;
+      
+      // 1. Dados da Escola
+      final tenantDoc = await db.collection('tenants').doc(widget.tenantId).get();
+      final tenantData = tenantDoc.data() ?? <String, dynamic>{};
+      final nomeEscola = (tenantData['nomeEscola'] ?? 'ESCOLA').toString();
+      final logoUrl = (tenantData['logoUrl'] ?? tenantData['fotoUrl'] ?? tenantData['logo'] ?? '').toString();
+
+      pw.ImageProvider? logoProvider;
+      if (logoUrl.isNotEmpty) {
+        try { logoProvider = await networkImage(logoUrl); } catch (_) {}
+      }
+
+      // 2. Dados da Turma
+      final turmaDoc = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).get();
+      final turmaData = turmaDoc.data() ?? <String, dynamic>{};
+      final turmaNome = (turmaData['nome'] ?? '').toString();
+      final turmaTurno = (turmaData['turno'] ?? '').toString();
+      final disciplinas = List<String>.from(turmaData['disciplinas'] ?? []);
+
+      // 3. Buscar todas as Avaliações e Diários de todos os bimestres
+      final avalsSnap = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').get();
+      final diariosSnap = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').get();
+
+      // Mapeamento Global para Frequências: [Bimestre] -> [Disciplina] -> {aulas, faltas}
+      Map<String, Map<String, Map<String, int>>> freqGlobal = {
+        '1º Bimestre': {}, '2º Bimestre': {}, '3º Bimestre': {}, '4º Bimestre': {}
+      };
+      
+      for (var d in diariosSnap.docs) {
+        final data = d.data();
+        if(data['status'] == 'NAO_INICIADA') continue;
+
+        final dateStr = d.id.split('_')[0];
+        final p = dateStr.split('-');
+        if(p.length < 3) continue;
+        
+        final mes = int.parse(p[1]);
+        final bimestre = _calcularBimestrePorMes(mes);
+        final disciplina = (data['disciplina'] ?? 'Geral').toString();
+
+        if (!freqGlobal[bimestre]!.containsKey(disciplina)) {
+          freqGlobal[bimestre]![disciplina] = {'aulas': 0, 'faltas': 0};
+        }
+
+        freqGlobal[bimestre]![disciplina]!['aulas'] = freqGlobal[bimestre]![disciplina]!['aulas']! + 1;
+
+        final freqMap = Map<String, String>.from(data['frequencia'] ?? {});
+        final statusAluno = freqMap[widget.alunoMatricula] ?? 'P';
+        
+        if (statusAluno == 'A' || statusAluno == 'J') {
+          freqGlobal[bimestre]![disciplina]!['faltas'] = freqGlobal[bimestre]![disciplina]!['faltas']! + 1;
+        }
+      }
+
+      // Função Auxiliar para calcular nota limpa da disciplina num bimestre
+      double? calcularNotaDisciplina(String bim, String disc) {
+        var avalsBim = avalsSnap.docs.map((d)=>d.data()).where((a) => a['bimestre'] == bim && a['disciplina'] == disc).toList();
+        if (avalsBim.isEmpty) return null;
+
+        var avalsValidas = avalsBim.where((a) => a['contaParaMedia'] != false).toList();
+
+        // Extrai as notas brutas do Aluno
+        List<Map<String, dynamic>> notasTratadas = [];
+        for (var a in avalsValidas) {
+          final maximo = double.tryParse((a['pontuacaoMaxima'] ?? '10').toString()) ?? 10.0;
+          final isRec = a['isRecuperacao'] == true;
+          final nMap = Map<String, dynamic>.from(a['notas'] ?? {});
+          final nRaw = nMap[widget.alunoDocId];
+          final notaAluno = double.tryParse((nRaw ?? '0').toString()) ?? 0.0;
+          final temNota = nRaw != null && nRaw.toString().isNotEmpty;
+
+          notasTratadas.add({
+            'nota': notaAluno, 'maximo': maximo, 'isRec': isRec, 'temNota': temNota, 'valida': true
+          });
+        }
+
+        var recsTratadas = notasTratadas.where((n) => n['isRec'] == true).toList();
+        var normaisTratadas = notasTratadas.where((n) => n['isRec'] != true).toList();
+
+        for (var rec in recsTratadas) {
+          if (normaisTratadas.isEmpty) continue;
+          normaisTratadas.sort((a, b) => ((a['nota'] / a['maximo']).compareTo(b['nota'] / b['maximo'])));
+          var piorNormal = normaisTratadas.first;
+
+          double aproveitamentoRec = rec['maximo'] > 0 ? rec['nota'] / rec['maximo'] : 0.0;
+          double aproveitamentoPiorNormal = piorNormal['maximo'] > 0 ? piorNormal['nota'] / piorNormal['maximo'] : 0.0;
+
+          if (aproveitamentoRec > aproveitamentoPiorNormal) {
+            piorNormal['valida'] = false; 
+          } else {
+            rec['valida'] = false; 
+          }
+        }
+
+        double somaNotas = 0.0;
+        bool possuiAlgumaNota = false;
+
+        for (var n in notasTratadas) {
+          if (n['valida'] == true) {
+            if (n['temNota'] == true) possuiAlgumaNota = true;
+            somaNotas += n['nota'];
+          }
+        }
+        
+        if (!possuiAlgumaNota) return null;
+        return somaNotas > 10.0 ? 10.0 : somaNotas;
+      }
+
+      // 4. Montar o PDF
+      final pdf = pw.Document();
+      final pdfCorPrimaria = PdfColor.fromInt(widget.corPrimaria.toARGB32());
+      final dataGeracao = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
+      final bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          margin: const pw.EdgeInsets.all(32),
+          
+          header: (context) {
+            return pw.Column(
+              children: [
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    if (logoProvider != null) pw.Container(width: 50, height: 50, child: pw.Image(logoProvider)),
+                    if (logoProvider != null) pw.SizedBox(width: 12),
+                    pw.Expanded(child: pw.Text(nomeEscola.toUpperCase(), style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria))),
+                  ],
+                ),
+                pw.SizedBox(height: 12),
+                pw.Divider(color: PdfColors.grey400, thickness: 0.5),
+                pw.SizedBox(height: 16),
+              ],
+            );
+          },
+          
+          footer: (context) {
+            return pw.Column(
+              children: [
+                pw.Divider(color: PdfColors.grey400, thickness: 0.5),
+                pw.SizedBox(height: 4),
+                pw.Center(child: pw.Text('Gerado pelo sistema DOMEX EDU - $dataGeracao', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600))),
+                pw.SizedBox(height: 2),
+                pw.Center(child: pw.Text('Página ${context.pageNumber} de ${context.pagesCount}', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600))),
+              ],
+            );
+          },
+          
+          build: (context) {
+            List<pw.Widget> content = [];
+
+            content.add(pw.Center(child: pw.Text('BOLETIM ESCOLAR E FREQUÊNCIA', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria))));
+            content.add(pw.SizedBox(height: 16));
+            
+            // Dados do Aluno
+            content.add(
+              pw.Container(
+                padding: const pw.EdgeInsets.all(8),
+                decoration: pw.BoxDecoration(color: PdfColors.grey100, borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)), border: pw.Border.all(color: PdfColors.grey300, width: 0.5)),
+                child: pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Expanded(
+                      flex: 2,
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text('Nome do Aluno(a):', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.grey700)),
+                          pw.Text(widget.nomeAluno, style: const pw.TextStyle(fontSize: 11)),
+                        ]
+                      )
+                    ),
+                    pw.Expanded(
+                      flex: 1,
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text('Turma / Turno:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9, color: PdfColors.grey700)),
+                          pw.Text('$turmaNome - $turmaTurno', style: const pw.TextStyle(fontSize: 11)),
+                        ]
+                      )
+                    ),
+                  ]
+                )
+              )
+            );
+            content.add(pw.SizedBox(height: 24));
+
+            // Tabelas por Bimestre
+            for (var bim in bimestres) {
+              content.add(pw.Text(bim, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria)));
+              content.add(pw.SizedBox(height: 8));
+
+              content.add(
+                pw.Table(
+                  border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(3),
+                    1: const pw.FlexColumnWidth(1),
+                    2: const pw.FlexColumnWidth(1),
+                    3: const pw.FlexColumnWidth(1),
+                    4: const pw.FlexColumnWidth(1.2),
+                  },
+                  children: [
+                    // Header da Tabela
+                    pw.TableRow(
+                      decoration: pw.BoxDecoration(color: pdfCorPrimaria),
+                      children: [
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Disciplina', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Nota', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Aulas', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Faltas', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Freq. (%)', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
+                      ]
+                    ),
+                    // Linhas da Tabela
+                    for (var disc in disciplinas) ...[
+                      () {
+                        // Lógica de Nota
+                        final nota = calcularNotaDisciplina(bim, disc);
+                        final String txtNota = nota != null ? nota.toStringAsFixed(1) : '-';
+                        final PdfColor corNota = nota == null ? PdfColors.grey800 : (nota >= 6.0 ? PdfColors.green700 : PdfColors.red700);
+
+                        // Lógica de Frequência
+                        final freqDisc = freqGlobal[bim]![disc] ?? {'aulas': 0, 'faltas': 0};
+                        final int aulas = freqDisc['aulas'] ?? 0;
+                        final int faltas = freqDisc['faltas'] ?? 0;
+                        final int presencas = aulas - faltas;
+                        final double perc = aulas == 0 ? 100.0 : (presencas / aulas) * 100;
+                        final String txtPerc = aulas == 0 ? '-' : '${perc.toStringAsFixed(0)}%';
+
+                        return pw.TableRow(
+                          children: [
+                            pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text(disc, style: const pw.TextStyle(fontSize: 9))),
+                            pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(txtNota, style: pw.TextStyle(color: corNota, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
+                            pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(aulas.toString(), style: const pw.TextStyle(fontSize: 9)))),
+                            pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(faltas.toString(), style: const pw.TextStyle(fontSize: 9)))),
+                            pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text(txtPerc, style: const pw.TextStyle(fontSize: 9)))),
+                          ]
+                        );
+                      }()
+                    ]
+                  ]
+                )
+              );
+              content.add(pw.SizedBox(height: 20));
+            }
+
+            return content;
+          },
+        ),
+      );
+
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+      
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+        name: 'Boletim_${widget.nomeAluno.replaceAll(' ', '_')}.pdf',
+      );
+
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao gerar PDF: $e')));
+      }
+    }
   }
 
   void _mostrarDetalhesDisciplina(String disciplina, List<Map<String, dynamic>> avaliacoes) {
@@ -486,9 +883,15 @@ class _BoletimModalState extends State<_BoletimModal> {
                   final bool temNota = a['temNota'] ?? false;
                   
                   String sub = '';
-                  if (isRec && valida) sub = 'Nota Substituta (Recuperação)';
-                  if (isRec && !valida) sub = 'Descartada (Recuperação)';
-                  if (!isRec && !valida) sub = 'Substituída';
+                  if (isRec && valida) {
+                    sub = 'Nota Substituta (Recuperação)';
+                  }
+                  if (isRec && !valida) {
+                    sub = 'Descartada (Recuperação)';
+                  }
+                  if (!isRec && !valida) {
+                    sub = 'Substituída';
+                  }
 
                   final String textoNota = temNota ? '${nota.toStringAsFixed(1)} / ${max.toStringAsFixed(1)}' : '-';
 
@@ -522,6 +925,12 @@ class _BoletimModalState extends State<_BoletimModal> {
                 Text('Meu Boletim', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Text('Notas consolidadas por disciplina', style: TextStyle(color: Colors.grey, fontSize: 13)),
               ])),
+              // BOTÃO EXPORTAR PDF
+              IconButton(
+                tooltip: 'Exportar para PDF',
+                icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.red), 
+                onPressed: () => _exportarBoletimPdf(context)
+              ),
               IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
             ],
           ),
@@ -564,14 +973,14 @@ class _BoletimModalState extends State<_BoletimModal> {
               
               for (var aval in avaliacoes) {
                 final disciplina = aval['disciplina'] ?? 'Geral';
-                final maximo = double.tryParse(aval['pontuacaoMaxima']?.toString() ?? '10') ?? 10.0;
+                final maximo = double.tryParse((aval['pontuacaoMaxima'] ?? '10').toString()) ?? 10.0;
                 final isRecuperacao = aval['isRecuperacao'] == true;
                 final contaParaMedia = aval['contaParaMedia'] ?? true;
                 
                 final notasMap = Map<String, dynamic>.from(aval['notas'] ?? {});
                 final notaRaw = notasMap[widget.alunoDocId];
                 final bool temNotaLancada = notaRaw != null && notaRaw.toString().isNotEmpty;
-                final notaAluno = double.tryParse(notaRaw?.toString() ?? '0') ?? 0.0;
+                final notaAluno = double.tryParse((notaRaw ?? '0').toString()) ?? 0.0;
 
                 if (!avaliacoesPorDisciplina.containsKey(disciplina)) {
                   avaliacoesPorDisciplina[disciplina] = [];
@@ -714,6 +1123,9 @@ class _BoletimModalState extends State<_BoletimModal> {
   }
 }
 
+// ============================================================================
+// MODAL DE FREQUÊNCIA
+// ============================================================================
 class _FrequenciaModal extends StatefulWidget {
   final String tenantId;
   final String turmaId;
@@ -858,7 +1270,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                     if (data['status'] != 'NAO_INICIADA' && docMonth == _mesAtivo) {
                       final freq = Map<String, String>.from(data['frequencia'] ?? {});
                       final st = freq[widget.alunoMatricula] ?? 'P';
-                      final disciplina = data['disciplina']?.toString() ?? 'Geral';
+                      final disciplina = (data['disciplina'] ?? 'Geral').toString();
                       
                       if (!frequenciaPorDisciplina.containsKey(disciplina)) frequenciaPorDisciplina[disciplina] = [];
                       frequenciaPorDisciplina[disciplina]!.add({
@@ -891,14 +1303,12 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                   final aulasDoDia = diariPorDiaGeral[dateStr]!;
                   bool temP = false;
                   bool temA = false;
-                  bool temJ = false;
                   
                   for (var aula in aulasDoDia) {
                     final freq = Map<String, String>.from(aula['frequencia'] ?? {});
                     final st = freq[widget.alunoMatricula] ?? 'P';
                     if (st == 'P') temP = true;
                     else if (st == 'A') temA = true;
-                    else if (st == 'J') temJ = true;
                   }
 
                   String statusDia = 'P';
@@ -945,7 +1355,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                             if (status == 'SEM_AULA') {
                               return ListTile(
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 16), leading: Icon(Icons.event_busy_rounded, color: Colors.grey.shade300, size: 20),
-                                title: Text(d['display'], style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w500, fontSize: 13)), trailing: Text('-', style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.bold, fontSize: 16)),
+                                title: Text((d['display'] ?? '').toString(), style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w500, fontSize: 13)), trailing: Text('-', style: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.bold, fontSize: 16)),
                               );
                             }
                             Color corStatus = Colors.green; String textoStatus = 'Presente'; IconData iconeStatus = Icons.check_circle_rounded;
@@ -954,7 +1364,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
 
                             return ListTile(
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16), leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400, size: 20),
-                              title: Text(d['display'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              title: Text((d['display'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                               trailing: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8)), 
                                 child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(iconeStatus, color: corStatus, size: 14), const SizedBox(width: 4), Text(textoStatus, style: TextStyle(color: corStatus, fontSize: 12, fontWeight: FontWeight.bold))])
@@ -967,7 +1377,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
                   }
 
                   final disc = disciplinasKeys[index - 1];
-                  final aulas = frequenciaPorDisciplina[disc]!..sort((a,b) => b['idSort']!.compareTo(a['idSort']!));
+                  final aulas = frequenciaPorDisciplina[disc]!..sort((a,b) => (b['idSort'] ?? '').toString().compareTo((a['idSort'] ?? '').toString()));
                   final int totalAulas = aulas.length;
                   final int faltas = aulas.where((f) => f['status'] == 'A' || f['status'] == 'J').length;
                   final int presencas = totalAulas - faltas;
@@ -1000,7 +1410,7 @@ class _FrequenciaModalState extends State<_FrequenciaModal> {
 
                           return ListTile(
                             contentPadding: const EdgeInsets.symmetric(horizontal: 16), leading: Icon(Icons.event_available_rounded, color: Colors.grey.shade400, size: 20),
-                            title: Text(f['data'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            title: Text((f['data'] ?? '').toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                             trailing: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: corStatus.withAlpha(30), borderRadius: BorderRadius.circular(8)), 
                               child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(iconeStatus, color: corStatus, size: 14), const SizedBox(width: 4), Text(textoStatus, style: TextStyle(color: corStatus, fontSize: 12, fontWeight: FontWeight.bold))])
@@ -1050,27 +1460,35 @@ class _AvisosModal extends StatefulWidget {
 
 class _AvisosModalState extends State<_AvisosModal> {
   int _abaAtual = 0;
+  int _limiteAvisos = 5;
+
   final _formKey = GlobalKey<FormState>();
-  String _destinatario = 'ADMINISTRACAO'; 
+  final String _destinatario = 'ADMINISTRACAO'; 
   final _tituloCtrl = TextEditingController();
   final _mensagemCtrl = TextEditingController();
   bool _enviando = false;
-  File? _anexoFile;
-  String? _anexoNome;
-  bool _isPdf = false;
+  
+  final List<PlatformFile> _anexosAviso = [];
 
-  Future<void> _escolherAnexo() async {
+  Future<void> _escolherAnexos() async {
+    if (_anexosAviso.length >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Limite de 3 anexos atingido.'), backgroundColor: Colors.red));
+      return;
+    }
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       );
 
-      if (result != null && result.files.single.path != null) {
+      if (result != null) {
         setState(() {
-          _anexoFile = File(result.files.single.path!);
-          _anexoNome = result.files.single.name;
-          _isPdf = _anexoNome!.toLowerCase().endsWith('.pdf');
+          for (var file in result.files) {
+            if (_anexosAviso.length < 3) {
+              _anexosAviso.add(file);
+            }
+          }
         });
       }
     } catch (e) {
@@ -1079,7 +1497,7 @@ class _AvisosModalState extends State<_AvisosModal> {
   }
 
   Future<void> _enviarAviso() async {
-    if (!_formKey.currentState!.validate() && _anexoFile == null) return;
+    if (!_formKey.currentState!.validate() && _anexosAviso.isEmpty) return;
     setState(() => _enviando = true);
     
     try {
@@ -1087,18 +1505,35 @@ class _AvisosModalState extends State<_AvisosModal> {
       final msgBase = _mensagemCtrl.text.trim();
       final msgComTitulo = titulo.isNotEmpty ? "📍 *$titulo*\n\n$msgBase" : msgBase;
 
-      String? anexoUrl;
+      List<Map<String, String>> anexosFinais = [];
 
-      // Upload do Anexo, se houver
-      if (_anexoFile != null) {
-        final ext = _anexoNome!.split('.').last;
-        final nomeArquivo = 'anexo_aviso_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      for (var f in _anexosAviso) {
+        Uint8List? arquivoBytes;
+        File? arquivoFisico;
+
+        if (!kIsWeb && f.path != null) arquivoFisico = File(f.path!);
+        arquivoBytes = f.bytes;
+
+        final nomeArquivo = 'anexo_resp_${DateTime.now().millisecondsSinceEpoch}_${f.name.replaceAll(' ', '_')}';
         final storageRef = FirebaseStorage.instance.ref().child('tenants/${widget.tenantId}/avisos_anexos/$nomeArquivo');
-        await storageRef.putFile(_anexoFile!);
-        anexoUrl = await storageRef.getDownloadURL();
+        
+        if (kIsWeb && arquivoBytes != null) {
+          await storageRef.putData(arquivoBytes);
+        } else if (arquivoFisico != null) {
+          await storageRef.putFile(arquivoFisico);
+        } else if (arquivoBytes != null) {
+          await storageRef.putData(arquivoBytes);
+        }
+        
+        final url = await storageRef.getDownloadURL();
+        
+        anexosFinais.add({
+          'nome': f.name,
+          'url': url,
+        });
       }
 
-      final payload = {
+      final Map<String, dynamic> payload = {
         'titulo': titulo,
         'mensagem': msgComTitulo,
         'dataEnvio': FieldValue.serverTimestamp(),
@@ -1108,10 +1543,10 @@ class _AvisosModalState extends State<_AvisosModal> {
         'alunoId': widget.alunoDocId,
         'alunoNome': widget.nomeAluno,
         'responsavelNome': widget.nomeResp,
-        'lidosPor': [widget.alunoDocId, widget.meuId], // Pai já leu a própria mensagem
-        if (anexoUrl != null) 'anexoUrl': anexoUrl,
-        if (_anexoNome != null) 'anexoNome': _anexoNome,
+        'lidosPor': [widget.alunoDocId, widget.meuId], // LÓGICA DE MARCAR COMO LIDO: O remetente já tem a msg lida
       };
+
+      if (anexosFinais.isNotEmpty) payload['anexos'] = anexosFinais;
 
       await FirebaseFirestore.instance
           .collection('tenants')
@@ -1126,10 +1561,8 @@ class _AvisosModalState extends State<_AvisosModal> {
         _tituloCtrl.clear();
         _mensagemCtrl.clear();
         setState(() {
-           _anexoFile = null;
-           _anexoNome = null;
-           _isPdf = false;
-           _abaAtual = 0; // Volta para o mural de histórico
+           _anexosAviso.clear();
+           _abaAtual = 0; 
         });
       }
     } catch (e) {
@@ -1154,9 +1587,9 @@ class _AvisosModalState extends State<_AvisosModal> {
           final alvoId = aviso['alunoId']?.toString() ?? '';
           final meuAlunoIdStr = widget.alunoDocId.toString();
 
-          if (tipoDest == 'TURMA' || tipoDest == 'TODOS') return true;
+          if (tipoDest == 'TURMA' || tipoDest == 'TODOS' || tipoDest == 'TURMA_RESPONSAVEIS') return true;
           if ((tipoDest == 'ALUNO' || tipoDest == 'RESPONSAVEL') && alvoId == meuAlunoIdStr) return true;
-          if (aviso['remetenteId'] == widget.meuId) return true; // Mostra as mensagens enviadas pelo próprio pai
+          if (aviso['remetenteId'] == widget.meuId) return true; 
           
           return false;
         }).toList();
@@ -1165,16 +1598,43 @@ class _AvisosModalState extends State<_AvisosModal> {
           return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.notifications_off_rounded, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum aviso no mural.', style: TextStyle(color: Colors.grey.shade500))]));
         }
 
+        final int totalItens = avisosValidos.length;
+        final int qtdExibidos = totalItens > _limiteAvisos ? _limiteAvisos : totalItens;
+        final bool temMais = totalItens > _limiteAvisos;
+
         return ListView.separated(
           controller: widget.scrollController, padding: const EdgeInsets.all(20),
-          itemCount: avisosValidos.length, separatorBuilder: (c, i) => const SizedBox(height: 12),
+          itemCount: qtdExibidos + (temMais ? 1 : 0), 
+          separatorBuilder: (c, i) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
+
+            if (index == qtdExibidos) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: widget.corPrimaria,
+                    backgroundColor: widget.corPrimaria.withAlpha(20),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 16)
+                  ),
+                  onPressed: () {
+                    setState(() { _limiteAvisos = totalItens; });
+                  },
+                  icon: const Icon(Icons.history_rounded),
+                  label: const Text('Carregar todos os avisos', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                ),
+              );
+            }
+
             return AvisoCardWidget(
               aviso: avisosValidos[index],
               tenantId: widget.tenantId,
               turmaId: widget.turmaId,
               alunoDocId: widget.alunoDocId,
               corPrimaria: widget.corPrimaria,
+              meuId: widget.meuId,
+              meuNome: widget.nomeResp
             );
           },
         );
@@ -1195,14 +1655,14 @@ class _AvisosModalState extends State<_AvisosModal> {
             Text('Selecione para quem deseja enviar o comunicado.', style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
             const SizedBox(height: 24),
 
-            InputDecorator(
-              decoration: const InputDecoration(
+            const InputDecorator(
+              decoration: InputDecoration(
                 labelText: 'Enviar para quem?', 
                 border: OutlineInputBorder(), 
                 prefixIcon: Icon(Icons.account_balance_rounded),
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
               ),
-              child: const Text(
+              child: Text(
                 'Secretaria / Administração', 
                 style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: Colors.black87)
               ),
@@ -1217,16 +1677,16 @@ class _AvisosModalState extends State<_AvisosModal> {
               controller: _mensagemCtrl, 
               maxLines: 5, 
               decoration: const InputDecoration(labelText: 'Escreva a sua mensagem...', alignLabelWithHint: true, border: OutlineInputBorder()), 
-              validator: (v) => v!.isEmpty && _anexoFile == null ? 'Escreva uma mensagem ou adicione um anexo.' : null
+              validator: (v) => v!.isEmpty && _anexosAviso.isEmpty ? 'Escreva uma mensagem ou adicione um anexo.' : null
             ),
             
             const SizedBox(height: 16),
             Row(
               children: [
                 OutlinedButton.icon(
-                  onPressed: _escolherAnexo,
+                  onPressed: _escolherAnexos,
                   icon: Icon(Icons.attach_file_rounded, color: widget.corPrimaria),
-                  label: Text('Anexar Foto ou PDF', style: TextStyle(color: widget.corPrimaria, fontWeight: FontWeight.bold)),
+                  label: Text('Anexar Arquivos (${_anexosAviso.length}/3)', style: TextStyle(color: widget.corPrimaria, fontWeight: FontWeight.bold)),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(color: widget.corPrimaria),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1236,20 +1696,32 @@ class _AvisosModalState extends State<_AvisosModal> {
               ],
             ),
 
-            if (_anexoFile != null)
-              Container(
-                margin: const EdgeInsets.only(top: 16),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(8)),
-                child: Row(
-                  children: [
-                    _isPdf 
-                      ? const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 32)
-                      : ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(_anexoFile!, width: 40, height: 40, fit: BoxFit.cover)),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(_anexoNome ?? 'Arquivo selecionado', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    IconButton(icon: const Icon(Icons.close_rounded, color: Colors.red), onPressed: () => setState(() { _anexoFile = null; _anexoNome = null; _isPdf = false; }))
-                  ],
+            if (_anexosAviso.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Wrap(
+                  spacing: 8, runSpacing: 8,
+                  children: List.generate(_anexosAviso.length, (index) {
+                    final anexo = _anexosAviso[index];
+                    final isPdf = (anexo.extension ?? '').toLowerCase() == 'pdf';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(8), border: Border.all(color: widget.corPrimaria.withAlpha(50))),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(isPdf ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPdf ? Colors.red : widget.corPrimaria, size: 20),
+                          const SizedBox(width: 8),
+                          Flexible(child: Text(anexo.name, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: widget.corPrimaria), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: () => setState(() { _anexosAviso.removeAt(index); }),
+                            child: const Icon(Icons.close_rounded, color: Colors.red, size: 18),
+                          )
+                        ],
+                      ),
+                    );
+                  }),
                 ),
               ),
 
@@ -1283,8 +1755,8 @@ class _AvisosModalState extends State<_AvisosModal> {
               children: [
                 Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: widget.corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.campaign_rounded, color: widget.corPrimaria)),
                 const SizedBox(width: 16),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Mural de Avisos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Mural de Avisos', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   Text('Comunicações da escola', style: TextStyle(color: Colors.grey, fontSize: 13)),
                 ])),
                 IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
@@ -1317,17 +1789,28 @@ class _AvisosModalState extends State<_AvisosModal> {
   }
 }
 
-// Widget isolado para os cards de aviso no feed
-class AvisoCardWidget extends ConsumerWidget {
+// Widget isolado para os cards de aviso no feed (Formato Cascata/ExpansionTile)
+class AvisoCardWidget extends StatelessWidget {
   final Map<String, dynamic> aviso;
   final String tenantId;
   final String turmaId;
   final String alunoDocId;
   final Color corPrimaria;
+  final String meuId;
+  final String meuNome;
 
-  const AvisoCardWidget({super.key, required this.aviso, required this.tenantId, required this.turmaId, required this.alunoDocId, required this.corPrimaria});
+  const AvisoCardWidget({
+    super.key, 
+    required this.aviso, 
+    required this.tenantId, 
+    required this.turmaId, 
+    required this.alunoDocId, 
+    required this.corPrimaria,
+    required this.meuId,
+    required this.meuNome
+  });
 
-  void _abrirChat(BuildContext context, DocumentReference avisoRef, String meuId, String meuNome) {
+  void _abrirChat(BuildContext context, DocumentReference avisoRef) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1343,7 +1826,7 @@ class AvisoCardWidget extends ConsumerWidget {
       ),
     );
 
-    // Marca as respostas não lidas como lidas assim que abre
+    // LÓGICA DE MARCAR COMO LIDO: Marca as respostas não lidas como lidas assim que abre
     avisoRef.collection('respostas').get().then((snap) {
       final batch = FirebaseFirestore.instance.batch();
       bool hasUpdates = false;
@@ -1358,31 +1841,10 @@ class AvisoCardWidget extends ConsumerWidget {
     });
   }
 
-  void _mostrarImagemFullscreen(BuildContext context, String url) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(16),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))),
-            Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx))),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final usuarioLogado = ref.watch(authProvider).value;
-    final meuId = usuarioLogado?.id ?? '';
-    final meuNome = usuarioLogado?.nome ?? 'Responsável';
-
+  Widget build(BuildContext context) {
     final dataEnvio = aviso['dataEnvio'];
-    final textoData = dataEnvio != null ? DateFormat('dd/MM HH:mm').format(dataEnvio.toDate()) : '';
+    final textoData = dataEnvio != null && dataEnvio is Timestamp ? DateFormat('dd/MM HH:mm').format(dataEnvio.toDate()) : '';
     
     final tipoDest = aviso['tipoDestinatario'];
     final isMeu = aviso['remetenteId'] == meuId;
@@ -1412,198 +1874,199 @@ class AvisoCardWidget extends ConsumerWidget {
 
     final avisoRef = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').doc(aviso['id']);
 
-    final String anexoUrl = aviso['anexoUrl'] ?? '';
-    final String anexoNome = aviso['anexoNome'] ?? 'Anexo';
-    final bool isAnexoPdf = anexoNome.toLowerCase().endsWith('.pdf');
+    List<dynamic> anexosList = aviso['anexos'] as List<dynamic>? ?? [];
+    if (aviso['anexoUrl'] != null && aviso['anexoUrl'].toString().isNotEmpty && anexosList.isEmpty) {
+       anexosList.add({
+         'nome': (aviso['anexoNome'] ?? 'Anexo').toString(),
+         'url': aviso['anexoUrl'].toString(),
+       });
+    }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isLidoMsgOriginal ? Colors.grey.shade200 : Colors.blue.shade300, width: isLidoMsgOriginal ? 1 : 1.5),
-        boxShadow: isLidoMsgOriginal ? const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))] : const [BoxShadow(color: Colors.blueAccent, blurRadius: 4, offset: Offset(0, 2))],
+        side: BorderSide(
+          color: isLidoMsgOriginal ? Colors.grey.shade300 : Colors.blue.shade300, 
+          width: isLidoMsgOriginal ? 1 : 1.5
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          leading: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(12)),
+            child: Icon(isProfessor ? Icons.assignment_ind_rounded : Icons.admin_panel_settings_rounded, color: isMeu ? corTag : corPrimaria, size: 20),
+          ),
+          title: Row(
             children: [
               Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(isProfessor ? Icons.assignment_ind_rounded : Icons.admin_panel_settings_rounded, size: 16, color: isMeu ? corTag : corPrimaria),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        remetenteOriginal,
-                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: isMeu ? corTag : Colors.black87),
-                        maxLines: 2, overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  remetenteOriginal,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isMeu ? corTag : Colors.black87),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(textoData, style: TextStyle(color: Colors.grey.shade500, fontSize: 11, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
-                  if (!isLidoMsgOriginal)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
-                      child: const Text('NOVA MENSAGEM', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
-                    )
-                  else
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.done_all_rounded, color: Colors.green.shade600, size: 14),
-                        const SizedBox(width: 4),
-                        Text('Visualizada', style: TextStyle(color: Colors.green.shade600, fontSize: 10, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                ],
-              )
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(6)),
-            child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 10, fontWeight: FontWeight.bold)),
-          ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Divider(height: 1),
-          ),
-          
-          if (anexoUrl.isNotEmpty) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12.0),
-              child: isAnexoPdf 
-                ? InkWell(
-                    onTap: () => _abrirLink(anexoUrl),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 24),
-                          const SizedBox(width: 8),
-                          Flexible(child: Text(anexoNome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                        ],
-                      ),
-                    ),
-                  )
-                : InkWell(
-                    onTap: () => _mostrarImagemFullscreen(context, anexoUrl),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        anexoUrl, height: 150, width: double.infinity, fit: BoxFit.cover,
-                        loadingBuilder: (context, child, loadingProgress) {
-                          if (loadingProgress == null) return child;
-                          return Container(height: 150, width: double.infinity, color: Colors.grey.shade200, child: const Center(child: CircularProgressIndicator()));
-                        },
-                      ),
-                    ),
-                  ),
-            ),
-          ],
-
-          if ((aviso['mensagem'] ?? '').toString().isNotEmpty)
-            Text(
-              aviso['mensagem'] ?? '',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
-            ),
-
-          const SizedBox(height: 12),
-          Wrap(
-            alignment: WrapAlignment.end,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            children: [
               if (!isLidoMsgOriginal)
-                InkWell(
-                  onTap: () {
-                    avisoRef.update({'lidosPor': FieldValue.arrayUnion([alunoDocId])});
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.visibility_rounded, size: 18, color: Colors.grey.shade600),
-                        const SizedBox(width: 4),
-                        Text('Marcar lida', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                      ],
-                    ),
-                  ),
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)),
+                  child: const Text('NOVA', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)),
+                )
+            ]
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                Text(textoData, style: TextStyle(color: Colors.grey.shade600, fontSize: 11, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: corTag.withAlpha(20), borderRadius: BorderRadius.circular(4)),
+                  child: Text(tagDestino, style: TextStyle(color: corTag, fontSize: 9, fontWeight: FontWeight.bold)),
                 ),
-              
-              StreamBuilder<QuerySnapshot>(
-                stream: avisoRef.collection('respostas').snapshots(),
-                builder: (context, snapRespostas) {
-                  int naoLidos = 0;
-                  if (snapRespostas.hasData) {
-                    for (var doc in snapRespostas.data!.docs) {
-                      final rData = doc.data() as Map<String, dynamic>;
-                      if (rData['remetenteId'] != meuId && rData['lidaPorResponsavel'] != true) {
-                        naoLidos++;
+              ],
+            ),
+          ),
+          onExpansionChanged: (expanded) {
+            // LÓGICA DE MARCAR COMO LIDO: O utilizador abriu a cascata, o sistema marca logo como lido!
+            if (expanded && !isLidoMsgOriginal) {
+              avisoRef.update({'lidosPor': FieldValue.arrayUnion([alunoDocId])});
+            }
+          },
+          children: [
+            const Divider(),
+            const SizedBox(height: 8),
+            
+            if ((aviso['mensagem'] ?? '').toString().isNotEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  (aviso['mensagem'] ?? '').toString(),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
+                ),
+              ),
+
+            if (anexosList.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Wrap(
+                  spacing: 12, runSpacing: 12,
+                  children: anexosList.map((anexo) {
+                    final String url = (anexo['url'] ?? '').toString();
+                    final String nome = (anexo['nome'] ?? 'Anexo').toString();
+                    final bool isPdf = nome.toLowerCase().endsWith('.pdf');
+
+                    return Tooltip(
+                      message: 'Clique para expandir e baixar',
+                      child: InkWell(
+                        onTap: () => _mostrarAnexoAmpliadoGlobal(context, url, isPdf, corPrimaria),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          width: 80, height: 80,
+                          decoration: BoxDecoration(
+                            color: isPdf ? Colors.red.shade50 : Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.grey.shade300),
+                            image: !isPdf 
+                                ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover)
+                                : null,
+                          ),
+                          child: Stack(
+                            children: [
+                              if (isPdf)
+                                const Center(child: Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 36)),
+                              Positioned(
+                                bottom: 0, left: 0, right: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withAlpha(150),
+                                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(11)),
+                                  ),
+                                  child: Text(isPdf ? 'PDF' : 'FOTO', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 16),
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              children: [
+                StreamBuilder<QuerySnapshot>(
+                  stream: avisoRef.collection('respostas').snapshots(),
+                  builder: (context, snapRespostas) {
+                    int naoLidos = 0;
+                    if (snapRespostas.hasData) {
+                      for (var doc in snapRespostas.data!.docs) {
+                        final rData = doc.data() as Map<String, dynamic>;
+                        if (rData['remetenteId'] != meuId && rData['lidaPorResponsavel'] != true) {
+                          naoLidos++;
+                        }
                       }
                     }
-                  }
-                  
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          foregroundColor: corPrimaria,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-                        ),
-                        onPressed: () {
-                          if (!isLidoMsgOriginal) {
-                            avisoRef.update({'lidosPor': FieldValue.arrayUnion([alunoDocId])});
-                          }
-                          _abrirChat(context, avisoRef, meuId, meuNome);
-                        },
-                        icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: corPrimaria),
-                        label: Text('Ver Respostas / Responder', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
-                      ),
-                      if (naoLidos > 0)
-                        Positioned(
-                          top: 0, right: 0,
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-                            decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white, width: 1.5)),
-                            child: Text(naoLidos > 9 ? '9+' : naoLidos.toString(), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                    
+                    return Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        TextButton.icon(
+                          style: TextButton.styleFrom(
+                            foregroundColor: corPrimaria,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            backgroundColor: corPrimaria.withAlpha(10),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
                           ),
-                        )
-                    ],
-                  );
-                }
-              )
-            ],
-          )
-        ],
+                          onPressed: () {
+                            if (!isLidoMsgOriginal) {
+                              avisoRef.update({'lidosPor': FieldValue.arrayUnion([alunoDocId])});
+                            }
+                            _abrirChat(context, avisoRef);
+                          },
+                          icon: Icon(Icons.chat_bubble_outline_rounded, size: 18, color: corPrimaria),
+                          label: Text('Ver Respostas / Responder', style: TextStyle(fontWeight: FontWeight.bold, color: corPrimaria, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                        if (naoLidos > 0)
+                          Positioned(
+                            top: -4, right: -4,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                              decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white, width: 1.5)),
+                              child: Text(naoLidos > 9 ? '9+' : naoLidos.toString(), style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                            ),
+                          )
+                      ],
+                    );
+                  }
+                )
+              ],
+            )
+          ],
+        ),
       ),
     );
   }
 }
 
 // ============================================================================
-// CHAT DO AVISO COM ANEXOS (Para o Responsável)
+// CHAT DO AVISO COM ANEXOS E MINIATURAS (Para o Responsável)
 // ============================================================================
 class _ChatAvisoModal extends StatefulWidget {
   final DocumentReference avisoRef;
@@ -1623,22 +2086,28 @@ class _ChatAvisoModal extends StatefulWidget {
 class _ChatAvisoModalState extends State<_ChatAvisoModal> {
   final TextEditingController _msgCtrl = TextEditingController();
   bool _enviando = false;
-  File? _anexoFile;
-  String? _anexoNomeChat;
-  bool _isPdfChat = false;
+  
+  final List<PlatformFile> _anexosChat = [];
 
-  Future<void> _escolherAnexoChat() async {
+  Future<void> _escolherAnexosChat() async {
+    if (_anexosChat.length >= 3) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Limite de 3 anexos atingido.'), backgroundColor: Colors.red));
+      return;
+    }
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
       );
 
-      if (result != null && result.files.single.path != null) {
+      if (result != null) {
         setState(() {
-          _anexoFile = File(result.files.single.path!);
-          _anexoNomeChat = result.files.single.name;
-          _isPdfChat = _anexoNomeChat!.toLowerCase().endsWith('.pdf');
+          for (var file in result.files) {
+            if (_anexosChat.length < 3) {
+              _anexosChat.add(file);
+            }
+          }
         });
       }
     } catch (e) {
@@ -1648,68 +2117,84 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
 
   Future<void> _enviarResposta() async {
     final texto = _msgCtrl.text.trim();
-    if (texto.isEmpty && _anexoFile == null) return;
+    if (texto.isEmpty && _anexosChat.isEmpty) return;
 
     setState(() => _enviando = true);
     try {
-      String? anexoUrl;
+      List<Map<String, String>> anexosFinais = [];
 
-      if (_anexoFile != null) {
-        final ext = _anexoNomeChat!.split('.').last;
-        final nomeArquivo = 'anexo_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      for (var f in _anexosChat) {
+        Uint8List? arquivoBytes;
+        File? arquivoFisico;
+
+        if (!kIsWeb && f.path != null) arquivoFisico = File(f.path!);
+        arquivoBytes = f.bytes;
+
+        final nomeArquivo = 'anexo_resp_${DateTime.now().millisecondsSinceEpoch}_${f.name.replaceAll(' ', '_')}';
         final storageRef = FirebaseStorage.instance.ref().child('tenants/${widget.tenantId}/avisos_anexos/$nomeArquivo');
-        await storageRef.putFile(_anexoFile!);
-        anexoUrl = await storageRef.getDownloadURL();
+        
+        if (kIsWeb && arquivoBytes != null) {
+          await storageRef.putData(arquivoBytes);
+        } else if (arquivoFisico != null) {
+          await storageRef.putFile(arquivoFisico);
+        } else if (arquivoBytes != null) {
+          await storageRef.putData(arquivoBytes);
+        }
+        
+        final url = await storageRef.getDownloadURL();
+        
+        anexosFinais.add({
+          'nome': f.name,
+          'url': url,
+        });
       }
 
-      await widget.avisoRef.collection('respostas').add({
+      final Map<String, dynamic> payload = {
         'texto': texto,
         'dataEnvio': FieldValue.serverTimestamp(),
         'remetenteId': widget.meuId,
         'remetenteNome': widget.meuNome,
         'alunoIdReferencia': widget.alunoId,
         'lidaPorResponsavel': true, // Pai enviou, já leu
-        if (anexoUrl != null) 'anexoUrl': anexoUrl,
-        if (anexoUrl != null) 'anexoNome': _anexoNomeChat,
-      });
+      };
+
+      if (anexosFinais.isNotEmpty) payload['anexos'] = anexosFinais;
+
+      await widget.avisoRef.collection('respostas').add(payload);
       
       _msgCtrl.clear();
       setState(() {
-        _anexoFile = null;
-        _anexoNomeChat = null;
-        _isPdfChat = false;
+        _anexosChat.clear();
       });
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar: $e'), backgroundColor: Colors.red));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro ao enviar: $e'), backgroundColor: Colors.red));
+      }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
   }
 
-  void _mostrarImagemFullscreen(String url) {
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.all(16),
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            InteractiveViewer(child: ClipRRect(borderRadius: BorderRadius.circular(16), child: Image.network(url, fit: BoxFit.contain))),
-            Positioned(top: 16, right: 16, child: IconButton(icon: const Icon(Icons.close, color: Colors.white, size: 32), onPressed: () => Navigator.pop(ctx))),
-          ],
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    
+    // Traz os anexos originais do aviso para exibir no topo do chat
+    List<dynamic> anexosOriginalList = widget.avisoData['anexos'] as List<dynamic>? ?? [];
+    if (widget.avisoData['anexoUrl'] != null && widget.avisoData['anexoUrl'].toString().isNotEmpty && anexosOriginalList.isEmpty) {
+       anexosOriginalList.add({
+         'nome': (widget.avisoData['anexoNome'] ?? 'Anexo').toString(),
+         'url': widget.avisoData['anexoUrl'].toString(),
+       });
+    }
+
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         height: MediaQuery.of(context).size.height * 0.85,
-        decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
         child: Column(
           children: [
             Padding(
@@ -1726,13 +2211,58 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
             const Divider(height: 1),
 
             Container(
-              padding: const EdgeInsets.all(16), color: Colors.grey.shade50, width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              color: Colors.grey.shade50,
+              width: double.infinity,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Aviso Original de ${widget.avisoData['remetenteNome']}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
+                  Text('Aviso Original de ${(widget.avisoData['remetenteNome'] ?? '').toString()}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade600)),
                   const SizedBox(height: 4),
-                  Text(widget.avisoData['mensagem'] ?? '', style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                  Text((widget.avisoData['mensagem'] ?? '').toString(), style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                  
+                  if (anexosOriginalList.isNotEmpty) 
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: Wrap(
+                        spacing: 12, runSpacing: 12,
+                        children: anexosOriginalList.map((anexo) {
+                          final String url = (anexo['url'] ?? '').toString();
+                          final String nome = (anexo['nome'] ?? 'Anexo').toString();
+                          final bool isPdf = nome.toLowerCase().endsWith('.pdf');
+
+                          return Tooltip(
+                            message: 'Clique para expandir e baixar',
+                            child: InkWell(
+                              onTap: () => _mostrarAnexoAmpliadoGlobal(context, url, isPdf, widget.corPrimaria),
+                              borderRadius: BorderRadius.circular(12),
+                              child: Container(
+                                width: 70, height: 70,
+                                decoration: BoxDecoration(
+                                  color: isPdf ? Colors.red.shade50 : Colors.grey.shade200,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: Colors.grey.shade300),
+                                  image: !isPdf ? DecorationImage(image: NetworkImage(url), fit: BoxFit.cover) : null,
+                                ),
+                                child: Stack(
+                                  children: [
+                                    if (isPdf) const Center(child: Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 30)),
+                                    Positioned(
+                                      bottom: 0, left: 0, right: 0,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                                        decoration: BoxDecoration(color: Colors.black.withAlpha(150), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(11))),
+                                        child: Text(isPdf ? 'PDF' : 'FOTO', style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                                      ),
+                                    )
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    )
                 ],
               ),
             ),
@@ -1743,8 +2273,8 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
                 stream: widget.avisoRef.collection('respostas').orderBy('dataEnvio', descending: false).snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: widget.corPrimaria));
-                  final respostas = snapshot.data?.docs ?? [];
                   
+                  final respostas = snapshot.data?.docs ?? [];
                   if (respostas.isEmpty) {
                     return Center(
                       child: Column(
@@ -1764,12 +2294,19 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
                     itemCount: respostas.length,
                     itemBuilder: (context, index) {
                       final resp = respostas[index].data() as Map<String, dynamic>;
-                      final isMeu = resp['remetenteId'] == widget.meuId;
-                      final dataTime = resp['dataEnvio'];
-                      final hora = dataTime != null ? DateFormat('HH:mm').format((dataTime as Timestamp).toDate()) : '...';
-                      final String anexoUrl = resp['anexoUrl'] ?? '';
-                      final String anexoNome = resp['anexoNome'] ?? 'Anexo';
-                      final bool isAnexoPdf = anexoNome.toLowerCase().endsWith('.pdf');
+                      final isMeu = (resp['remetenteId'] ?? '').toString() == widget.meuId;
+                      final dataTime = resp['dataEnvio'] as Timestamp?;
+                      final hora = dataTime != null ? DateFormat('HH:mm').format(dataTime.toDate()) : '...';
+                      String remetenteExibicao = (resp['remetenteNome'] ?? 'Usuário').toString();
+
+                      // Extrair anexos das respostas (Formato novo list vs Formato antigo map)
+                      List<dynamic> anexosRespList = resp['anexos'] as List<dynamic>? ?? [];
+                      if (resp['anexoUrl'] != null && resp['anexoUrl'].toString().isNotEmpty && anexosRespList.isEmpty) {
+                        anexosRespList.add({
+                          'nome': (resp['anexoNome'] ?? 'Anexo').toString(),
+                          'url': resp['anexoUrl'].toString(),
+                        });
+                      }
 
                       return Align(
                         alignment: isMeu ? Alignment.centerRight : Alignment.centerLeft,
@@ -1779,50 +2316,71 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
                           constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                           decoration: BoxDecoration(
                             color: isMeu ? widget.corPrimaria.withAlpha(20) : Colors.grey.shade100,
-                            borderRadius: BorderRadius.circular(16).copyWith(bottomRight: isMeu ? const Radius.circular(0) : null, bottomLeft: !isMeu ? const Radius.circular(0) : null)
+                            borderRadius: BorderRadius.circular(16).copyWith(
+                              bottomRight: isMeu ? const Radius.circular(0) : null,
+                              bottomLeft: !isMeu ? const Radius.circular(0) : null,
+                            )
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(isMeu ? 'Você' : (resp['remetenteNome'] ?? 'Usuário'), style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMeu ? widget.corPrimaria : Colors.grey.shade700)),
+                              Text(
+                                isMeu ? 'Você' : remetenteExibicao, 
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMeu ? widget.corPrimaria : Colors.grey.shade700)
+                              ),
                               const SizedBox(height: 4),
-                              if (anexoUrl.isNotEmpty)
+
+                              if (anexosRespList.isNotEmpty)
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: isAnexoPdf 
-                                    ? InkWell(
-                                        onTap: () => _abrirLink(anexoUrl),
-                                        child: Container(
-                                          padding: const EdgeInsets.all(12),
-                                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.grey.shade300)),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 24),
-                                              const SizedBox(width: 8),
-                                              Flexible(child: Text(anexoNome, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                                            ],
-                                          ),
-                                        ),
-                                      )
-                                    : InkWell(
-                                        onTap: () => _mostrarImagemFullscreen(anexoUrl),
-                                        child: ClipRRect(
+                                  child: Wrap(
+                                    spacing: 8, runSpacing: 8,
+                                    children: anexosRespList.map((anx) {
+                                      final String urlAnx = (anx['url'] ?? '').toString();
+                                      final String nomeAnx = (anx['nome'] ?? 'Anexo').toString();
+                                      final bool isPdfAnx = nomeAnx.toLowerCase().endsWith('.pdf');
+
+                                      return Tooltip(
+                                        message: 'Clique para expandir e baixar',
+                                        child: InkWell(
+                                          onTap: () => _mostrarAnexoAmpliadoGlobal(context, urlAnx, isPdfAnx, widget.corPrimaria),
                                           borderRadius: BorderRadius.circular(8),
-                                          child: Image.network(
-                                            anexoUrl, height: 150, width: double.infinity, fit: BoxFit.cover,
-                                            loadingBuilder: (context, child, loadingProgress) {
-                                              if (loadingProgress == null) return child;
-                                              return Container(height: 150, width: double.infinity, color: Colors.grey.shade200, child: const Center(child: CircularProgressIndicator()));
-                                            },
+                                          child: Container(
+                                            width: 60, height: 60,
+                                            decoration: BoxDecoration(
+                                              color: isPdfAnx ? Colors.red.shade50 : Colors.white,
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.grey.shade300),
+                                              image: !isPdfAnx ? DecorationImage(image: NetworkImage(urlAnx), fit: BoxFit.cover) : null,
+                                            ),
+                                            child: Stack(
+                                              children: [
+                                                if (isPdfAnx) const Center(child: Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 24)),
+                                                Positioned(
+                                                  bottom: 0, left: 0, right: 0,
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                                                    decoration: BoxDecoration(color: Colors.black.withAlpha(150), borderRadius: const BorderRadius.vertical(bottom: Radius.circular(7))),
+                                                    child: Text(isPdfAnx ? 'PDF' : 'FOTO', style: const TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                                                  ),
+                                                )
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
+                                      );
+                                    }).toList(),
+                                  ),
                                 ),
+
                               if ((resp['texto'] ?? '').toString().isNotEmpty)
-                                Text(resp['texto'] ?? '', style: const TextStyle(fontSize: 14)),
+                                Text((resp['texto'] ?? '').toString(), style: const TextStyle(fontSize: 14)),
+                              
                               const SizedBox(height: 4),
-                              Align(alignment: Alignment.centerRight, child: Text(hora, style: TextStyle(fontSize: 9, color: Colors.grey.shade500)))
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Text(hora, style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
+                              )
                             ],
                           ),
                         ),
@@ -1833,18 +2391,32 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
               ),
             ),
 
-            if (_anexoFile != null)
+            if (_anexosChat.isNotEmpty)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), color: Colors.blue.shade50,
-                child: Row(
-                  children: [
-                    _isPdfChat 
-                      ? const Icon(Icons.picture_as_pdf_rounded, color: Colors.red, size: 32)
-                      : ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.file(_anexoFile!, width: 40, height: 40, fit: BoxFit.cover)),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(_anexoNomeChat ?? 'Arquivo selecionado', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.blue), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    IconButton(icon: const Icon(Icons.close_rounded, color: Colors.red), onPressed: () => setState(() { _anexoFile = null; _anexoNomeChat = null; _isPdfChat = false; }))
-                  ],
+                child: Wrap(
+                  spacing: 8, runSpacing: 8,
+                  children: List.generate(_anexosChat.length, (index) {
+                    final anexo = _anexosChat[index];
+                    final isPdf = (anexo.extension ?? '').toLowerCase() == 'pdf';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.blue.shade200)),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(isPdf ? Icons.picture_as_pdf_rounded : Icons.image_rounded, color: isPdf ? Colors.red : Colors.blue, size: 16),
+                          const SizedBox(width: 6),
+                          Flexible(child: Text(anexo.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blue), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: () => setState(() { _anexosChat.removeAt(index); }),
+                            child: const Icon(Icons.close_rounded, color: Colors.red, size: 16),
+                          )
+                        ],
+                      ),
+                    );
+                  }),
                 ),
               ),
 
@@ -1853,18 +2425,29 @@ class _ChatAvisoModalState extends State<_ChatAvisoModal> {
               decoration: const BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, -2))]),
               child: Row(
                 children: [
-                  IconButton(icon: Icon(Icons.attach_file_rounded, color: Colors.grey.shade600), onPressed: _escolherAnexoChat, tooltip: 'Anexar Foto ou PDF'),
+                  IconButton(icon: Icon(Icons.attach_file_rounded, color: Colors.grey.shade600), onPressed: _escolherAnexosChat, tooltip: 'Anexar Arquivos (${_anexosChat.length}/3)'),
                   Expanded(
                     child: TextField(
-                      controller: _msgCtrl, textCapitalization: TextCapitalization.sentences, maxLines: 3, minLines: 1,
-                      decoration: InputDecoration(hintText: 'Escreva uma resposta...', filled: true, fillColor: Colors.grey.shade100, contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none)),
+                      controller: _msgCtrl,
+                      decoration: InputDecoration(
+                        hintText: 'Escreva uma resposta...',
+                        filled: true,
+                        fillColor: Colors.grey.shade100,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: BorderSide.none),
+                      ),
+                      textCapitalization: TextCapitalization.sentences,
+                      maxLines: 3,
+                      minLines: 1,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Container(
                     decoration: BoxDecoration(color: widget.corPrimaria, shape: BoxShape.circle),
                     child: IconButton(
-                      icon: _enviando ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                      icon: _enviando 
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                        : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
                       onPressed: _enviando ? null : _enviarResposta,
                     ),
                   )
