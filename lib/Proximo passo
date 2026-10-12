@@ -72,15 +72,12 @@ e no arquivo anexado colocar opção de download e apenas abrir.
 -----------------------------------------------------------
 *** AMBIENTE DO PROFESSOR ***
 - retirar o valor da média nas provas. Pois virá do admim da escola
-
+- está mostrando as provas em aberto de outras matérias sem ser da disciplina 
+do professor logado.
 -----------------------------------------------------------
 *** AMBIENTE DO RESPONSÁVEL ***
 Verificar os anexos.;
-- Colocar botão para exportar boletim PDf com a frequência e notas.
-
-- retirar o portal da familia e colcar apenas portal do responsável.
-
-- verificar o boletim.
+- Verificar o endereço no pdf de boletim
 
 -----------------------------------------------------------
 *** AMBIENTE DA SECRETARIA ***

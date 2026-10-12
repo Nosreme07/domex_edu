@@ -187,6 +187,21 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
     );
   }
 
+  void _abrirGradeAulas(String tenantId, String turmaId, Color corPrimaria) {
+    if (turmaId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aluno sem turma vinculada.')));
+      return;
+    }
+    showModalBottomSheet(
+      context: context, isScrollControlled: true, backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95, expand: false,
+        builder: (_, scrollController) => _GradeAulasModal(tenantId: tenantId, turmaId: turmaId, corPrimaria: corPrimaria, scrollController: scrollController)
+      )
+    );
+  }
+
   void _abrirAvisos(String tenantId, String turmaId, String alunoDocId, Color corPrimaria, String meuId, String nomeResp, String nomeAluno) {
     if (turmaId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aluno sem turma vinculada.')));
@@ -226,6 +241,12 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
 
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+      appBar: AppBar(
+        title: const Text('Portal do Responsável', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: corPrimaria,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -243,7 +264,7 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Bem-vindo(a),', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                    const Text('Acesso do Responsável,', style: TextStyle(color: Colors.white70, fontSize: 14)),
                     const SizedBox(height: 4),
                     Text(nomeResponsavel, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)),
                   ],
@@ -331,6 +352,9 @@ class _ResponsavelDashboardTelaState extends ConsumerState<ResponsavelDashboardT
                                         }),
                                         _buildAcaoBotao(Icons.fact_check_rounded, 'Frequência', Colors.green.shade700, () {
                                           _abrirFrequencia(tenantId, turmaId, matricula, corPrimaria);
+                                        }),
+                                        _buildAcaoBotao(Icons.calendar_month_rounded, 'Grade de\nAulas', Colors.teal.shade700, () {
+                                          _abrirGradeAulas(tenantId, turmaId, corPrimaria);
                                         }),
                                         _buildAcaoBotao(Icons.payments_rounded, 'Financeiro', Colors.orange.shade700, () {
                                           ScaffoldMessenger.of(context).showSnackBar(
@@ -506,6 +530,143 @@ class _BalaoNotificacaoAvisosState extends State<_BalaoNotificacaoAvisos> {
 }
 
 // ============================================================================
+// MODAL DE GRADE DE AULAS (Alinhado com a Formatação do Admin)
+// ============================================================================
+class _GradeAulasModal extends StatelessWidget {
+  final String tenantId;
+  final String turmaId;
+  final Color corPrimaria;
+  final ScrollController scrollController;
+
+  const _GradeAulasModal({
+    required this.tenantId,
+    required this.turmaId,
+    required this.corPrimaria,
+    required this.scrollController,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.calendar_month_rounded, color: corPrimaria)),
+              const SizedBox(width: 16),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Grade de Aulas', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Horário semanal da turma', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ])),
+              IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).get(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) return Center(child: CircularProgressIndicator(color: corPrimaria));
+              if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text('Turma não encontrada.'));
+
+              final turmaData = snapshot.data!.data() as Map<String, dynamic>;
+              final gradeAulas = turmaData['horarios'] as List<dynamic>? ?? [];
+
+              if (gradeAulas.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.event_busy_rounded, size: 64, color: Colors.grey.shade300),
+                      const SizedBox(height: 16),
+                      Text('Grade de aulas não configurada.', style: TextStyle(color: Colors.grey.shade600, fontSize: 16)),
+                      const SizedBox(height: 8),
+                      Text('A secretaria escolar ainda não\ndisponibilizou o horário desta turma.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade500, fontSize: 13)),
+                    ],
+                  )
+                );
+              }
+
+              final diasDaSemanaCompletos = [
+                'SEGUNDA', 'TERÇA', 'QUARTA', 'QUINTA', 'SEXTA', 'SÁBADO', 'DOMINGO'
+              ];
+
+              return ListView.builder(
+                controller: scrollController,
+                padding: const EdgeInsets.all(20),
+                itemCount: diasDaSemanaCompletos.length,
+                itemBuilder: (context, index) {
+                  final dia = diasDaSemanaCompletos[index];
+                  
+                  // Procura todas as aulas cadastradas para este dia
+                  final aulasDoDia = gradeAulas.where((h) {
+                     return h is Map && h['dia']?.toString() == dia;
+                  }).toList();
+
+                  // Esconde dias vazios (ex: Sábado e Domingo)
+                  if (aulasDoDia.isEmpty) return const SizedBox.shrink();
+                  
+                  // Ordena cronologicamente
+                  aulasDoDia.sort((a, b) => (a['inicio'] ?? '').toString().compareTo((b['inicio'] ?? '').toString()));
+
+                  return Card(
+                    elevation: 0, margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
+                    child: Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        initiallyExpanded: DateTime.now().weekday == (index + 1), // Expande automaticamente o dia atual
+                        title: Text(dia, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                        children: aulasDoDia.map((aula) {
+                          
+                          final bool isIntervalo = aula['disciplina']?.toString() == 'INTERVALO';
+                          final String horario = '${aula['inicio'] ?? ''} - ${aula['fim'] ?? ''}';
+                          final String materia = aula['disciplina']?.toString() ?? 'Livre';
+                          final String profNome = aula['professorNome']?.toString() ?? '';
+
+                          if (isIntervalo) {
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.restaurant_rounded, size: 14, color: Colors.grey.shade500),
+                                  const SizedBox(width: 8),
+                                  Text('$horario • INTERVALO', style: TextStyle(color: Colors.grey.shade600, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            );
+                          }
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                            leading: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(color: corPrimaria.withAlpha(20), borderRadius: BorderRadius.circular(8)),
+                              child: Text(horario, style: TextStyle(color: corPrimaria, fontWeight: FontWeight.bold, fontSize: 12)),
+                            ),
+                            title: Text(materia, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                            subtitle: profNome.isNotEmpty ? Text('Prof. $profNome', style: TextStyle(color: Colors.grey.shade600, fontSize: 12)) : null,
+                          );
+                        }).toList(),
+                      ),
+                    )
+                  );
+                }
+              );
+            }
+          )
+        )
+      ]
+    );
+  }
+}
+
+// ============================================================================
 // MODAL DE BOLETIM COM EXPORTAÇÃO PDF INTEGRADA
 // ============================================================================
 class _BoletimModal extends StatefulWidget {
@@ -566,20 +727,28 @@ class _BoletimModalState extends State<_BoletimModal> {
     if (turmaSnap.exists) {
       final data = turmaSnap.data() as Map<String, dynamic>;
       if (data.containsKey('disciplinas') && data['disciplinas'] is List) {
-        disciplinas = List<String>.from(data['disciplinas']);
+        for(var d in data['disciplinas']) {
+          disciplinas.add(d.toString());
+        }
       }
+    }
+
+    // Garante que matérias com avaliação também entram mesmo que não constem na raiz da turma
+    Set<String> todasAsDisciplinas = Set.from(disciplinas);
+    for (var doc in avaliacoesSnap.docs) {
+      todasAsDisciplinas.add((doc.data()['disciplina'] ?? 'Geral').toString());
     }
     
     return {
-      'disciplinas': disciplinas,
+      'disciplinas': todasAsDisciplinas.toList()..sort(),
       'avaliacoes': avaliacoesSnap.docs.map((d) => d.data()).toList(),
     };
   }
 
   // ==========================================================================
-  // GERAÇÃO DO BOLETIM EM PDF PROFISSIONAL (TODOS OS BIMESTRES)
+  // GERAÇÃO DO BOLETIM EM PDF PROFISSIONAL (GERAL OU POR BIMESTRE)
   // ==========================================================================
-  Future<void> _exportarBoletimPdf(BuildContext context) async {
+  Future<void> _exportarBoletimPdf(BuildContext context, {required bool apenasBimestreAtivo}) async {
     showDialog(
       context: context, barrierDismissible: false,
       builder: (_) => const Center(child: CircularProgressIndicator(color: Colors.white)),
@@ -593,22 +762,32 @@ class _BoletimModalState extends State<_BoletimModal> {
       final tenantData = tenantDoc.data() ?? <String, dynamic>{};
       final nomeEscola = (tenantData['nomeEscola'] ?? 'ESCOLA').toString();
       final logoUrl = (tenantData['logoUrl'] ?? tenantData['fotoUrl'] ?? tenantData['logo'] ?? '').toString();
+      final slogan = (tenantData['slogan'] ?? '').toString();
+      final endereco = (tenantData['endereco'] ?? '').toString();
+      final contato = (tenantData['contato'] ?? tenantData['telefone'] ?? '').toString();
 
       pw.ImageProvider? logoProvider;
       if (logoUrl.isNotEmpty) {
         try { logoProvider = await networkImage(logoUrl); } catch (_) {}
       }
 
-      // 2. Dados da Turma
+      // 2. Dados da Turma e Disciplinas Globais
       final turmaDoc = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).get();
       final turmaData = turmaDoc.data() ?? <String, dynamic>{};
       final turmaNome = (turmaData['nome'] ?? '').toString();
       final turmaTurno = (turmaData['turno'] ?? '').toString();
-      final disciplinas = List<String>.from(turmaData['disciplinas'] ?? []);
 
-      // 3. Buscar todas as Avaliações e Diários de todos os bimestres
+      // Pega todas as disciplinas cadastradas na turma, e garante que as que têm avaliação também entrem
+      Set<String> todasDisciplinas = Set<String>.from(turmaData['disciplinas'] ?? []);
+
+      // 3. Buscar todas as Avaliações e Diários
       final avalsSnap = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('avaliacoes').get();
       final diariosSnap = await db.collection('tenants').doc(widget.tenantId).collection('turmas').doc(widget.turmaId).collection('diarios').get();
+
+      for (var d in avalsSnap.docs) {
+        todasDisciplinas.add((d.data()['disciplina'] ?? 'Geral').toString());
+      }
+      List<String> disciplinasOrdenadas = todasDisciplinas.toList()..sort();
 
       // Mapeamento Global para Frequências: [Bimestre] -> [Disciplina] -> {aulas, faltas}
       Map<String, Map<String, Map<String, int>>> freqGlobal = {
@@ -648,7 +827,6 @@ class _BoletimModalState extends State<_BoletimModal> {
 
         var avalsValidas = avalsBim.where((a) => a['contaParaMedia'] != false).toList();
 
-        // Extrai as notas brutas do Aluno
         List<Map<String, dynamic>> notasTratadas = [];
         for (var a in avalsValidas) {
           final maximo = double.tryParse((a['pontuacaoMaxima'] ?? '10').toString()) ?? 10.0;
@@ -699,7 +877,8 @@ class _BoletimModalState extends State<_BoletimModal> {
       final pdf = pw.Document();
       final pdfCorPrimaria = PdfColor.fromInt(widget.corPrimaria.toARGB32());
       final dataGeracao = DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now());
-      final bimestres = ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
+      
+      final bimestresParaExportar = apenasBimestreAtivo ? [_bimestreAtivo] : ['1º Bimestre', '2º Bimestre', '3º Bimestre', '4º Bimestre'];
 
       pdf.addPage(
         pw.MultiPage(
@@ -714,7 +893,18 @@ class _BoletimModalState extends State<_BoletimModal> {
                   children: [
                     if (logoProvider != null) pw.Container(width: 50, height: 50, child: pw.Image(logoProvider)),
                     if (logoProvider != null) pw.SizedBox(width: 12),
-                    pw.Expanded(child: pw.Text(nomeEscola.toUpperCase(), style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria))),
+                    pw.Expanded(
+                      child: pw.Column(
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Text(nomeEscola.toUpperCase(), style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria)),
+                          if (slogan.isNotEmpty) pw.Text(slogan, style: pw.TextStyle(fontSize: 9, fontStyle: pw.FontStyle.italic, color: PdfColors.grey700)),
+                          pw.SizedBox(height: 2),
+                          if (endereco.isNotEmpty) pw.Text(endereco, style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                          if (contato.isNotEmpty) pw.Text('Contato: $contato', style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+                        ]
+                      )
+                    ),
                   ],
                 ),
                 pw.SizedBox(height: 12),
@@ -739,7 +929,7 @@ class _BoletimModalState extends State<_BoletimModal> {
           build: (context) {
             List<pw.Widget> content = [];
 
-            content.add(pw.Center(child: pw.Text('BOLETIM ESCOLAR E FREQUÊNCIA', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria))));
+            content.add(pw.Center(child: pw.Text(apenasBimestreAtivo ? 'BOLETIM ESCOLAR - ${_bimestreAtivo.toUpperCase()}' : 'BOLETIM ESCOLAR COMPLETO', style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria))));
             content.add(pw.SizedBox(height: 16));
             
             // Dados do Aluno
@@ -777,7 +967,7 @@ class _BoletimModalState extends State<_BoletimModal> {
             content.add(pw.SizedBox(height: 24));
 
             // Tabelas por Bimestre
-            for (var bim in bimestres) {
+            for (var bim in bimestresParaExportar) {
               content.add(pw.Text(bim, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold, color: pdfCorPrimaria)));
               content.add(pw.SizedBox(height: 8));
 
@@ -798,13 +988,13 @@ class _BoletimModalState extends State<_BoletimModal> {
                       children: [
                         pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('Disciplina', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9))),
                         pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Nota', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
-                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Aulas', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
+                        pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Aulas Dadas', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
                         pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Faltas', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
                         pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Center(child: pw.Text('Freq. (%)', style: pw.TextStyle(color: PdfColors.white, fontWeight: pw.FontWeight.bold, fontSize: 9)))),
                       ]
                     ),
-                    // Linhas da Tabela
-                    for (var disc in disciplinas) ...[
+                    // Linhas da Tabela (Mostra TODAS as matérias)
+                    for (var disc in disciplinasOrdenadas) ...[
                       () {
                         // Lógica de Nota
                         final nota = calcularNotaDisciplina(bim, disc);
@@ -897,7 +1087,7 @@ class _BoletimModalState extends State<_BoletimModal> {
 
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: Text(a['nome'] ?? 'Avaliação', style: TextStyle(decoration: valida ? null : TextDecoration.lineThrough, color: valida ? Colors.black : Colors.grey)),
+                    title: Text((a['nome'] ?? 'Avaliação').toString(), style: TextStyle(decoration: valida ? null : TextDecoration.lineThrough, color: valida ? Colors.black : Colors.grey)),
                     subtitle: sub.isNotEmpty ? Text(sub, style: TextStyle(color: valida ? Colors.purple : Colors.grey)) : null,
                     trailing: Text(textoNota, style: TextStyle(fontWeight: FontWeight.bold, decoration: valida ? null : TextDecoration.lineThrough, color: valida ? widget.corPrimaria : Colors.grey)),
                   );
@@ -925,11 +1115,15 @@ class _BoletimModalState extends State<_BoletimModal> {
                 Text('Meu Boletim', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 Text('Notas consolidadas por disciplina', style: TextStyle(color: Colors.grey, fontSize: 13)),
               ])),
-              // BOTÃO EXPORTAR PDF
-              IconButton(
-                tooltip: 'Exportar para PDF',
-                icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.red), 
-                onPressed: () => _exportarBoletimPdf(context)
+              // BOTÃO EXPORTAR PDF GERAL (CABEÇALHO)
+              Tooltip(
+                message: 'Exportar Boletim Geral Completo',
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                  onPressed: () => _exportarBoletimPdf(context, apenasBimestreAtivo: false),
+                  icon: const Icon(Icons.picture_as_pdf_rounded),
+                  label: const Text('Geral', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
               ),
               IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
             ],
@@ -954,6 +1148,27 @@ class _BoletimModalState extends State<_BoletimModal> {
           ),
         ),
 
+        // BOTÃO EXPORTAR PDF DO BIMESTRE ATIVO
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade50,
+                foregroundColor: Colors.red.shade700,
+                elevation: 0,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onPressed: () => _exportarBoletimPdf(context, apenasBimestreAtivo: true),
+              icon: const Icon(Icons.picture_as_pdf_rounded, size: 20),
+              label: Text('Exportar Boletim do $_bimestreAtivo', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+
         const Divider(height: 1),
         Expanded(
           child: FutureBuilder<Map<String, dynamic>>(
@@ -972,7 +1187,7 @@ class _BoletimModalState extends State<_BoletimModal> {
               }
               
               for (var aval in avaliacoes) {
-                final disciplina = aval['disciplina'] ?? 'Geral';
+                final disciplina = (aval['disciplina'] ?? 'Geral').toString();
                 final maximo = double.tryParse((aval['pontuacaoMaxima'] ?? '10').toString()) ?? 10.0;
                 final isRecuperacao = aval['isRecuperacao'] == true;
                 final contaParaMedia = aval['contaParaMedia'] ?? true;
@@ -1584,7 +1799,7 @@ class _AvisosModalState extends State<_AvisosModal> {
         
         final avisosValidos = todosAvisos.where((aviso) {
           final tipoDest = aviso['tipoDestinatario'];
-          final alvoId = aviso['alunoId']?.toString() ?? '';
+          final alvoId = (aviso['alunoId'] ?? '').toString();
           final meuAlunoIdStr = widget.alunoDocId.toString();
 
           if (tipoDest == 'TURMA' || tipoDest == 'TODOS' || tipoDest == 'TURMA_RESPONSAVEIS') return true;
@@ -1598,6 +1813,7 @@ class _AvisosModalState extends State<_AvisosModal> {
           return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.notifications_off_rounded, size: 64, color: Colors.grey.shade300), const SizedBox(height: 16), Text('Nenhum aviso no mural.', style: TextStyle(color: Colors.grey.shade500))]));
         }
 
+        // Lógica de exibir 5 e carregar todos
         final int totalItens = avisosValidos.length;
         final int qtdExibidos = totalItens > _limiteAvisos ? _limiteAvisos : totalItens;
         final bool temMais = totalItens > _limiteAvisos;
@@ -1832,7 +2048,7 @@ class AvisoCardWidget extends StatelessWidget {
       bool hasUpdates = false;
       for (var doc in snap.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        if (data['remetenteId'] != meuId && data['lidaPorResponsavel'] != true) {
+        if ((data['remetenteId'] ?? '').toString() != meuId && data['lidaPorResponsavel'] != true) {
           batch.update(doc.reference, {'lidaPorResponsavel': true});
           hasUpdates = true;
         }
@@ -1847,7 +2063,7 @@ class AvisoCardWidget extends StatelessWidget {
     final textoData = dataEnvio != null && dataEnvio is Timestamp ? DateFormat('dd/MM HH:mm').format(dataEnvio.toDate()) : '';
     
     final tipoDest = aviso['tipoDestinatario'];
-    final isMeu = aviso['remetenteId'] == meuId;
+    final isMeu = (aviso['remetenteId'] ?? '').toString() == meuId;
     
     final remetenteOriginal = isMeu ? 'Enviado por você' : (aviso['remetenteNome'] ?? 'Direção / Professor').toString();
     bool isProfessor = remetenteOriginal.contains('Professor(a)');
@@ -1872,7 +2088,7 @@ class AvisoCardWidget extends StatelessWidget {
     final lidosPor = List<String>.from(aviso['lidosPor'] ?? []);
     final isLidoMsgOriginal = isMeu || lidosPor.contains(alunoDocId);
 
-    final avisoRef = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').doc(aviso['id']);
+    final avisoRef = FirebaseFirestore.instance.collection('tenants').doc(tenantId).collection('turmas').doc(turmaId).collection('avisos').doc((aviso['id'] ?? '').toString());
 
     List<dynamic> anexosList = aviso['anexos'] as List<dynamic>? ?? [];
     if (aviso['anexoUrl'] != null && aviso['anexoUrl'].toString().isNotEmpty && anexosList.isEmpty) {
@@ -2017,7 +2233,7 @@ class AvisoCardWidget extends StatelessWidget {
                     if (snapRespostas.hasData) {
                       for (var doc in snapRespostas.data!.docs) {
                         final rData = doc.data() as Map<String, dynamic>;
-                        if (rData['remetenteId'] != meuId && rData['lidaPorResponsavel'] != true) {
+                        if ((rData['remetenteId'] ?? '').toString() != meuId && rData['lidaPorResponsavel'] != true) {
                           naoLidos++;
                         }
                       }
