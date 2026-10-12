@@ -54,16 +54,19 @@ avaliar os calendários
 - Verificar o diario de classe para colocar
  o nome do professor e a disciplina que ele leciona.
 - colocar campos de pesquisa.
-- deixar os diários de classe como botão em cascata
+ deixar os diários de classe como botão em cascata
 e no arquivo anexado colocar opção de download e apenas abrir.
 - colocar o mesmo pdf do diário de classe dentro do diário de classe.
 - verificar nas mensagens os anexos de pdf que não estão abrindo.
 
-
+/// Comunicação e Avisos/// 
 - Enviar mensagens para todos os responsáveis da escola.
+- colocar nos cards de avisos uma tag de novo aviso e um para visualizado.
+
+///////////////////////////
+
 
 - Colocar alguma coisa para informar a média da escola.
-
 
 -----------------------------------------------------------
 *** AMBIENTE DO ALUNO***
@@ -96,10 +99,6 @@ Verificar os anexos.;
 
 Quando um pai tem filhos em escolas diferentes com o mesmo sistema como o sistema se comporta-rá????
 -----------------------------------------------------------
-
-
-OBS: Em todos os campos de pesquisa possa pesquisar pelo numero do ID
-sem precisar colocar a sigla PROF... Só colocando o numero 0001 01
 
 -----------------------------------------------------------
 
